@@ -1,67 +1,38 @@
 # LabTether Windows Agent
 
-The Windows system tray agent for [LabTether](https://labtether.com).
+The Windows system tray agent for [LabTether](https://labtether.com) — reports telemetry, executes actions, and enables remote access for your Windows machines.
 
-## Requirements
+## Install
 
-- Visual Studio 2022+ with .NET 8 and Windows App SDK workload
-- Windows 10 version 1809+ (build 17763)
+Download **LabTether Agent** from [Releases](https://github.com/labtether/labtether-win/releases/latest) and run the installer. The system tray icon guides you through hub enrollment.
 
-## Build
+For detailed setup, see the [agent setup guide](https://labtether.com/docs/wiki/agents/windows).
 
-The Windows agent bundles the Go `labtether-agent` binary. The build downloads it from the main repo's GitHub Releases based on the version pinned in `AGENT_VERSION`.
+## What It Does
 
-### Download agent binary
+- **System telemetry** — CPU, memory, disk, network, and temperature reported to your hub.
+- **Remote access** — Terminal and desktop sessions from the LabTether console.
+- **System tray status** — Connection state and quick actions from the notification area.
+- **Windows services** — Monitor and manage Windows services remotely.
+- **Hyper-V monitoring** — VM status and management for Hyper-V hosts.
+- **Windows Update** — View pending updates and trigger installations from the console.
+
+## Build From Source
+
+Requires Visual Studio 2022+ with .NET 8 and Windows App SDK workload.
 
 ```powershell
-./scripts/download-agent.ps1
-```
-
-### Build (development)
-
-```bash
 dotnet build src/LabTetherAgent/LabTetherAgent.csproj
 ```
 
-### Build MSIX (release)
+For most users, download the pre-built installer from [Releases](https://github.com/labtether/labtether-win/releases/latest) instead.
 
-```powershell
-./scripts/build-msix.ps1 -Arch x64
-./scripts/build-msix.ps1 -Arch arm64
-```
+## Links
 
-## Test
+- **LabTether Hub** — [github.com/labtether/labtether](https://github.com/labtether/labtether)
+- **Documentation** — [labtether.com/docs](https://labtether.com/docs)
+- **Website** — [labtether.com](https://labtether.com)
 
-```bash
-dotnet test tests/LabTetherAgent.Tests/
-```
+## License
 
-## Architecture
-
-The tray app is a thin native WinUI 3 wrapper around the Go `labtether-agent.exe` binary. It manages the Go process lifecycle, communicates via the localhost HTTP API (`/agent/status`, `/agent/info`), and provides:
-
-- System tray icon with status flyout
-- Enrollment wizard
-- Settings management with Windows Credential Manager
-- Live log viewer
-- Pop-out metrics window
-- Windows toast notifications
-- Hyper-V VM status and Windows Update awareness
-
-This mirrors the architecture of the macOS menu bar agent (`mac-agent`).
-
-## Project Structure
-
-```
-src/LabTetherAgent/
-├── App/           # Application entry, single instance, state
-├── Api/           # HTTP client for Go agent localhost API
-├── Process/       # Go binary lifecycle management
-├── Services/      # Connection testing, diagnostics, notifications
-├── Settings/      # Config, credentials, environment builder
-├── State/         # Observable status models
-├── Presentation/  # ViewModels (MVVM)
-├── Components/    # Reusable UI components
-├── Views/         # Windows and pages
-└── Resources/     # Icons, strings, fonts
-```
+Copyright 2026 LabTether. All rights reserved. See [LICENSE](LICENSE).
