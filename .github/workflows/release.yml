@@ -42,6 +42,8 @@ jobs:
             -r ${{ matrix.rid }} `
             -p:Platform=${{ matrix.platform }} `
             --self-contained true `
+            -p:WindowsPackageType=None `
+            -p:EnableMsixTooling=false `
             -o publish/${{ matrix.rid }}
 
       - name: Package release artifact
