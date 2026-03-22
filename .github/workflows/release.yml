@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        include:
+          - platform: x64
+            rid: win-x64
+          - platform: arm64
+            rid: win-arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Resolve version from tag
+        id: meta
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore dependencies
+        run: dotnet restore src/LabTetherAgent/LabTetherAgent.csproj -r ${{ matrix.rid }}
+
+      - name: Publish
+        run: |
+          dotnet publish src/LabTetherAgent/LabTetherAgent.csproj `
+            -c Release `
+            -r ${{ matrix.rid }} `
+            -p:Platform=${{ matrix.platform }} `
+            --self-contained true `
+            -o publish/${{ matrix.rid }}
+
+      - name: Package release artifact
+        shell: bash
+        run: |
+          cd publish/${{ matrix.rid }}
+          7z a -tzip "../../labtether-agent-${{ matrix.rid }}.zip" .
+          cd ../..
+          sha256sum "labtether-agent-${{ matrix.rid }}.zip" > "labtether-agent-${{ matrix.rid }}.zip.sha256"
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "LabTether Windows Agent ${{ steps.meta.outputs.version }}"
+          files: |
+            labtether-agent-${{ matrix.rid }}.zip
+            labtether-agent-${{ matrix.rid }}.zip.sha256
