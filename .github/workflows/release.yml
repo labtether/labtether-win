@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2025
     timeout-minutes: 30
     strategy:
       matrix:
@@ -23,7 +23,9 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "8.0.x"
+          dotnet-version: |
+            6.0.x
+            8.0.x
 
       - name: Resolve version from tag
         id: meta
