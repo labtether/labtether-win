@@ -33,18 +33,24 @@ jobs:
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
       - name: Restore dependencies
-        run: dotnet restore src/LabTetherAgent/LabTetherAgent.csproj -r ${{ matrix.rid }}
+        run: >-
+          dotnet restore src/LabTetherAgent/LabTetherAgent.csproj
+          -r ${{ matrix.rid }}
+          -p:Platform=${{ matrix.platform }}
 
       - name: Publish
-        run: |
-          dotnet publish src/LabTetherAgent/LabTetherAgent.csproj `
-            -c Release `
-            -r ${{ matrix.rid }} `
-            -p:Platform=${{ matrix.platform }} `
-            --self-contained true `
-            -p:WindowsPackageType=None `
-            -p:EnableMsixTooling=false `
-            -o publish/${{ matrix.rid }}
+        run: >-
+          dotnet publish src/LabTetherAgent/LabTetherAgent.csproj
+          -c Release
+          -r ${{ matrix.rid }}
+          -p:Platform=${{ matrix.platform }}
+          --self-contained true
+          --no-restore
+          -p:WindowsPackageType=None
+          -p:EnableMsixTooling=false
+          -p:GenerateAppxPackageOnBuild=false
+          -p:AppxPackage=false
+          -o publish/${{ matrix.rid }}
 
       - name: Package release artifact
         shell: bash
