@@ -9,19 +9,17 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-2025
+    runs-on: windows-latest
     timeout-minutes: 30
-    strategy:
-      matrix:
-        include:
-          - platform: x64
-            rid: win-x64
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
+
+      - name: Add msbuild to PATH
+        uses: microsoft/setup-msbuild@v2
 
       - name: Resolve version from tag
         id: meta
@@ -30,38 +28,38 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
-      - name: Restore dependencies
+      - name: Restore
         run: >-
-          dotnet restore src/LabTetherAgent/LabTetherAgent.csproj
-          -r ${{ matrix.rid }}
-          -p:Platform=${{ matrix.platform }}
+          msbuild src/LabTetherAgent/LabTetherAgent.csproj
+          -t:Restore
+          -p:RuntimeIdentifier=win-x64
+          -p:Platform=x64
 
       - name: Publish
         run: >-
-          dotnet publish src/LabTetherAgent/LabTetherAgent.csproj
-          -c Release
-          -r ${{ matrix.rid }}
-          -p:Platform=${{ matrix.platform }}
-          --self-contained true
-          --no-restore
+          msbuild src/LabTetherAgent/LabTetherAgent.csproj
+          -t:Publish
+          -p:Configuration=Release
+          -p:RuntimeIdentifier=win-x64
+          -p:Platform=x64
+          -p:SelfContained=true
           -p:WindowsPackageType=None
           -p:EnableMsixTooling=false
           -p:GenerateAppxPackageOnBuild=false
-          -p:AppxPackage=false
-          -o publish/${{ matrix.rid }}
+          -p:PublishDir=..\..\publish\win-x64\
 
       - name: Package release artifact
         shell: bash
         run: |
-          cd publish/${{ matrix.rid }}
-          7z a -tzip "../../labtether-agent-${{ matrix.rid }}.zip" .
+          cd publish/win-x64
+          7z a -tzip "../../labtether-agent-win-x64.zip" .
           cd ../..
-          sha256sum "labtether-agent-${{ matrix.rid }}.zip" > "labtether-agent-${{ matrix.rid }}.zip.sha256"
+          sha256sum "labtether-agent-win-x64.zip" > "labtether-agent-win-x64.zip.sha256"
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: "LabTether Windows Agent ${{ steps.meta.outputs.version }}"
           files: |
-            labtether-agent-${{ matrix.rid }}.zip
-            labtether-agent-${{ matrix.rid }}.zip.sha256
+            labtether-agent-win-x64.zip
+            labtether-agent-win-x64.zip.sha256
