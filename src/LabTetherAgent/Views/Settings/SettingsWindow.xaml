@@ -1,0 +1,64 @@
+<Window
+    x:Class="LabTetherAgent.Views.Settings.SettingsWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="LabTether Agent Settings"
+    Width="500" Height="640">
+
+    <ScrollViewer Padding="24">
+        <StackPanel Spacing="16">
+            <TextBlock Text="Settings" FontSize="24" FontWeight="SemiBold" Margin="0,0,0,8" />
+
+            <!-- Connection -->
+            <TextBlock Text="CONNECTION" FontSize="11" FontWeight="SemiBold"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" CharacterSpacing="60" />
+            <TextBox Header="Hub URL" Text="{x:Bind ViewModel.HubUrl, Mode=TwoWay}" />
+            <ToggleSwitch Header="TLS Skip Verify" IsOn="{x:Bind ViewModel.TlsSkipVerify, Mode=TwoWay}"
+                          OffContent="Verify certificates" OnContent="Skip verification (dev only)" />
+
+            <!-- General -->
+            <TextBlock Text="GENERAL" FontSize="11" FontWeight="SemiBold"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" CharacterSpacing="60"
+                       Margin="0,8,0,0" />
+            <ToggleSwitch Header="Start at Login" IsOn="{x:Bind ViewModel.StartAtLogin, Mode=TwoWay}" />
+            <ToggleSwitch Header="Low Power Mode" IsOn="{x:Bind ViewModel.LowPowerMode, Mode=TwoWay}"
+                          OffContent="Normal polling" OnContent="Reduced CPU usage" />
+            <ToggleSwitch Header="Auto Update" IsOn="{x:Bind ViewModel.AutoUpdateEnabled, Mode=TwoWay}" />
+            <ToggleSwitch Header="Allow Remote Overrides" IsOn="{x:Bind ViewModel.AllowRemoteOverrides, Mode=TwoWay}"
+                          OffContent="Hub cannot change local settings" OnContent="Hub can push settings" />
+            <ComboBox Header="Log Level" SelectedItem="{x:Bind ViewModel.LogLevel, Mode=TwoWay}"
+                      ItemsSource="{x:Bind ViewModel.LogLevels}" />
+
+            <!-- Docker -->
+            <TextBlock Text="DOCKER" FontSize="11" FontWeight="SemiBold"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" CharacterSpacing="60"
+                       Margin="0,8,0,0" />
+            <TextBox Header="Docker Endpoint" Text="{x:Bind ViewModel.DockerEndpoint, Mode=TwoWay}"
+                     PlaceholderText="\\.\pipe\docker_engine" />
+            <NumberBox Header="Discovery Interval (seconds)"
+                       Value="{x:Bind ViewModel.DockerDiscoveryIntervalNumber, Mode=TwoWay}"
+                       Minimum="10" Maximum="600" SpinButtonPlacementMode="Compact" />
+
+            <!-- WebRTC -->
+            <TextBlock Text="REMOTE ACCESS" FontSize="11" FontWeight="SemiBold"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" CharacterSpacing="60"
+                       Margin="0,8,0,0" />
+            <ToggleSwitch Header="WebRTC" IsOn="{x:Bind ViewModel.WebRtcEnabled, Mode=TwoWay}"
+                          OffContent="Disabled" OnContent="Enabled" />
+
+            <!-- Save / Cancel -->
+            <Grid Margin="0,16,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Button Grid.Column="1" Content="Cancel" Margin="0,0,8,0"
+                        Command="{x:Bind ViewModel.CancelCommand}" />
+                <Button Grid.Column="2" Content="Save" Style="{ThemeResource AccentButtonStyle}"
+                        Command="{x:Bind ViewModel.SaveCommand}"
+                        IsEnabled="{x:Bind ViewModel.IsDirty, Mode=OneWay}" />
+            </Grid>
+        </StackPanel>
+    </ScrollViewer>
+</Window>

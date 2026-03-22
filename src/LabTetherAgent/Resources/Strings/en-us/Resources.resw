@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <!-- App -->
+  <data name="AppName" xml:space="preserve"><value>LabTether Agent</value></data>
+  <data name="AppDescription" xml:space="preserve"><value>LabTether endpoint agent for Windows</value></data>
+  <!-- Tray -->
+  <data name="TrayTooltipConnected" xml:space="preserve"><value>LabTether Agent — Connected</value></data>
+  <data name="TrayTooltipDisconnected" xml:space="preserve"><value>LabTether Agent — Disconnected</value></data>
+  <data name="TrayMenuOpenConsole" xml:space="preserve"><value>Open Console</value></data>
+  <data name="TrayMenuSettings" xml:space="preserve"><value>Settings</value></data>
+  <data name="TrayMenuViewLogs" xml:space="preserve"><value>View Logs</value></data>
+  <data name="TrayMenuPopOut" xml:space="preserve"><value>Pop Out</value></data>
+  <data name="TrayMenuAbout" xml:space="preserve"><value>About</value></data>
+  <data name="TrayMenuQuit" xml:space="preserve"><value>Quit</value></data>
+  <!-- Status -->
+  <data name="StatusConnected" xml:space="preserve"><value>Connected</value></data>
+  <data name="StatusDisconnected" xml:space="preserve"><value>Disconnected</value></data>
+  <data name="StatusConnecting" xml:space="preserve"><value>Connecting...</value></data>
+  <data name="MetricCpu" xml:space="preserve"><value>CPU</value></data>
+  <data name="MetricMemory" xml:space="preserve"><value>Memory</value></data>
+  <data name="MetricDisk" xml:space="preserve"><value>Disk</value></data>
+  <!-- Onboarding -->
+  <data name="OnboardingTitle" xml:space="preserve"><value>Set Up LabTether Agent</value></data>
+  <data name="OnboardingSubtitle" xml:space="preserve"><value>Connect this machine to your LabTether hub.</value></data>
+  <data name="OnboardingStep1Title" xml:space="preserve"><value>Step 1: Hub URL</value></data>
+  <data name="OnboardingStep1Subtitle" xml:space="preserve"><value>Enter the URL of your LabTether hub.</value></data>
+  <data name="OnboardingStep2Title" xml:space="preserve"><value>Step 2: Authentication</value></data>
+  <data name="OnboardingStep2Subtitle" xml:space="preserve"><value>Choose how to authenticate with your hub.</value></data>
+  <data name="OnboardingStep3Title" xml:space="preserve"><value>Step 3: Identity &amp; Connect</value></data>
+  <data name="OnboardingStep3Subtitle" xml:space="preserve"><value>Optionally set an asset ID and group, then connect.</value></data>
+  <data name="OnboardingTokenEnrollment" xml:space="preserve"><value>Enrollment Token</value></data>
+  <data name="OnboardingTokenApi" xml:space="preserve"><value>API Token</value></data>
+  <data name="OnboardingFinish" xml:space="preserve"><value>Finish &amp; Start Agent</value></data>
+  <data name="OnboardingConnecting" xml:space="preserve"><value>Connecting to hub...</value></data>
+  <data name="OnboardingSuccess" xml:space="preserve"><value>Connected successfully!</value></data>
+  <!-- Settings -->
+  <data name="SettingsTitle" xml:space="preserve"><value>Settings</value></data>
+  <data name="SettingsSectionConnection" xml:space="preserve"><value>CONNECTION</value></data>
+  <data name="SettingsSectionGeneral" xml:space="preserve"><value>GENERAL</value></data>
+  <data name="SettingsSectionDocker" xml:space="preserve"><value>DOCKER</value></data>
+  <data name="SettingsSectionRemoteAccess" xml:space="preserve"><value>REMOTE ACCESS</value></data>
+  <data name="SettingsHubUrl" xml:space="preserve"><value>Hub URL</value></data>
+  <data name="SettingsStartAtLogin" xml:space="preserve"><value>Start at Login</value></data>
+  <data name="SettingsLowPowerMode" xml:space="preserve"><value>Low Power Mode</value></data>
+  <data name="SettingsAutoUpdate" xml:space="preserve"><value>Auto Update</value></data>
+  <data name="SettingsAllowRemoteOverrides" xml:space="preserve"><value>Allow Remote Overrides</value></data>
+  <data name="SettingsLogLevel" xml:space="preserve"><value>Log Level</value></data>
+  <data name="SettingsTlsSkipVerify" xml:space="preserve"><value>TLS Skip Verify</value></data>
+  <data name="SettingsDockerEndpoint" xml:space="preserve"><value>Docker Endpoint</value></data>
+  <data name="SettingsDockerInterval" xml:space="preserve"><value>Discovery Interval (seconds)</value></data>
+  <data name="SettingsWebRtc" xml:space="preserve"><value>WebRTC</value></data>
+  <data name="SettingsSave" xml:space="preserve"><value>Save</value></data>
+  <data name="SettingsCancel" xml:space="preserve"><value>Cancel</value></data>
+  <!-- Logs -->
+  <data name="LogsTitle" xml:space="preserve"><value>LabTether Agent Logs</value></data>
+  <data name="LogsSearch" xml:space="preserve"><value>Search logs...</value></data>
+  <data name="LogsExport" xml:space="preserve"><value>Export</value></data>
+  <data name="LogsClear" xml:space="preserve"><value>Clear</value></data>
+  <data name="LogsAutoScroll" xml:space="preserve"><value>Auto-scroll</value></data>
+  <!-- About -->
+  <data name="AboutTitle" xml:space="preserve"><value>About LabTether Agent</value></data>
+  <data name="AboutExportDiagnostics" xml:space="preserve"><value>Export Diagnostics</value></data>
+  <data name="AboutAppVersion" xml:space="preserve"><value>App Version</value></data>
+  <data name="AboutAgentVersion" xml:space="preserve"><value>Agent Version</value></data>
+  <data name="AboutHub" xml:space="preserve"><value>Hub</value></data>
+  <data name="AboutFingerprint" xml:space="preserve"><value>Fingerprint</value></data>
+  <!-- Notifications -->
+  <data name="NotifyDisconnectedTitle" xml:space="preserve"><value>Hub Connection Lost</value></data>
+  <data name="NotifyDisconnectedBody" xml:space="preserve"><value>LabTether Agent has lost connection to the hub. Retrying...</value></data>
+  <data name="NotifyReconnectedTitle" xml:space="preserve"><value>Hub Connection Restored</value></data>
+  <data name="NotifyReconnectedBody" xml:space="preserve"><value>LabTether Agent has reconnected to the hub.</value></data>
+  <data name="NotifyUpdateTitle" xml:space="preserve"><value>Agent Update Available</value></data>
+  <!-- Flyout -->
+  <data name="FlyoutAlerts" xml:space="preserve"><value>ALERTS</value></data>
+  <data name="FlyoutHyperV" xml:space="preserve"><value>Hyper-V</value></data>
+  <data name="FlyoutWindowsUpdate" xml:space="preserve"><value>Updates</value></data>
+  <data name="FlyoutConsole" xml:space="preserve"><value>Console</value></data>
+  <data name="FlyoutLogs" xml:space="preserve"><value>Logs</value></data>
+  <data name="FlyoutPopOut" xml:space="preserve"><value>Pop Out</value></data>
+</root>

@@ -1,0 +1,39 @@
+<Page
+    x:Class="LabTetherAgent.Views.Onboarding.ConnectingPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <StackPanel Spacing="16" VerticalAlignment="Center" Padding="0,0,0,48">
+        <TextBlock Text="Step 3: Identity &amp; Connect" FontSize="18" FontWeight="SemiBold" />
+        <TextBlock Text="Optionally set an asset ID and group, then connect."
+                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+
+        <TextBox Header="Asset ID (optional)"
+                 PlaceholderText="Defaults to hostname"
+                 Text="{x:Bind ViewModel.AssetId, Mode=TwoWay}" />
+
+        <TextBox Header="Group ID (optional)"
+                 PlaceholderText="Leave empty for default group"
+                 Text="{x:Bind ViewModel.GroupId, Mode=TwoWay}" />
+
+        <!-- Connection progress -->
+        <StackPanel Visibility="{x:Bind ViewModel.IsConnecting, Mode=OneWay}"
+                    Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center" Margin="0,16,0,0">
+            <ProgressRing IsActive="True" Width="24" Height="24" />
+            <TextBlock Text="Connecting to hub..." VerticalAlignment="Center" />
+        </StackPanel>
+
+        <!-- Success -->
+        <StackPanel Visibility="{x:Bind ViewModel.IsConnected, Mode=OneWay}"
+                    HorizontalAlignment="Center" Spacing="8" Margin="0,16,0,0">
+            <FontIcon Glyph="&#xE73E;" FontSize="32" Foreground="Green" HorizontalAlignment="Center" />
+            <TextBlock Text="Connected successfully!" FontWeight="SemiBold" HorizontalAlignment="Center" />
+        </StackPanel>
+
+        <!-- Error -->
+        <InfoBar IsOpen="{x:Bind ViewModel.ConnectionError, Mode=OneWay, Converter={StaticResource StringToBoolConverter}}"
+                 Severity="Error"
+                 Title="Connection Failed"
+                 Message="{x:Bind ViewModel.ConnectionError, Mode=OneWay}" />
+    </StackPanel>
+</Page>

@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
+  IgnorableNamespaces="uap rescap desktop com">
+
+  <Identity
+    Name="LabTether.Agent"
+    Publisher="CN=LabTether"
+    Version="0.1.0.0" />
+
+  <mp:PhoneIdentity PhoneProductId="00000000-0000-0000-0000-000000000000" PhonePublisherId="00000000-0000-0000-0000-000000000000" />
+
+  <Properties>
+    <DisplayName>LabTether Agent</DisplayName>
+    <PublisherDisplayName>LabTether</PublisherDisplayName>
+    <Logo>Resources\Icons\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.22621.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="x-generate" />
+  </Resources>
+
+  <Applications>
+    <Application Id="App"
+      Executable="$targetnametoken$.exe"
+      EntryPoint="$targetentrypoint$">
+
+      <uap:VisualElements
+        DisplayName="LabTether Agent"
+        Description="LabTether endpoint agent for Windows"
+        BackgroundColor="transparent"
+        Square150x150Logo="Resources\Icons\Square150x150Logo.png"
+        Square44x44Logo="Resources\Icons\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Resources\Icons\Wide310x150Logo.png" />
+      </uap:VisualElements>
+
+      <Extensions>
+        <!-- Start at Login -->
+        <desktop:Extension Category="windows.startupTask">
+          <desktop:StartupTask
+            TaskId="LabTetherAgentStartup"
+            Enabled="false"
+            DisplayName="LabTether Agent" />
+        </desktop:Extension>
+
+        <!-- Toast notification activator -->
+        <desktop:Extension Category="windows.toastNotificationActivation">
+          <desktop:ToastNotificationActivation
+            ToastActivatorCLSID="7F3A2E1D-9C4B-4F8A-B6D5-0E2C8A3F7B9E" />
+        </desktop:Extension>
+
+        <!-- COM registration for toast activation -->
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:ExeServer Executable="LabTetherAgent.exe" Arguments="----AppNotificationActivated:" DisplayName="LabTether Notification">
+              <com:Class Id="7F3A2E1D-9C4B-4F8A-B6D5-0E2C8A3F7B9E" DisplayName="LabTether Notification Activator" />
+            </com:ExeServer>
+          </com:ComServer>
+        </com:Extension>
+      </Extensions>
+
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+    <Capability Name="internetClient" />
+  </Capabilities>
+</Package>

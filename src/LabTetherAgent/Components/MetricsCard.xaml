@@ -1,0 +1,44 @@
+<UserControl
+    x:Class="LabTetherAgent.Components.MetricsCard"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid Padding="12" CornerRadius="8"
+          Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- CPU -->
+        <StackPanel Grid.Column="0" HorizontalAlignment="Center">
+            <TextBlock x:Name="CpuText" FontSize="22" FontWeight="SemiBold"
+                       Foreground="{ThemeResource AccentFillColorDefaultBrush}"
+                       HorizontalAlignment="Center" />
+            <TextBlock Text="CPU" FontSize="10"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       HorizontalAlignment="Center" />
+        </StackPanel>
+
+        <!-- Memory -->
+        <StackPanel Grid.Column="1" HorizontalAlignment="Center">
+            <TextBlock x:Name="MemText" FontSize="22" FontWeight="SemiBold"
+                       Foreground="#CE93D8"
+                       HorizontalAlignment="Center" />
+            <TextBlock Text="Memory" FontSize="10"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       HorizontalAlignment="Center" />
+        </StackPanel>
+
+        <!-- Disk -->
+        <StackPanel Grid.Column="2" HorizontalAlignment="Center">
+            <TextBlock x:Name="DiskText" FontSize="22" FontWeight="SemiBold"
+                       Foreground="#FFB74D"
+                       HorizontalAlignment="Center" />
+            <TextBlock Text="Disk" FontSize="10"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       HorizontalAlignment="Center" />
+        </StackPanel>
+    </Grid>
+</UserControl>

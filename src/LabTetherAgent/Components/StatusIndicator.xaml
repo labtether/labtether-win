@@ -1,0 +1,12 @@
+<UserControl
+    x:Class="LabTetherAgent.Components.StatusIndicator"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <StackPanel Orientation="Horizontal" Spacing="6"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                CornerRadius="12" Padding="8,4">
+        <Ellipse x:Name="StatusDot" Width="8" Height="8" />
+        <TextBlock x:Name="StatusLabel" FontSize="11" VerticalAlignment="Center" />
+    </StackPanel>
+</UserControl>

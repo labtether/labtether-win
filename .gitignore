@@ -1,0 +1,49 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.sln.docstates
+
+# Visual Studio
+.vs/
+*.rsuser
+launchSettings.json
+
+# MSIX / AppX
+AppPackages/
+BundleArtifacts/
+*.msix
+*.msixbundle
+*.appx
+*.appxbundle
+*.appxupload
+*.appinstaller
+
+# Signing
+*.pfx
+*.cer
+
+# Build artifacts
+publish/
+artifacts/
+
+# NuGet
+*.nupkg
+**/packages/*
+
+# IDE
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Agent binary (downloaded at build time)
+src/LabTetherAgent/Assets/labtether-agent.exe
+
+# Superpowers
+.superpowers/

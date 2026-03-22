@@ -1,0 +1,123 @@
+<Window
+    x:Class="LabTetherAgent.Views.TrayIcon.FlyoutWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:components="using:LabTetherAgent.Components"
+    Title="LabTether Agent"
+    Width="360" Height="480">
+
+    <Grid Padding="16" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header: Logo + Name + Status -->
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Border Grid.Column="0" Width="24" Height="24" CornerRadius="4"
+                    Background="{ThemeResource AccentFillColorDefaultBrush}" Margin="0,0,8,0">
+                <TextBlock Text="LT" FontSize="10" FontWeight="Bold"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+            </Border>
+            <TextBlock Grid.Column="1" Text="LabTether Agent" FontSize="14" FontWeight="SemiBold"
+                       VerticalAlignment="Center" />
+            <components:StatusIndicator Grid.Column="2"
+                                        IsConnected="{x:Bind ViewModel.IsConnected, Mode=OneWay}"
+                                        StatusText="{x:Bind ViewModel.ConnectionState, Mode=OneWay}" />
+        </Grid>
+
+        <!-- Metrics Card -->
+        <components:MetricsCard Grid.Row="1"
+                                 CpuPercent="{x:Bind ViewModel.CpuPercent, Mode=OneWay}"
+                                 MemoryText="{x:Bind ViewModel.MemoryText, Mode=OneWay}"
+                                 DiskPercent="{x:Bind ViewModel.DiskPercent, Mode=OneWay}" />
+
+        <!-- Alerts Section (hidden when no alerts) -->
+        <StackPanel Grid.Row="2" Spacing="4"
+                    Visibility="{x:Bind ViewModel.HasAlerts, Mode=OneWay}">
+            <components:SectionHeader Title="Alerts" />
+            <ItemsRepeater ItemsSource="{x:Bind ViewModel.FiringAlerts, Mode=OneWay}">
+                <ItemsRepeater.ItemTemplate>
+                    <DataTemplate>
+                        <components:AlertBadge
+                            AlertName="{Binding Name}"
+                            Severity="{Binding Severity}"
+                            Message="{Binding Message}" />
+                    </DataTemplate>
+                </ItemsRepeater.ItemTemplate>
+            </ItemsRepeater>
+        </StackPanel>
+
+        <!-- Connection + Quick Actions -->
+        <Grid Grid.Row="3" Padding="12" CornerRadius="8"
+              Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid Grid.Row="0" Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="{x:Bind ViewModel.HubUrl, Mode=OneWay}" FontSize="12" />
+                    <TextBlock Text="{x:Bind ViewModel.Uptime, Mode=OneWay}" FontSize="10"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+            </Grid>
+            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="6">
+                <Button Content="Console" Command="{x:Bind ViewModel.OpenConsoleCommand}" Style="{ThemeResource AccentButtonStyle}" />
+                <Button Content="Logs" Click="OnOpenLogs" />
+                <Button Content="Pop Out" Click="OnPopOut" />
+            </StackPanel>
+        </Grid>
+
+        <!-- Hyper-V Section (hidden when not available) -->
+        <Grid Grid.Row="4" Padding="12" CornerRadius="8"
+              Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+              Visibility="{x:Bind ViewModel.HasHyperV, Mode=OneWay}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <FontIcon Glyph="&#xE7F7;" FontSize="16" />
+                <TextBlock FontSize="12" VerticalAlignment="Center">
+                    <Run Text="Hyper-V:" FontWeight="SemiBold" />
+                    <Run Text="{x:Bind ViewModel.HyperVStatus.VmCount, Mode=OneWay}" />
+                    <Run Text="VMs (" />
+                    <Run Text="{x:Bind ViewModel.HyperVStatus.RunningCount, Mode=OneWay}" />
+                    <Run Text="running)" />
+                </TextBlock>
+            </StackPanel>
+        </Grid>
+
+        <!-- Windows Update Section (hidden when not available) -->
+        <Grid Grid.Row="5" Padding="12" CornerRadius="8"
+              Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+              Visibility="{x:Bind ViewModel.HasWindowsUpdates, Mode=OneWay}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <FontIcon Glyph="&#xE895;" FontSize="16" />
+                <TextBlock FontSize="12" VerticalAlignment="Center">
+                    <Run Text="Updates:" FontWeight="SemiBold" />
+                    <Run Text="{x:Bind ViewModel.WindowsUpdateStatus.PendingCount, Mode=OneWay}" />
+                    <Run Text="pending" />
+                </TextBlock>
+                <InfoBadge Visibility="{x:Bind ViewModel.WindowsUpdateStatus.RebootRequired, Mode=OneWay}"
+                           Value="-1" Style="{ThemeResource CriticalIconInfoBadgeStyle}" />
+                <TextBlock Text="Reboot required" FontSize="10"
+                           Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                           Visibility="{x:Bind ViewModel.WindowsUpdateStatus.RebootRequired, Mode=OneWay}"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

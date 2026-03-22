@@ -1,0 +1,22 @@
+<Page
+    x:Class="LabTetherAgent.Views.Onboarding.HubUrlPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <StackPanel Spacing="16" VerticalAlignment="Center" Padding="0,0,0,48">
+        <TextBlock Text="Step 1: Hub URL" FontSize="18" FontWeight="SemiBold" />
+        <TextBlock Text="Enter the URL of your LabTether hub."
+                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+
+        <TextBox x:Name="HubUrlInput"
+                 Header="Hub URL"
+                 PlaceholderText="https://hub.example.com"
+                 Text="{x:Bind ViewModel.HubUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+        <InfoBar x:Name="ValidationInfo"
+                 IsOpen="{x:Bind ViewModel.HubUrlError, Mode=OneWay, Converter={StaticResource StringToBoolConverter}}"
+                 Severity="Error"
+                 Title="Invalid URL"
+                 Message="{x:Bind ViewModel.HubUrlError, Mode=OneWay}" />
+    </StackPanel>
+</Page>
