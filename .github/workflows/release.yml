@@ -16,8 +16,6 @@ jobs:
         include:
           - platform: x64
             rid: win-x64
-          - platform: arm64
-            rid: win-arm64
     steps:
       - uses: actions/checkout@v4
 
