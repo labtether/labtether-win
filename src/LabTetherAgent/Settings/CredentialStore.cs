@@ -1,3 +1,8 @@
+using System.Diagnostics;
+#if WINDOWS
+using Windows.Security.Credentials;
+#endif
+
 namespace LabTetherAgent.Settings;
 
 /// <summary>
@@ -13,22 +18,30 @@ public class CredentialStore
     public const string LocalApiAuthResource = "LabTether:LocalApiAuth";
     public const string WebRtcTurnPassResource = "LabTether:WebRTCTurnPass";
 
+    private const string VaultResource = "LabTether";
     private const string UserName = "LabTetherAgent";
 
-    // PasswordVault is Windows-only and requires WinRT interop.
-    // The actual implementation uses Windows.Security.Credentials.PasswordVault
-    // which can only compile on Windows with the Windows App SDK.
-    // This class provides the interface; platform-specific implementation
-    // is wired in at build time.
+    private readonly bool _vaultAvailable;
 
+    // Fallback store for when PasswordVault is not available
     private readonly Dictionary<string, string> _fallbackStore = new();
     private readonly string? _fallbackPath;
 
     public CredentialStore()
     {
-        var settingsDir = AgentSettings.GetSettingsDirectory();
-        _fallbackPath = Path.Combine(settingsDir, ".credentials");
-        LoadFallback();
+        _vaultAvailable = ProbeVault();
+
+        if (!_vaultAvailable)
+        {
+            Trace.TraceWarning(
+                "CredentialStore: Windows PasswordVault is not available. " +
+                "Falling back to file-based credential storage. " +
+                "Secrets will NOT be protected by the OS credential manager.");
+
+            var settingsDir = AgentSettings.GetSettingsDirectory();
+            _fallbackPath = Path.Combine(settingsDir, ".credentials");
+            LoadFallback();
+        }
     }
 
     public void Store(string resourceName, string value)
@@ -39,28 +52,54 @@ public class CredentialStore
             return;
         }
 
-        // TODO: Replace with PasswordVault when compiling on Windows
-        _fallbackStore[resourceName] = value;
-        SaveFallback();
+        if (_vaultAvailable)
+        {
+            VaultStore(resourceName, value);
+        }
+        else
+        {
+            _fallbackStore[resourceName] = value;
+            SaveFallback();
+        }
     }
 
     public string? Retrieve(string resourceName)
     {
-        // TODO: Replace with PasswordVault when compiling on Windows
+        if (_vaultAvailable)
+        {
+            return VaultRetrieve(resourceName);
+        }
+
         return _fallbackStore.TryGetValue(resourceName, out var value) ? value : null;
     }
 
     public void Remove(string resourceName)
     {
-        // TODO: Replace with PasswordVault when compiling on Windows
-        _fallbackStore.Remove(resourceName);
-        SaveFallback();
+        if (_vaultAvailable)
+        {
+            VaultRemove(resourceName);
+        }
+        else
+        {
+            _fallbackStore.Remove(resourceName);
+            SaveFallback();
+        }
     }
 
     public void RemoveAll()
     {
-        _fallbackStore.Clear();
-        SaveFallback();
+        if (_vaultAvailable)
+        {
+            VaultRemove(ApiTokenResource);
+            VaultRemove(EnrollmentTokenResource);
+            VaultRemove(LocalApiAuthResource);
+            VaultRemove(WebRtcTurnPassResource);
+        }
+        else
+        {
+            _fallbackStore.Clear();
+            SaveFallback();
+        }
     }
 
     /// <summary>
@@ -84,6 +123,87 @@ public class CredentialStore
         Store(LocalApiAuthResource, settings.LocalApiAuthToken);
         Store(WebRtcTurnPassResource, settings.WebRtcTurnPass);
     }
+
+    // ── PasswordVault operations ────────────────────────────────────────
+
+    /// <summary>
+    /// Returns true if PasswordVault can be instantiated on this platform.
+    /// </summary>
+    private static bool ProbeVault()
+    {
+#if WINDOWS
+        try
+        {
+            _ = new PasswordVault();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Trace.TraceWarning($"CredentialStore: PasswordVault probe failed: {ex.Message}");
+            return false;
+        }
+#else
+        return false;
+#endif
+    }
+
+    private static void VaultStore(string resourceName, string value)
+    {
+#if WINDOWS
+        var vault = new PasswordVault();
+
+        // Remove any existing credential for this resource first
+        try
+        {
+            var existing = vault.Retrieve(VaultResource, resourceName);
+            vault.Remove(existing);
+        }
+        catch
+        {
+            // No existing credential — that's fine
+        }
+
+        vault.Add(new PasswordCredential(VaultResource, resourceName, value));
+#endif
+    }
+
+    private static string? VaultRetrieve(string resourceName)
+    {
+#if WINDOWS
+        try
+        {
+            var vault = new PasswordVault();
+            var credential = vault.Retrieve(VaultResource, resourceName);
+            credential.RetrievePassword();
+            return credential.Password;
+        }
+        catch
+        {
+            // Credential not found
+            return null;
+        }
+#else
+        return null;
+#endif
+    }
+
+    private static void VaultRemove(string resourceName)
+    {
+#if WINDOWS
+        try
+        {
+            var vault = new PasswordVault();
+            var credential = vault.Retrieve(VaultResource, resourceName);
+            vault.Remove(credential);
+        }
+        catch
+        {
+            // Credential not found — nothing to remove
+        }
+#endif
+    }
+
+    // ── Fallback file-based storage ─────────────────────────────────────
 
     private void LoadFallback()
     {

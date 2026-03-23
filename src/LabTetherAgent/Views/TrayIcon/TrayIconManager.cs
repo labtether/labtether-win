@@ -1,3 +1,4 @@
+using System.Drawing;
 using H.NotifyIcon;
 using Microsoft.UI.Xaml;
 using LabTetherAgent.App;
@@ -67,10 +68,13 @@ public class TrayIconManager : IDisposable
     {
         if (_taskbarIcon == null) return;
 
-        // TODO: Load actual .ico files from Resources/Icons/
-        // _taskbarIcon.IconSource = connected
-        //     ? new BitmapImage(new Uri("ms-appx:///Resources/Icons/tray-connected.ico"))
-        //     : new BitmapImage(new Uri("ms-appx:///Resources/Icons/tray-disconnected.ico"));
+        var iconName = connected ? "tray-connected.ico" : "tray-disconnected.ico";
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "Resources", "Icons", iconName);
+
+        if (File.Exists(iconPath))
+        {
+            _taskbarIcon.Icon = new Icon(iconPath);
+        }
 
         _taskbarIcon.ToolTipText = connected
             ? "LabTether Agent — Connected"
