@@ -4,6 +4,20 @@ obj/
 *.user
 *.suo
 *.sln.docstates
+*.pdb
+*.ilk
+*.iobj
+*.ipdb
+*.VisualState.xml
+TestResult.xml
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+ARM/
+ARM64/
+[Bb]uild[Ll]og.*
+*.binlog
 
 # Visual Studio
 .vs/
@@ -32,9 +46,13 @@ artifacts/
 *.nupkg
 **/packages/*
 
-# IDE
+# IDE / editors
 .idea/
+.vscode/
+.history/
+*.code-workspace
 *.swp
+*.swo
 *~
 
 # OS
@@ -45,5 +63,26 @@ desktop.ini
 # Agent binary (downloaded at build time)
 src/LabTetherAgent/Assets/labtether-agent.exe
 
-# Superpowers
+# Env
+.env
+.env.*
+!.env.example
+
+# Runtime dumps / core files
+*.dump
+*.dmp
+core
+core.*
+
+# Claude / AI tooling
+CLAUDE.md
+AGENTS.md
+.claude/
+.mcp.json
+.context/
+
+# Superpowers / worktrees / MCP
 .superpowers/
+.worktrees/
+.playwright-mcp/
+.gstack/
