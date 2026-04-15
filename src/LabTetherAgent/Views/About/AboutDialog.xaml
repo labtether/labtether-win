@@ -14,12 +14,9 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-            <Border Grid.Column="0" Width="48" Height="48" CornerRadius="8"
-                    Background="{ThemeResource AccentFillColorDefaultBrush}">
-                <TextBlock Text="LT" FontSize="18" FontWeight="Bold"
-                           HorizontalAlignment="Center" VerticalAlignment="Center"
-                           Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
-            </Border>
+            <Image Grid.Column="0" Width="48" Height="48"
+                   Source="ms-appx:///Resources/Icons/logo.svg"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" />
             <StackPanel Grid.Column="1" VerticalAlignment="Center">
                 <TextBlock Text="LabTether Agent" FontSize="16" FontWeight="SemiBold" />
                 <TextBlock x:Name="VersionText" FontSize="12"
