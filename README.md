@@ -1,3 +1,9 @@
+<div align="center">
+
+<img src=".github/logo.svg" alt="LabTether" width="80" />
+
+</div>
+
 # LabTether Windows Agent
 
 A native system tray app that connects your Windows machines to your [LabTether](https://labtether.com) hub -- telemetry, remote access, and actions from the notification area.
