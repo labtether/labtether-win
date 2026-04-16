@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
+using Windows.Graphics;
 using LabTetherAgent.App;
 using LabTetherAgent.Presentation;
 using LabTetherAgent.Services;
@@ -14,6 +15,7 @@ public sealed partial class OnboardingWindow : Window
     public OnboardingWindow(AppState appState)
     {
         this.InitializeComponent();
+        AppWindow.Resize(new SizeInt32(560, 460));
         SystemBackdrop = new MicaBackdrop();
 
         ViewModel = new OnboardingViewModel(

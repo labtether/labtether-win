@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
+using Windows.Graphics;
 using LabTetherAgent.App;
 using LabTetherAgent.Presentation;
 
@@ -12,6 +13,7 @@ public sealed partial class PopOutWindow : Window
     public PopOutWindow(AppState appState)
     {
         this.InitializeComponent();
+        AppWindow.Resize(new SizeInt32(300, 200));
         SystemBackdrop = new MicaBackdrop();
 
         ViewModel = new PopOutViewModel(appState.ApiClient);

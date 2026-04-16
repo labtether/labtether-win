@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Windows.Graphics;
 using LabTetherAgent.App;
 using LabTetherAgent.Presentation;
 
@@ -11,6 +12,7 @@ public sealed partial class FlyoutWindow : Window
     public FlyoutWindow(AppState appState)
     {
         this.InitializeComponent();
+        AppWindow.Resize(new SizeInt32(360, 480));
 
         // Mica backdrop (falls back to solid color on Win10)
         SystemBackdrop = new Microsoft.UI.Xaml.Media.MicaBackdrop();

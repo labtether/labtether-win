@@ -3,8 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:components="using:LabTetherAgent.Components"
-    Title="LabTether Agent"
-    Width="360" Height="480">
+    Title="LabTether Agent">
 
     <Grid Padding="16" RowSpacing="12">
         <Grid.RowDefinitions>
