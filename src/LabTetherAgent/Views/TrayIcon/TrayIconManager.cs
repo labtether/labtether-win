@@ -1,4 +1,5 @@
 using System.Drawing;
+using CommunityToolkit.Mvvm.Input;
 using H.NotifyIcon;
 using Microsoft.UI.Xaml;
 using LabTetherAgent.App;
@@ -32,9 +33,11 @@ public class TrayIconManager : IDisposable
         // Set initial icon
         UpdateIcon(false);
 
-        // Left-click → show flyout
-        _taskbarIcon.TrayMouseDoubleClick += (_, _) => ShowFlyout();
-        _taskbarIcon.TrayLeftMouseUp += (_, _) => ShowFlyout();
+        // Left-click or double-click → show flyout
+        // H.NotifyIcon.WinUI 2.x uses command properties instead of routed events
+        _taskbarIcon.DoubleClickCommand = new RelayCommand(ShowFlyout);
+        _taskbarIcon.LeftClickCommand = new RelayCommand(ShowFlyout);
+        _taskbarIcon.NoLeftClickDelay = true;
 
         // Context menu
         _taskbarIcon.ContextFlyout = BuildContextMenu();
@@ -135,7 +138,7 @@ public class TrayIconManager : IDisposable
         var quit = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem { Text = "Quit" };
         quit.Click += async (_, _) =>
         {
-            if (Application.Current is App app)
+            if (Application.Current is LabTetherAgent.App.App app)
                 await app.ShutdownAsync();
             Application.Current.Exit();
         };

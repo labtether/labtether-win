@@ -14,7 +14,8 @@ public static class Program
     static void Main(string[] args)
     {
         // Single-instance check must happen before any WinUI initialization
-        if (!App.EnsureSingleInstance())
+        // Use global:: to disambiguate from the LabTetherAgent.App namespace
+        if (!global::LabTetherAgent.App.App.EnsureSingleInstance())
             return;
 
         WinRT.ComWrappersSupport.InitializeComWrappers();
@@ -23,7 +24,7 @@ public static class Program
             var context = new DispatcherQueueSynchronizationContext(
                 DispatcherQueue.GetForCurrentThread());
             SynchronizationContext.SetSynchronizationContext(context);
-            _ = new App();
+            _ = new global::LabTetherAgent.App.App();
         });
     }
 }
