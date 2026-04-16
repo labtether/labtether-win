@@ -52,6 +52,19 @@ public partial class SettingsViewModel : ObservableObject
         IsDirty = false;
     }
 
+    /// <summary>
+    /// Numeric accessor for DockerDiscoveryInterval, used by NumberBox x:Bind.
+    /// </summary>
+    public double DockerDiscoveryIntervalNumber
+    {
+        get => double.TryParse(DockerDiscoveryInterval, out var v) ? v : 30;
+        set
+        {
+            DockerDiscoveryInterval = ((int)value).ToString();
+            OnPropertyChanged();
+        }
+    }
+
     // Track changes via partial methods
     partial void OnHubUrlChanged(string value) => IsDirty = true;
     partial void OnStartAtLoginChanged(bool value) => IsDirty = true;
