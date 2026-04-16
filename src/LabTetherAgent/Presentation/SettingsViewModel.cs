@@ -28,7 +28,7 @@ public partial class SettingsViewModel : ObservableObject
     public event Action? OnSaved;
     public event Action? OnRestartRequired;
 
-    public static readonly string[] LogLevels = ["debug", "info", "warn", "error"];
+    public readonly string[] LogLevels = ["debug", "info", "warn", "error"];
 
     public SettingsViewModel(AgentSettings settings, CredentialStore credentialStore)
     {

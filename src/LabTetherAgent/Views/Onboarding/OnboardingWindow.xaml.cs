@@ -54,16 +54,16 @@ public sealed partial class OnboardingWindow : Window
         }
     }
 
-    private static SolidColorBrush StepIndicatorBrush(int step, int currentStep)
+    private SolidColorBrush StepIndicatorBrush(int step, int currentStep)
     {
         return step <= currentStep
             ? (SolidColorBrush)Application.Current.Resources["AccentFillColorDefaultBrush"]
             : (SolidColorBrush)Application.Current.Resources["ControlStrongFillColorDefaultBrush"];
     }
 
-    private static Visibility IsLastStep(int step) =>
+    private Visibility IsLastStep(int step) =>
         step == 3 ? Visibility.Visible : Visibility.Collapsed;
 
-    private static Visibility IsNotLastStep(int step) =>
+    private Visibility IsNotLastStep(int step) =>
         step < 3 ? Visibility.Visible : Visibility.Collapsed;
 }

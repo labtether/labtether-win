@@ -21,7 +21,7 @@ public partial class LogViewerViewModel : ObservableObject
     [ObservableProperty] private int _filteredCount;
     [ObservableProperty] private bool _autoScroll = true;
 
-    public static readonly string[] LevelOptions = ["All", "Info", "Warning", "Error", "Debug"];
+    public readonly string[] LevelOptions = ["All", "Info", "Warning", "Error", "Debug"];
 
     public event Action? OnNewLine; // signal UI to scroll
 
