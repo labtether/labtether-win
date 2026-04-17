@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Security
+- Onboarding connection test now honors the explicit "Trust self-signed certificate" opt-in instead of silently accepting every TLS certificate. Self-signed homelab deployments must tick the new checkbox on Step 1 to complete onboarding; the flag is persisted to `AgentSettings.TlsSkipVerify`.
+
 ### Added
 - Initial project scaffold
 - WinUI 3 system tray app with Mica backdrop
