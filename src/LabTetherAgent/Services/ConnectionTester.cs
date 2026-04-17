@@ -10,7 +10,13 @@ public class ConnectionTester
     /// <summary>
     /// Test if the hub URL is reachable via HTTPS.
     /// </summary>
-    public async Task<ConnectionTestResult> TestAsync(string hubUrl)
+    /// <param name="hubUrl">Hub URL to probe.</param>
+    /// <param name="tlsSkipVerify">
+    /// When true, accept any server certificate (homelab self-signed mode). Must be
+    /// the user's explicit <c>AgentSettings.TlsSkipVerify</c> value — do not pass
+    /// <c>true</c> unconditionally.
+    /// </param>
+    public async Task<ConnectionTestResult> TestAsync(string hubUrl, bool tlsSkipVerify = false)
     {
         if (string.IsNullOrWhiteSpace(hubUrl))
             return new ConnectionTestResult(false, "Hub URL is empty.");
@@ -30,8 +36,11 @@ public class ConnectionTester
         try
         {
             using var handler = new HttpClientHandler();
-            // Allow self-signed certs for homelab environments
-            handler.ServerCertificateCustomValidationCallback = (_, _, _, _) => true;
+            if (tlsSkipVerify)
+            {
+                // Opt-in via AgentSettings.TlsSkipVerify — homelab self-signed mode.
+                handler.ServerCertificateCustomValidationCallback = (_, _, _, _) => true;
+            }
 
             using var client = new HttpClient(handler) { Timeout = Timeout };
             var response = await client.GetAsync(httpUrl);

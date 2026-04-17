@@ -18,5 +18,8 @@
                  Severity="Error"
                  Title="Invalid URL"
                  Message="{x:Bind ViewModel.HubUrlError, Mode=OneWay}" />
+
+        <CheckBox Content="Trust self-signed certificate (homelab only)"
+                  IsChecked="{x:Bind ViewModel.TlsSkipVerify, Mode=TwoWay}" />
     </StackPanel>
 </Page>

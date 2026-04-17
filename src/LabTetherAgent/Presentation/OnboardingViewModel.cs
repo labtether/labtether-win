@@ -36,6 +36,10 @@ public partial class OnboardingViewModel : ObservableObject
     [ObservableProperty] private bool _isConnected;
     [ObservableProperty] private string? _connectionError;
 
+    // TLS trust — off by default. Must be explicitly enabled by the user for
+    // self-signed homelab certificates. Flows into _settings.TlsSkipVerify on Finish.
+    [ObservableProperty] private bool _tlsSkipVerify;
+
     public event Action? OnCompleted;
 
     public OnboardingViewModel(AgentSettings settings, CredentialStore credentialStore, ConnectionTester connectionTester)
@@ -84,7 +88,7 @@ public partial class OnboardingViewModel : ObservableObject
         ConnectionError = null;
 
         // Test connection
-        var result = await _connectionTester.TestAsync(HubUrl);
+        var result = await _connectionTester.TestAsync(HubUrl, TlsSkipVerify);
         if (!result.Success)
         {
             ConnectionError = result.Message;
@@ -96,6 +100,7 @@ public partial class OnboardingViewModel : ObservableObject
         _settings.HubUrl = HubUrl;
         _settings.AssetId = AssetId.Trim();
         _settings.GroupId = GroupId.Trim();
+        _settings.TlsSkipVerify = TlsSkipVerify;
 
         if (UseEnrollmentToken)
         {
