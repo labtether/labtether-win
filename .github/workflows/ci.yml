@@ -12,9 +12,14 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0'
+      # Build the test project directly; its ProjectReference to the main
+      # app transitively restores and builds src/LabTetherAgent, so we don't
+      # need a separate step for the app project. Building only the app
+      # (as the previous workflow did) left the test assembly unbuilt and
+      # broke `dotnet test --no-build`.
       - run: dotnet restore
-        working-directory: src/LabTetherAgent
+        working-directory: tests/LabTetherAgent.Tests
       - run: dotnet build --no-restore
-        working-directory: src/LabTetherAgent
+        working-directory: tests/LabTetherAgent.Tests
       - run: dotnet test --no-build
         working-directory: tests/LabTetherAgent.Tests

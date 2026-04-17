@@ -18,6 +18,15 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <DefineConstants>$(DefineConstants);WINDOWS</DefineConstants>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!--
+      Allow dotnet restore/build from non-Windows hosts (e.g. GitHub's
+      automatic NuGet dependency-submission workflow on ubuntu-latest).
+      Without this, restore fails with NETSDK1100 because the TargetFramework
+      references a Windows platform version. Restoring still downloads the
+      correct Windows targeting packs via NuGet; there is no change to the
+      produced artifacts on Windows builders.
+    -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
 
   <ItemGroup>
