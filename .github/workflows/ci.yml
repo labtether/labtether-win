@@ -11,15 +11,24 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0'
+          dotnet-version: '8.0.x'
       # Build the test project directly; its ProjectReference to the main
       # app transitively restores and builds src/LabTetherAgent, so we don't
       # need a separate step for the app project. Building only the app
       # (as the previous workflow did) left the test assembly unbuilt and
       # broke `dotnet test --no-build`.
+      #
+      # MSIX packaging (EnableMsixTooling / WindowsPackageType / AppxPackage)
+      # requires Visual Studio MSBuild tasks that aren't in the bare dotnet
+      # SDK. CI only needs a test build, so we disable packaging here. The
+      # release workflow uses msbuild + setup-msbuild@v2 to produce MSIX.
       - run: dotnet restore
         working-directory: tests/LabTetherAgent.Tests
-      - run: dotnet build --no-restore
+      - run: >-
+          dotnet build --no-restore
+          -p:EnableMsixTooling=false
+          -p:WindowsPackageType=None
+          -p:GenerateAppxPackageOnBuild=false
         working-directory: tests/LabTetherAgent.Tests
       - run: dotnet test --no-build
         working-directory: tests/LabTetherAgent.Tests
