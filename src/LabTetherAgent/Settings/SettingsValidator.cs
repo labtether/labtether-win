@@ -10,13 +10,7 @@ public static class SettingsValidator
 
     public static bool IsValidHubUrl(string? url)
     {
-        if (string.IsNullOrWhiteSpace(url))
-            return false;
-
-        if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri))
-            return false;
-
-        return AllowedSchemes.Contains(uri.Scheme.ToLowerInvariant());
+        return TryCreateHubUri(url, out _);
     }
 
     public static bool IsValidToken(string? token)
@@ -43,22 +37,20 @@ public static class SettingsValidator
     /// </summary>
     public static string? NormalizeHubWebSocketUrl(string? url)
     {
-        if (!IsValidHubUrl(url))
+        if (!TryCreateHubUri(url, out var uri))
             return null;
 
-        var trimmed = url!.Trim().TrimEnd('/');
+        var builder = new UriBuilder(uri)
+        {
+            Scheme = uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase) ? "wss" :
+                uri.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase) ? "ws" :
+                uri.Scheme.ToLowerInvariant(),
+            Path = NormalizeHubPath(uri),
+            Query = string.Empty,
+            Fragment = string.Empty,
+        };
 
-        // Convert http(s) to ws(s)
-        if (trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-            trimmed = "wss://" + trimmed[8..];
-        else if (trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
-            trimmed = "ws://" + trimmed[7..];
-
-        // Append /ws/agent if not already present
-        if (!trimmed.EndsWith("/ws/agent", StringComparison.OrdinalIgnoreCase))
-            trimmed += "/ws/agent";
-
-        return trimmed;
+        return builder.Uri.ToString().TrimEnd('/');
     }
 
     /// <summary>
@@ -70,16 +62,63 @@ public static class SettingsValidator
         if (string.IsNullOrWhiteSpace(wsUrl))
             return null;
 
-        var apiBase = wsUrl.Trim();
-        apiBase = apiBase.Replace("wss://", "https://", StringComparison.OrdinalIgnoreCase);
-        apiBase = apiBase.Replace("ws://", "http://", StringComparison.OrdinalIgnoreCase);
-
-        if (Uri.TryCreate(apiBase, UriKind.Absolute, out var uri))
+        if (Uri.TryCreate(wsUrl.Trim(), UriKind.Absolute, out var uri) &&
+            string.IsNullOrEmpty(uri.UserInfo) &&
+            string.IsNullOrEmpty(uri.Query) &&
+            string.IsNullOrEmpty(uri.Fragment))
         {
-            var builder = new UriBuilder(uri) { Path = string.Empty };
-            return builder.Uri.ToString().TrimEnd('/');
+            var scheme = uri.Scheme.ToLowerInvariant() switch
+            {
+                "wss" => "https",
+                "ws" => "http",
+                "https" => "https",
+                "http" => "http",
+                _ => null,
+            };
+            if (scheme != null)
+            {
+                var builder = new UriBuilder(uri)
+                {
+                    Scheme = scheme,
+                    Path = string.Empty,
+                    Query = string.Empty,
+                    Fragment = string.Empty,
+                };
+                return builder.Uri.ToString().TrimEnd('/');
+            }
         }
 
         return null;
+    }
+
+    private static bool TryCreateHubUri(string? url, out Uri uri)
+    {
+        uri = null!;
+        if (string.IsNullOrWhiteSpace(url))
+            return false;
+
+        if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var parsed))
+            return false;
+
+        if (!AllowedSchemes.Contains(parsed.Scheme.ToLowerInvariant()))
+            return false;
+
+        if (string.IsNullOrWhiteSpace(parsed.Host) ||
+            !string.IsNullOrEmpty(parsed.UserInfo) ||
+            !string.IsNullOrEmpty(parsed.Query) ||
+            !string.IsNullOrEmpty(parsed.Fragment))
+            return false;
+
+        uri = parsed;
+        return true;
+    }
+
+    private static string NormalizeHubPath(Uri uri)
+    {
+        var path = uri.AbsolutePath.Trim();
+        if (string.IsNullOrEmpty(path) || path == "/")
+            return "ws/agent";
+
+        return path.TrimEnd('/').TrimStart('/');
     }
 }
