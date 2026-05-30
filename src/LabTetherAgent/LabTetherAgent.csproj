@@ -11,6 +11,7 @@
     <EnableMsixTooling>true</EnableMsixTooling>
     <WindowsPackageType>MSIX</WindowsPackageType>
     <SelfContained>true</SelfContained>
+    <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <Version>1.2.0</Version>
     <PublishSingleFile>false</PublishSingleFile>
