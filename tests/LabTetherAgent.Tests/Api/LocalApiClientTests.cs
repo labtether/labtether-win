@@ -59,6 +59,29 @@ public class LocalApiClientTests
         Assert.Equal(TimeSpan.FromSeconds(30), client.CurrentPollingInterval);
     }
 
+    [Fact]
+    public void VisibleScopesKeepFastPollingUntilLastSurfaceCloses()
+    {
+        using var client = new LocalApiClient(new HttpClient(new QueueHttpHandler()));
+
+        Assert.Equal(TimeSpan.FromSeconds(30), client.CurrentPollingInterval);
+
+        var flyoutScope = client.EnterVisibleScope();
+        Assert.Equal(TimeSpan.FromSeconds(5), client.CurrentPollingInterval);
+
+        var popOutScope = client.EnterVisibleScope();
+        Assert.Equal(TimeSpan.FromSeconds(5), client.CurrentPollingInterval);
+
+        flyoutScope.Dispose();
+        Assert.Equal(TimeSpan.FromSeconds(5), client.CurrentPollingInterval);
+
+        popOutScope.Dispose();
+        Assert.Equal(TimeSpan.FromSeconds(30), client.CurrentPollingInterval);
+
+        popOutScope.Dispose();
+        Assert.Equal(TimeSpan.FromSeconds(30), client.CurrentPollingInterval);
+    }
+
     private static HttpResponseMessage StatusResponse()
     {
         var response = new HttpResponseMessage(HttpStatusCode.OK)

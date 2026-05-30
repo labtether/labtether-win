@@ -8,10 +8,14 @@ namespace LabTetherAgent.Presentation;
 /// ViewModel for the pop-out (always-on-top) metrics window.
 /// Shares the same status data as the flyout but in a persistent window.
 /// </summary>
-public partial class PopOutViewModel : ObservableObject
+public partial class PopOutViewModel : ObservableObject, IDisposable
 {
     private readonly LocalApiClient _apiClient;
     private readonly SynchronizationContext? _uiContext;
+    private readonly Action<AgentStatus> _statusUpdatedHandler;
+    private readonly Action<bool> _connectionStateHandler;
+    private IDisposable? _visibleScope;
+    private bool _disposed;
 
     [ObservableProperty] private bool _isConnected;
     [ObservableProperty] private string _connectionState = "Disconnected";
@@ -25,8 +29,8 @@ public partial class PopOutViewModel : ObservableObject
     {
         _apiClient = apiClient;
         _uiContext = SynchronizationContext.Current;
-        _apiClient.OnStatusUpdated += status => RunOnUiThread(() => ApplyStatus(status));
-        _apiClient.OnConnectionStateChanged += connected =>
+        _statusUpdatedHandler = status => RunOnUiThread(() => ApplyStatus(status));
+        _connectionStateHandler = connected =>
         {
             RunOnUiThread(() =>
             {
@@ -34,6 +38,8 @@ public partial class PopOutViewModel : ObservableObject
                 ConnectionState = connected ? "Connected" : "Disconnected";
             });
         };
+        _apiClient.OnStatusUpdated += _statusUpdatedHandler;
+        _apiClient.OnConnectionStateChanged += _connectionStateHandler;
     }
 
     private void UpdateFromStatus(AgentStatus status)
@@ -64,11 +70,22 @@ public partial class PopOutViewModel : ObservableObject
 
     public void OnWindowOpened()
     {
-        _apiClient.SetVisible(true);
+        if (_disposed) return;
+        _visibleScope ??= _apiClient.EnterVisibleScope();
     }
 
     public void OnWindowClosed()
     {
-        _apiClient.SetVisible(false);
+        Dispose();
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _visibleScope?.Dispose();
+        _visibleScope = null;
+        _apiClient.OnStatusUpdated -= _statusUpdatedHandler;
+        _apiClient.OnConnectionStateChanged -= _connectionStateHandler;
     }
 }
