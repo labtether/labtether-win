@@ -40,8 +40,14 @@ public class AgentLogReader
                     OnLogLine?.Invoke(parsed);
                 }
             }
-            catch (OperationCanceledException) { }
-            catch (IOException) { } // process exited
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                System.Diagnostics.Debug.WriteLine("Agent log reader stopped after cancellation.");
+            }
+            catch (IOException ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Agent log reader stopped after stream error: {ex.Message}");
+            }
         }, ct);
     }
 

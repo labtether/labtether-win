@@ -116,8 +116,22 @@ public partial class FlyoutViewModel : ObservableObject
                 UseShellExecute = true
             });
         }
-        catch (InvalidOperationException) { }
-        catch (System.ComponentModel.Win32Exception) { }
-        catch (PlatformNotSupportedException) { }
+        catch (InvalidOperationException ex)
+        {
+            LogOpenUrlFailure(url, ex);
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            LogOpenUrlFailure(url, ex);
+        }
+        catch (PlatformNotSupportedException ex)
+        {
+            LogOpenUrlFailure(url, ex);
+        }
+    }
+
+    private static void LogOpenUrlFailure(string url, Exception ex)
+    {
+        System.Diagnostics.Debug.WriteLine($"Failed to open URL '{url}': {ex.GetType().Name}: {ex.Message}");
     }
 }

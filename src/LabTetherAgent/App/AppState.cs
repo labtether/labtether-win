@@ -138,7 +138,7 @@ public class AppState : IDisposable
     {
         ApiClient.StopPolling();
 
-        if (_disposed || exitCode == 0 || AgentProcess.LastExitWasUserInitiated)
+        if (exitCode == 0 || AgentProcess.LastExitWasUserInitiated)
             return;
 
         // Crash — wait for backoff delay then restart

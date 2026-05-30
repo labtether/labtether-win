@@ -108,9 +108,18 @@ public class TrayIconManager : IDisposable
             {
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(hubUrl) { UseShellExecute = true });
             }
-            catch (InvalidOperationException) { }
-            catch (System.ComponentModel.Win32Exception) { }
-            catch (PlatformNotSupportedException) { }
+            catch (InvalidOperationException ex)
+            {
+                LogOpenUrlFailure(hubUrl, ex);
+            }
+            catch (System.ComponentModel.Win32Exception ex)
+            {
+                LogOpenUrlFailure(hubUrl, ex);
+            }
+            catch (PlatformNotSupportedException ex)
+            {
+                LogOpenUrlFailure(hubUrl, ex);
+            }
         };
         menu.Items.Add(openConsole);
 
@@ -159,6 +168,11 @@ public class TrayIconManager : IDisposable
         menu.Items.Add(quit);
 
         return menu;
+    }
+
+    private static void LogOpenUrlFailure(string url, Exception ex)
+    {
+        System.Diagnostics.Debug.WriteLine($"Failed to open URL '{url}': {ex.GetType().Name}: {ex.Message}");
     }
 
     private void RunOnUiThread(Action update)
