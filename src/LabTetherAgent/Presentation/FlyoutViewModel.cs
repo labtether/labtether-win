@@ -116,6 +116,8 @@ public partial class FlyoutViewModel : ObservableObject
                 UseShellExecute = true
             });
         }
-        catch { }
+        catch (InvalidOperationException) { }
+        catch (System.ComponentModel.Win32Exception) { }
+        catch (PlatformNotSupportedException) { }
     }
 }

@@ -104,7 +104,13 @@ public class TrayIconManager : IDisposable
                 .Replace("wss://", "https://")
                 .Replace("ws://", "http://")
                 .Replace("/ws/agent", "");
-            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(hubUrl) { UseShellExecute = true }); } catch { }
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(hubUrl) { UseShellExecute = true });
+            }
+            catch (InvalidOperationException) { }
+            catch (System.ComponentModel.Win32Exception) { }
+            catch (PlatformNotSupportedException) { }
         };
         menu.Items.Add(openConsole);
 

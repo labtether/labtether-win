@@ -2,6 +2,7 @@ using LabTetherAgent.Api;
 using LabTetherAgent.Process;
 using LabTetherAgent.Services;
 using LabTetherAgent.Settings;
+using System.Net.NetworkInformation;
 
 namespace LabTetherAgent.App;
 
@@ -28,6 +29,7 @@ public class AppState : IDisposable
 
     private string? _localApiPort;
     private string? _localApiAuthToken;
+    private readonly NetworkAvailabilityChangedEventHandler _networkAvailabilityChangedHandler;
     private bool _disposed;
 
     private AppState()
@@ -48,11 +50,12 @@ public class AppState : IDisposable
         AgentProcess.OnStarted += OnAgentStarted;
 
         // Wire network change monitoring for immediate poll on reconnect
-        System.Net.NetworkInformation.NetworkChange.NetworkAvailabilityChanged += (_, args) =>
+        _networkAvailabilityChangedHandler = (_, args) =>
         {
-            if (args.IsAvailable)
+            if (!_disposed && args.IsAvailable)
                 ApiClient.PollNow();
         };
+        NetworkChange.NetworkAvailabilityChanged += _networkAvailabilityChangedHandler;
     }
 
     public static AppState Initialize()
@@ -111,16 +114,24 @@ public class AppState : IDisposable
 
     private void OnAgentStarted()
     {
-        if (_localApiPort != null && _localApiAuthToken != null)
+        var port = _localApiPort;
+        var authToken = _localApiAuthToken;
+        if (port != null && authToken != null)
         {
-            ApiClient.Configure(_localApiPort, _localApiAuthToken);
-            // Brief delay for the agent to start its HTTP server
-            Task.Delay(1000).ContinueWith(_ =>
-            {
-                ApiClient.StartPolling();
-                _ = ApiClient.FetchInfoAsync();
-            });
+            ApiClient.Configure(port, authToken);
+            _ = StartPollingWhenAgentReadyAsync(port, authToken);
         }
+    }
+
+    private async Task StartPollingWhenAgentReadyAsync(string port, string authToken)
+    {
+        // Brief delay for the agent to start its HTTP server.
+        await Task.Delay(1000);
+        if (_disposed || _localApiPort != port || _localApiAuthToken != authToken || !AgentProcess.IsRunning)
+            return;
+
+        ApiClient.StartPolling();
+        _ = ApiClient.FetchInfoAsync();
     }
 
     private async void OnAgentExited(int exitCode)
@@ -134,6 +145,9 @@ public class AppState : IDisposable
         var delay = AgentProcess.CrashCoordinator.NextDelay();
         AgentProcess.LogReader.AppendRaw($"Crash detected, restarting in {delay.TotalSeconds:F0}s (attempt {AgentProcess.CrashCoordinator.AttemptCount})");
         await Task.Delay(delay);
+        if (_disposed || AgentProcess.IsRunning || AgentProcess.LastExitWasUserInitiated)
+            return;
+
         StartAgent();
     }
 
@@ -198,6 +212,9 @@ public class AppState : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        NetworkChange.NetworkAvailabilityChanged -= _networkAvailabilityChangedHandler;
+        AgentProcess.OnExited -= OnAgentExited;
+        AgentProcess.OnStarted -= OnAgentStarted;
         ApiClient.Dispose();
         AgentProcess.Dispose();
     }
