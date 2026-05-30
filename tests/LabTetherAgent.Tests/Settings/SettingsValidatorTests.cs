@@ -9,10 +9,15 @@ public class SettingsValidatorTests
     [InlineData("wss://hub.example.com/ws/agent", true)]
     [InlineData("http://192.168.1.100:8080", true)]
     [InlineData("ws://localhost:8443", true)]
+    [InlineData("https://hub.example.com/ws/agent/", true)]
     [InlineData("not-a-url", false)]
     [InlineData("", false)]
     [InlineData(null, false)]
     [InlineData("ftp://hub.example.com", false)]
+    [InlineData("https://user:pass@hub.example.com", false)]
+    [InlineData("https://hub.example.com?token=secret", false)]
+    [InlineData("https://hub.example.com/#fragment", false)]
+    [InlineData("https://hub.example.com/custom/path", true)]
     [InlineData("   ", false)]
     public void IsValidHubUrl(string? url, bool expected)
     {
@@ -62,7 +67,11 @@ public class SettingsValidatorTests
     [InlineData("https://hub.example.com", "wss://hub.example.com/ws/agent")]
     [InlineData("https://hub.example.com/", "wss://hub.example.com/ws/agent")]
     [InlineData("wss://hub.example.com/ws/agent", "wss://hub.example.com/ws/agent")]
+    [InlineData("wss://hub.example.com/ws/agent/", "wss://hub.example.com/ws/agent")]
     [InlineData("http://192.168.1.100:8080", "ws://192.168.1.100:8080/ws/agent")]
+    [InlineData("https://user:pass@hub.example.com", null)]
+    [InlineData("https://hub.example.com?token=secret", null)]
+    [InlineData("https://hub.example.com/custom/path", "wss://hub.example.com/custom/path")]
     [InlineData("not-a-url", null)]
     [InlineData("", null)]
     public void NormalizeHubWebSocketUrl(string? input, string? expected)
@@ -73,6 +82,8 @@ public class SettingsValidatorTests
     [Theory]
     [InlineData("wss://hub.example.com/ws/agent", "https://hub.example.com")]
     [InlineData("ws://192.168.1.100:8080/ws/agent", "http://192.168.1.100:8080")]
+    [InlineData("wss://hub.example.com/ws/agent?token=secret", null)]
+    [InlineData("wss://user:pass@hub.example.com/ws/agent", null)]
     [InlineData("", null)]
     [InlineData(null, null)]
     public void DeriveApiBaseUrl(string? wsUrl, string? expected)
