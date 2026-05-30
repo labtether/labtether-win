@@ -146,8 +146,8 @@ public class LocalApiClient : IDisposable
 
         try
         {
-            var request = CreateRequest(HttpMethod.Get, "/agent/info");
-            var response = await _httpClient.SendAsync(request);
+            using var request = CreateRequest(HttpMethod.Get, "/agent/info");
+            using var response = await _httpClient.SendAsync(request);
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
@@ -170,13 +170,13 @@ public class LocalApiClient : IDisposable
 
         try
         {
-            var request = CreateRequest(HttpMethod.Get, "/agent/status");
+            using var request = CreateRequest(HttpMethod.Get, "/agent/status");
 
             // ETag conditional request
             if (_statusETag != null)
                 request.Headers.IfNoneMatch.Add(new EntityTagHeaderValue(_statusETag));
 
-            var response = await _httpClient.SendAsync(request);
+            using var response = await _httpClient.SendAsync(request);
 
             if (response.StatusCode == HttpStatusCode.NotModified)
             {

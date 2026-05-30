@@ -43,7 +43,7 @@ public class ConnectionTester
             }
 
             using var client = new HttpClient(handler) { Timeout = Timeout };
-            var response = await client.GetAsync(httpUrl);
+            using var response = await client.GetAsync(httpUrl);
 
             return new ConnectionTestResult(true, $"Connected (HTTP {(int)response.StatusCode})");
         }
