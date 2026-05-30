@@ -11,6 +11,7 @@ namespace LabTetherAgent.Presentation;
 public partial class PopOutViewModel : ObservableObject
 {
     private readonly LocalApiClient _apiClient;
+    private readonly SynchronizationContext? _uiContext;
 
     [ObservableProperty] private bool _isConnected;
     [ObservableProperty] private string _connectionState = "Disconnected";
@@ -23,15 +24,24 @@ public partial class PopOutViewModel : ObservableObject
     public PopOutViewModel(LocalApiClient apiClient)
     {
         _apiClient = apiClient;
-        _apiClient.OnStatusUpdated += UpdateFromStatus;
+        _uiContext = SynchronizationContext.Current;
+        _apiClient.OnStatusUpdated += status => RunOnUiThread(() => ApplyStatus(status));
         _apiClient.OnConnectionStateChanged += connected =>
         {
-            IsConnected = connected;
-            ConnectionState = connected ? "Connected" : "Disconnected";
+            RunOnUiThread(() =>
+            {
+                IsConnected = connected;
+                ConnectionState = connected ? "Connected" : "Disconnected";
+            });
         };
     }
 
     private void UpdateFromStatus(AgentStatus status)
+    {
+        RunOnUiThread(() => ApplyStatus(status));
+    }
+
+    private void ApplyStatus(AgentStatus status)
     {
         IsConnected = status.IsConnected;
         ConnectionState = status.IsConnected ? "Connected" : "Disconnected";
@@ -39,6 +49,17 @@ public partial class PopOutViewModel : ObservableObject
         MemoryText = status.MemoryDisplayText;
         DiskPercent = status.DiskPercent;
         Uptime = status.Uptime ?? "--";
+    }
+
+    private void RunOnUiThread(Action update)
+    {
+        if (_uiContext == null || SynchronizationContext.Current == _uiContext)
+        {
+            update();
+            return;
+        }
+
+        _uiContext.Post(_ => update(), null);
     }
 
     public void OnWindowOpened()

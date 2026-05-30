@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.ComponentModel;
 using LabTetherAgent.Settings;
 
 namespace LabTetherAgent.Process;
@@ -20,6 +21,7 @@ public class AgentProcess : IDisposable
     public bool IsRunning => _process is { HasExited: false };
     public bool IsStarting { get; private set; }
     public bool NeedsRestart { get; set; }
+    public bool LastExitWasUserInitiated { get; private set; }
 
     public event Action? OnStarted;
     public event Action<int>? OnExited; // exit code
@@ -44,6 +46,7 @@ public class AgentProcess : IDisposable
 
         IsStarting = true;
         _userInitiatedStop = false;
+        LastExitWasUserInitiated = false;
         NeedsRestart = false;
 
         try
@@ -92,7 +95,8 @@ public class AgentProcess : IDisposable
     /// </summary>
     public async Task StopAsync(TimeSpan? timeout = null)
     {
-        if (_process == null || _process.HasExited)
+        var process = _process;
+        if (process == null || process.HasExited)
             return;
 
         _userInitiatedStop = true;
@@ -103,25 +107,35 @@ public class AgentProcess : IDisposable
         try
         {
             // Try graceful shutdown first
-            if (!SendGracefulShutdown(_process.Id))
+            if (!SendGracefulShutdown(process.Id))
             {
                 // Fallback: kill directly
-                _process.Kill();
+                process.Kill();
+                await WaitForExitAsync(process, timeout.Value);
             }
             else
             {
                 // Wait for graceful exit
-                var exited = await WaitForExitAsync(_process, timeout.Value);
+                var exited = await WaitForExitAsync(process, timeout.Value);
                 if (!exited)
                 {
                     LogReader.AppendRaw("Graceful shutdown timed out, forcing kill.");
-                    _process.Kill();
+                    process.Kill();
+                    await WaitForExitAsync(process, TimeSpan.FromSeconds(5));
                 }
             }
         }
         catch (InvalidOperationException)
         {
             // Process already exited
+        }
+        catch (Win32Exception ex)
+        {
+            LogReader.AppendRaw($"Failed to stop agent process: {ex.Message}");
+        }
+        catch (NotSupportedException ex)
+        {
+            LogReader.AppendRaw($"Failed to stop agent process: {ex.Message}");
         }
 
         _logCts?.Cancel();
@@ -143,40 +157,125 @@ public class AgentProcess : IDisposable
     public void KillOrphanedAgents(string binaryPath)
     {
         var binaryName = Path.GetFileNameWithoutExtension(binaryPath);
+        var expectedPath = NormalizeExecutablePath(binaryPath);
         try
         {
             var orphans = System.Diagnostics.Process.GetProcessesByName(binaryName);
             foreach (var orphan in orphans)
             {
                 if (orphan.Id == _process?.Id) continue; // skip our own
+                if (orphan.Id == Environment.ProcessId) continue;
+                if (!ProcessMatchesExecutable(orphan, expectedPath)) continue;
+
                 try
                 {
                     orphan.Kill();
                     LogReader.AppendRaw($"Killed orphaned agent process (PID {orphan.Id})");
                 }
-                catch { }
+                catch (InvalidOperationException ex)
+                {
+                    LogReader.AppendRaw($"Skipped orphaned agent process (PID {orphan.Id}): {ex.Message}");
+                }
+                catch (Win32Exception ex)
+                {
+                    LogReader.AppendRaw($"Failed to kill orphaned agent process (PID {orphan.Id}): {ex.Message}");
+                }
+                catch (NotSupportedException ex)
+                {
+                    LogReader.AppendRaw($"Failed to kill orphaned agent process (PID {orphan.Id}): {ex.Message}");
+                }
                 finally { orphan.Dispose(); }
             }
         }
-        catch { }
+        catch (Win32Exception ex)
+        {
+            LogReader.AppendRaw($"Failed to enumerate orphaned agent processes: {ex.Message}");
+        }
+        catch (PlatformNotSupportedException ex)
+        {
+            LogReader.AppendRaw($"Failed to enumerate orphaned agent processes: {ex.Message}");
+        }
     }
 
     private void OnProcessExited(object? sender, EventArgs e)
     {
-        var exitCode = _process?.ExitCode ?? -1;
+        var exitedProcess = sender as System.Diagnostics.Process;
+        if (exitedProcess != null && !ReferenceEquals(_process, exitedProcess))
+        {
+            exitedProcess.Exited -= OnProcessExited;
+            exitedProcess.Dispose();
+            return;
+        }
+
+        var exitCode = TryGetExitCode(exitedProcess ?? _process);
+        var userInitiated = _userInitiatedStop;
+        LastExitWasUserInitiated = userInitiated;
         LogReader.AppendRaw($"Agent exited (code {exitCode})");
         IsStarting = false;
+        _logCts?.Cancel();
+        if (exitedProcess != null)
+        {
+            exitedProcess.Exited -= OnProcessExited;
+            _process = null;
+        }
+
+        if (!userInitiated && exitCode != 0)
+        {
+            _crashCoordinator.CheckStability();
+        }
 
         OnExited?.Invoke(exitCode);
 
-        if (!_userInitiatedStop && exitCode != 0)
+        if (!userInitiated && exitCode != 0)
         {
             // Unexpected crash — schedule restart with backoff
-            _crashCoordinator.CheckStability();
-            var delay = _crashCoordinator.NextDelay();
-            LogReader.AppendRaw($"Crash detected, restarting in {delay.TotalSeconds:F0}s (attempt {_crashCoordinator.AttemptCount})");
+            LogReader.AppendRaw("Crash detected; restart scheduling delegated to app state.");
             // The caller (AppState) is responsible for actually restarting
             // after the delay, since it has the binary path and environment.
+        }
+    }
+
+    private static int TryGetExitCode(System.Diagnostics.Process? process)
+    {
+        if (process == null)
+            return -1;
+
+        try
+        {
+            return process.ExitCode;
+        }
+        catch (InvalidOperationException)
+        {
+            return -1;
+        }
+    }
+
+    private static string NormalizeExecutablePath(string path)
+    {
+        return Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+    }
+
+    private static bool ProcessMatchesExecutable(System.Diagnostics.Process process, string expectedPath)
+    {
+        try
+        {
+            var actual = process.MainModule?.FileName;
+            if (string.IsNullOrWhiteSpace(actual))
+                return false;
+
+            return string.Equals(NormalizeExecutablePath(actual), expectedPath, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return false;
+        }
+        catch (NotSupportedException)
+        {
+            return false;
         }
     }
 
@@ -225,7 +324,23 @@ public class AgentProcess : IDisposable
 
         if (_process is { HasExited: false })
         {
-            try { _process.Kill(); } catch { }
+            try
+            {
+                _process.Exited -= OnProcessExited;
+                _process.Kill();
+            }
+            catch (InvalidOperationException)
+            {
+                // Process already exited
+            }
+            catch (Win32Exception ex)
+            {
+                LogReader.AppendRaw($"Failed to kill agent process during dispose: {ex.Message}");
+            }
+            catch (NotSupportedException ex)
+            {
+                LogReader.AppendRaw($"Failed to kill agent process during dispose: {ex.Message}");
+            }
         }
         _process?.Dispose();
     }

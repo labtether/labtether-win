@@ -2,6 +2,7 @@ using LabTetherAgent.Api;
 using LabTetherAgent.Process;
 using LabTetherAgent.Services;
 using LabTetherAgent.Settings;
+using System.Net.NetworkInformation;
 
 namespace LabTetherAgent.App;
 
@@ -28,6 +29,7 @@ public class AppState : IDisposable
 
     private string? _localApiPort;
     private string? _localApiAuthToken;
+    private readonly NetworkAvailabilityChangedEventHandler _networkAvailabilityChangedHandler;
     private bool _disposed;
 
     private AppState()
@@ -48,11 +50,12 @@ public class AppState : IDisposable
         AgentProcess.OnStarted += OnAgentStarted;
 
         // Wire network change monitoring for immediate poll on reconnect
-        System.Net.NetworkInformation.NetworkChange.NetworkAvailabilityChanged += (_, args) =>
+        _networkAvailabilityChangedHandler = (_, args) =>
         {
-            if (args.IsAvailable)
+            if (!_disposed && args.IsAvailable)
                 ApiClient.PollNow();
         };
+        NetworkChange.NetworkAvailabilityChanged += _networkAvailabilityChangedHandler;
     }
 
     public static AppState Initialize()
@@ -66,6 +69,9 @@ public class AppState : IDisposable
     /// </summary>
     public void StartAgent()
     {
+        if (_disposed)
+            return;
+
         var binaryPath = FindAgentBinary();
         if (binaryPath == null)
         {
@@ -73,8 +79,10 @@ public class AppState : IDisposable
             return;
         }
 
-        // Generate a random local API port and auth token for this session
-        _localApiPort = FindAvailablePort().ToString();
+        // Keep the local API port reserved until the agent is about to start to
+        // minimize the handoff window where another process can claim it.
+        using var localApiReservation = ReserveAvailablePort();
+        _localApiPort = localApiReservation.Port.ToString();
         _localApiAuthToken = Guid.NewGuid().ToString("N");
 
         Settings.LocalApiAuthToken = _localApiAuthToken;
@@ -82,6 +90,7 @@ public class AppState : IDisposable
         var env = AgentEnvironmentBuilder.BuildEnvironment(Settings, _localApiPort, _localApiAuthToken);
 
         AgentProcess.KillOrphanedAgents(binaryPath);
+        localApiReservation.Dispose();
         AgentProcess.Start(binaryPath, env);
     }
 
@@ -105,29 +114,41 @@ public class AppState : IDisposable
 
     private void OnAgentStarted()
     {
-        if (_localApiPort != null && _localApiAuthToken != null)
+        var port = _localApiPort;
+        var authToken = _localApiAuthToken;
+        if (port != null && authToken != null)
         {
-            ApiClient.Configure(_localApiPort, _localApiAuthToken);
-            // Brief delay for the agent to start its HTTP server
-            Task.Delay(1000).ContinueWith(_ =>
-            {
-                ApiClient.StartPolling();
-                _ = ApiClient.FetchInfoAsync();
-            });
+            ApiClient.Configure(port, authToken);
+            _ = StartPollingWhenAgentReadyAsync(port, authToken);
         }
+    }
+
+    private async Task StartPollingWhenAgentReadyAsync(string port, string authToken)
+    {
+        // Brief delay for the agent to start its HTTP server.
+        await Task.Delay(1000);
+        if (_disposed || _localApiPort != port || _localApiAuthToken != authToken || !AgentProcess.IsRunning)
+            return;
+
+        ApiClient.StartPolling();
+        _ = ApiClient.FetchInfoAsync();
     }
 
     private async void OnAgentExited(int exitCode)
     {
         ApiClient.StopPolling();
 
-        if (exitCode != 0)
-        {
-            // Crash — wait for backoff delay then restart
-            var delay = AgentProcess.CrashCoordinator.NextDelay();
-            await Task.Delay(delay);
-            StartAgent();
-        }
+        if (exitCode == 0 || AgentProcess.LastExitWasUserInitiated)
+            return;
+
+        // Crash — wait for backoff delay then restart
+        var delay = AgentProcess.CrashCoordinator.NextDelay();
+        AgentProcess.LogReader.AppendRaw($"Crash detected, restarting in {delay.TotalSeconds:F0}s (attempt {AgentProcess.CrashCoordinator.AttemptCount})");
+        await Task.Delay(delay);
+        if (_disposed || AgentProcess.IsRunning || AgentProcess.LastExitWasUserInitiated)
+            return;
+
+        StartAgent();
     }
 
     private static string? FindAgentBinary()
@@ -144,14 +165,34 @@ public class AppState : IDisposable
         return candidates.FirstOrDefault(File.Exists);
     }
 
-    private static int FindAvailablePort()
+    private static PortReservation ReserveAvailablePort()
     {
-        // Bind to port 0 to get an available port from the OS
-        var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
-        listener.Start();
-        var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
-        listener.Stop();
-        return port;
+        return new PortReservation();
+    }
+
+    private sealed class PortReservation : IDisposable
+    {
+        private readonly System.Net.Sockets.TcpListener _listener;
+        private bool _disposed;
+
+        public PortReservation()
+        {
+            _listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0)
+            {
+                ExclusiveAddressUse = true
+            };
+            _listener.Start();
+            Port = ((System.Net.IPEndPoint)_listener.LocalEndpoint).Port;
+        }
+
+        public int Port { get; }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _listener.Stop();
+        }
     }
 
     private static string ReadAgentVersion()
@@ -171,6 +212,9 @@ public class AppState : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        NetworkChange.NetworkAvailabilityChanged -= _networkAvailabilityChangedHandler;
+        AgentProcess.OnExited -= OnAgentExited;
+        AgentProcess.OnStarted -= OnAgentStarted;
         ApiClient.Dispose();
         AgentProcess.Dispose();
     }

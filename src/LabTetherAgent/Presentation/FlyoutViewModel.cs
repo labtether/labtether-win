@@ -12,6 +12,7 @@ namespace LabTetherAgent.Presentation;
 public partial class FlyoutViewModel : ObservableObject
 {
     private readonly LocalApiClient _apiClient;
+    private readonly SynchronizationContext? _uiContext;
 
     [ObservableProperty] private bool _isConnected;
     [ObservableProperty] private string _connectionState = "Disconnected";
@@ -30,15 +31,24 @@ public partial class FlyoutViewModel : ObservableObject
     public FlyoutViewModel(LocalApiClient apiClient)
     {
         _apiClient = apiClient;
-        _apiClient.OnStatusUpdated += UpdateFromStatus;
+        _uiContext = SynchronizationContext.Current;
+        _apiClient.OnStatusUpdated += status => RunOnUiThread(() => ApplyStatus(status));
         _apiClient.OnConnectionStateChanged += connected =>
         {
-            IsConnected = connected;
-            ConnectionState = connected ? "Connected" : "Disconnected";
+            RunOnUiThread(() =>
+            {
+                IsConnected = connected;
+                ConnectionState = connected ? "Connected" : "Disconnected";
+            });
         };
     }
 
     public void UpdateFromStatus(AgentStatus status)
+    {
+        RunOnUiThread(() => ApplyStatus(status));
+    }
+
+    private void ApplyStatus(AgentStatus status)
     {
         IsConnected = status.IsConnected;
         ConnectionState = status.IsConnected ? "Connected" : "Disconnected";
@@ -54,6 +64,17 @@ public partial class FlyoutViewModel : ObservableObject
         HasHyperV = status.HyperV != null;
         WindowsUpdateStatus = status.WindowsUpdate;
         HasWindowsUpdates = status.WindowsUpdate != null;
+    }
+
+    private void RunOnUiThread(Action update)
+    {
+        if (_uiContext == null || SynchronizationContext.Current == _uiContext)
+        {
+            update();
+            return;
+        }
+
+        _uiContext.Post(_ => update(), null);
     }
 
     public void OnFlyoutOpened()
@@ -95,6 +116,22 @@ public partial class FlyoutViewModel : ObservableObject
                 UseShellExecute = true
             });
         }
-        catch { }
+        catch (InvalidOperationException ex)
+        {
+            LogOpenUrlFailure(url, ex);
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            LogOpenUrlFailure(url, ex);
+        }
+        catch (PlatformNotSupportedException ex)
+        {
+            LogOpenUrlFailure(url, ex);
+        }
+    }
+
+    private static void LogOpenUrlFailure(string url, Exception ex)
+    {
+        System.Diagnostics.Debug.WriteLine($"Failed to open URL '{url}': {ex.GetType().Name}: {ex.Message}");
     }
 }
