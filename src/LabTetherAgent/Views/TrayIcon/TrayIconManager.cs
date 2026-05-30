@@ -16,6 +16,9 @@ public class TrayIconManager : IDisposable
     private readonly AppState _appState;
     private TaskbarIcon? _taskbarIcon;
     private FlyoutWindow? _flyoutWindow;
+    private SynchronizationContext? _uiContext;
+    private Icon? _currentIcon;
+    private Action<bool>? _connectionStateHandler;
     private bool _disposed;
 
     public TrayIconManager(AppState appState)
@@ -25,6 +28,7 @@ public class TrayIconManager : IDisposable
 
     public void Initialize()
     {
+        _uiContext = SynchronizationContext.Current;
         _taskbarIcon = new TaskbarIcon
         {
             ToolTipText = "LabTether Agent",
@@ -43,7 +47,8 @@ public class TrayIconManager : IDisposable
         _taskbarIcon.ContextFlyout = BuildContextMenu();
 
         // Subscribe to connection state changes
-        _appState.ApiClient.OnConnectionStateChanged += connected => UpdateIcon(connected);
+        _connectionStateHandler = connected => RunOnUiThread(() => UpdateIcon(connected));
+        _appState.ApiClient.OnConnectionStateChanged += _connectionStateHandler;
     }
 
     public void ShowFlyout()
@@ -76,7 +81,10 @@ public class TrayIconManager : IDisposable
 
         if (File.Exists(iconPath))
         {
-            _taskbarIcon.Icon = new Icon(iconPath);
+            var previousIcon = _currentIcon;
+            _currentIcon = new Icon(iconPath);
+            _taskbarIcon.Icon = _currentIcon;
+            previousIcon?.Dispose();
         }
 
         _taskbarIcon.ToolTipText = connected
@@ -147,11 +155,25 @@ public class TrayIconManager : IDisposable
         return menu;
     }
 
+    private void RunOnUiThread(Action update)
+    {
+        if (_uiContext == null || SynchronizationContext.Current == _uiContext)
+        {
+            update();
+            return;
+        }
+
+        _uiContext.Post(_ => update(), null);
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
+        if (_connectionStateHandler != null)
+            _appState.ApiClient.OnConnectionStateChanged -= _connectionStateHandler;
         _taskbarIcon?.Dispose();
         _flyoutWindow?.Close();
+        _currentIcon?.Dispose();
     }
 }

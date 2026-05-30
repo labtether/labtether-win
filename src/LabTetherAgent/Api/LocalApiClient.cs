@@ -18,6 +18,8 @@ public class LocalApiClient : IDisposable
     private string? _statusETag;
     private AgentStatusResponse? _cachedStatus;
     private Timer? _pollTimer;
+    private readonly SemaphoreSlim _pollGate = new(1, 1);
+    private readonly SynchronizationContext? _callbackContext;
     private bool _isVisible;
     private int _failureCount;
     private bool _disposed;
@@ -37,6 +39,7 @@ public class LocalApiClient : IDisposable
     {
         _httpClient = httpClient ?? new HttpClient();
         _httpClient.Timeout = TimeSpan.FromSeconds(5);
+        _callbackContext = SynchronizationContext.Current;
     }
 
     /// <summary>
@@ -107,19 +110,21 @@ public class LocalApiClient : IDisposable
 
             var json = await response.Content.ReadAsStringAsync();
             var info = JsonSerializer.Deserialize<AgentInfoResponse>(json);
-            if (info != null) OnInfoUpdated?.Invoke(info);
+            if (info != null)
+                RaiseOnCallbackContext(() => OnInfoUpdated?.Invoke(info));
             return info;
         }
         catch (Exception ex)
         {
-            OnError?.Invoke($"Failed to fetch agent info: {ex.Message}");
+            RaiseOnCallbackContext(() => OnError?.Invoke($"Failed to fetch agent info: {ex.Message}"));
             return null;
         }
     }
 
     private async Task PollStatusAsync()
     {
-        if (_baseUrl == null) return;
+        if (_baseUrl == null || _disposed) return;
+        if (!await _pollGate.WaitAsync(0)) return;
 
         try
         {
@@ -151,7 +156,7 @@ public class LocalApiClient : IDisposable
                 var status = MapToAgentStatus(_cachedStatus);
                 SetConnected(true);
                 _failureCount = 0;
-                OnStatusUpdated?.Invoke(status);
+                RaiseOnCallbackContext(() => OnStatusUpdated?.Invoke(status));
             }
         }
         catch (Exception)
@@ -167,13 +172,28 @@ public class LocalApiClient : IDisposable
                 _pollTimer.Change(backoff, backoff);
             }
         }
+        finally
+        {
+            _pollGate.Release();
+        }
     }
 
     private void SetConnected(bool connected)
     {
         if (IsConnected == connected) return;
         IsConnected = connected;
-        OnConnectionStateChanged?.Invoke(connected);
+        RaiseOnCallbackContext(() => OnConnectionStateChanged?.Invoke(connected));
+    }
+
+    private void RaiseOnCallbackContext(Action callback)
+    {
+        if (_callbackContext == null || SynchronizationContext.Current == _callbackContext)
+        {
+            callback();
+            return;
+        }
+
+        _callbackContext.Post(_ => callback(), null);
     }
 
     private static AgentStatus MapToAgentStatus(AgentStatusResponse response)

@@ -31,6 +31,7 @@ public static class AgentEnvironmentBuilder
 
         // Local API
         env["AGENT_PORT"] = localApiPort;
+        env["LABTETHER_AGENT_LOCAL_AUTH_TOKEN"] = localApiAuthToken;
         env["LABTETHER_LOCAL_API_AUTH_TOKEN"] = localApiAuthToken;
 
         // TLS

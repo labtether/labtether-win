@@ -73,8 +73,10 @@ public class AppState : IDisposable
             return;
         }
 
-        // Generate a random local API port and auth token for this session
-        _localApiPort = FindAvailablePort().ToString();
+        // Keep the local API port reserved until the agent is about to start to
+        // minimize the handoff window where another process can claim it.
+        using var localApiReservation = ReserveAvailablePort();
+        _localApiPort = localApiReservation.Port.ToString();
         _localApiAuthToken = Guid.NewGuid().ToString("N");
 
         Settings.LocalApiAuthToken = _localApiAuthToken;
@@ -82,6 +84,7 @@ public class AppState : IDisposable
         var env = AgentEnvironmentBuilder.BuildEnvironment(Settings, _localApiPort, _localApiAuthToken);
 
         AgentProcess.KillOrphanedAgents(binaryPath);
+        localApiReservation.Dispose();
         AgentProcess.Start(binaryPath, env);
     }
 
@@ -121,12 +124,14 @@ public class AppState : IDisposable
     {
         ApiClient.StopPolling();
 
-        if (exitCode != 0)
+        if (!_disposed && exitCode != 0 && !AgentProcess.LastExitWasUserInitiated)
         {
             // Crash — wait for backoff delay then restart
             var delay = AgentProcess.CrashCoordinator.NextDelay();
+            AgentProcess.LogReader.AppendRaw($"Crash detected, restarting in {delay.TotalSeconds:F0}s (attempt {AgentProcess.CrashCoordinator.AttemptCount})");
             await Task.Delay(delay);
-            StartAgent();
+            if (!_disposed)
+                StartAgent();
         }
     }
 
@@ -144,14 +149,34 @@ public class AppState : IDisposable
         return candidates.FirstOrDefault(File.Exists);
     }
 
-    private static int FindAvailablePort()
+    private static PortReservation ReserveAvailablePort()
     {
-        // Bind to port 0 to get an available port from the OS
-        var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
-        listener.Start();
-        var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
-        listener.Stop();
-        return port;
+        return new PortReservation();
+    }
+
+    private sealed class PortReservation : IDisposable
+    {
+        private readonly System.Net.Sockets.TcpListener _listener;
+        private bool _disposed;
+
+        public PortReservation()
+        {
+            _listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0)
+            {
+                ExclusiveAddressUse = true
+            };
+            _listener.Start();
+            Port = ((System.Net.IPEndPoint)_listener.LocalEndpoint).Port;
+        }
+
+        public int Port { get; }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _listener.Stop();
+        }
     }
 
     private static string ReadAgentVersion()

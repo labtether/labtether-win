@@ -20,6 +20,7 @@ public class AgentProcess : IDisposable
     public bool IsRunning => _process is { HasExited: false };
     public bool IsStarting { get; private set; }
     public bool NeedsRestart { get; set; }
+    public bool LastExitWasUserInitiated { get; private set; }
 
     public event Action? OnStarted;
     public event Action<int>? OnExited; // exit code
@@ -44,6 +45,7 @@ public class AgentProcess : IDisposable
 
         IsStarting = true;
         _userInitiatedStop = false;
+        LastExitWasUserInitiated = false;
         NeedsRestart = false;
 
         try
@@ -107,6 +109,7 @@ public class AgentProcess : IDisposable
             {
                 // Fallback: kill directly
                 _process.Kill();
+                await WaitForExitAsync(_process, timeout.Value);
             }
             else
             {
@@ -116,6 +119,7 @@ public class AgentProcess : IDisposable
                 {
                     LogReader.AppendRaw("Graceful shutdown timed out, forcing kill.");
                     _process.Kill();
+                    await WaitForExitAsync(_process, TimeSpan.FromSeconds(5));
                 }
             }
         }
@@ -143,12 +147,16 @@ public class AgentProcess : IDisposable
     public void KillOrphanedAgents(string binaryPath)
     {
         var binaryName = Path.GetFileNameWithoutExtension(binaryPath);
+        var expectedPath = NormalizeExecutablePath(binaryPath);
         try
         {
             var orphans = System.Diagnostics.Process.GetProcessesByName(binaryName);
             foreach (var orphan in orphans)
             {
                 if (orphan.Id == _process?.Id) continue; // skip our own
+                if (orphan.Id == Environment.ProcessId) continue;
+                if (!ProcessMatchesExecutable(orphan, expectedPath)) continue;
+
                 try
                 {
                     orphan.Kill();
@@ -164,19 +172,45 @@ public class AgentProcess : IDisposable
     private void OnProcessExited(object? sender, EventArgs e)
     {
         var exitCode = _process?.ExitCode ?? -1;
+        var userInitiated = _userInitiatedStop;
+        LastExitWasUserInitiated = userInitiated;
         LogReader.AppendRaw($"Agent exited (code {exitCode})");
         IsStarting = false;
 
+        if (!userInitiated && exitCode != 0)
+        {
+            _crashCoordinator.CheckStability();
+        }
+
         OnExited?.Invoke(exitCode);
 
-        if (!_userInitiatedStop && exitCode != 0)
+        if (!userInitiated && exitCode != 0)
         {
             // Unexpected crash — schedule restart with backoff
-            _crashCoordinator.CheckStability();
-            var delay = _crashCoordinator.NextDelay();
-            LogReader.AppendRaw($"Crash detected, restarting in {delay.TotalSeconds:F0}s (attempt {_crashCoordinator.AttemptCount})");
+            LogReader.AppendRaw("Crash detected; restart scheduling delegated to app state.");
             // The caller (AppState) is responsible for actually restarting
             // after the delay, since it has the binary path and environment.
+        }
+    }
+
+    private static string NormalizeExecutablePath(string path)
+    {
+        return Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+    }
+
+    private static bool ProcessMatchesExecutable(System.Diagnostics.Process process, string expectedPath)
+    {
+        try
+        {
+            var actual = process.MainModule?.FileName;
+            if (string.IsNullOrWhiteSpace(actual))
+                return false;
+
+            return string.Equals(NormalizeExecutablePath(actual), expectedPath, StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
         }
     }
 
