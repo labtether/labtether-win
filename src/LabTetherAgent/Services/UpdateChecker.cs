@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace LabTetherAgent.Services;
 
@@ -48,15 +49,13 @@ public class UpdateChecker
             using var client = new HttpClient { Timeout = HttpTimeout };
             client.DefaultRequestHeaders.UserAgent.ParseAdd("LabTetherAgent/1.0");
 
-            var response = await client.GetAsync(_updateUrl);
+            using var response = await client.GetAsync(_updateUrl);
             if (!response.IsSuccessStatusCode) return;
 
             var json = await response.Content.ReadAsStringAsync();
-            var release = JsonSerializer.Deserialize<GitHubRelease>(json);
+            var latestVersion = ExtractLatestVersion(json);
+            if (latestVersion == null) return;
 
-            if (release?.TagName == null) return;
-
-            var latestVersion = release.TagName.TrimStart('v');
             if (IsNewerVersion(latestVersion, _currentVersion))
             {
                 OnUpdateAvailable?.Invoke(latestVersion);
@@ -82,6 +81,12 @@ public class UpdateChecker
         return false;
     }
 
+    internal static string? ExtractLatestVersion(string json)
+    {
+        var release = JsonSerializer.Deserialize<GitHubRelease>(json);
+        return release?.TagName?.TrimStart('v');
+    }
+
     private static string NormalizeVersion(string v)
     {
         v = v.TrimStart('v');
@@ -97,6 +102,7 @@ public class UpdateChecker
 
     private class GitHubRelease
     {
+        [JsonPropertyName("tag_name")]
         public string? TagName { get; set; }
     }
 }

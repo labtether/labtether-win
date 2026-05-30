@@ -24,4 +24,12 @@ public class UpdateCheckerTests
     {
         Assert.Equal(expected, UpdateChecker.IsNewerVersion(candidate, current));
     }
+
+    [Fact]
+    public void ExtractLatestVersion_ReadsGitHubReleaseTagName()
+    {
+        const string json = """{"tag_name":"v1.2.3"}""";
+
+        Assert.Equal("1.2.3", UpdateChecker.ExtractLatestVersion(json));
+    }
 }

@@ -34,13 +34,14 @@ public class LocalApiClientTests
     [Fact]
     public async Task NotModifiedPollAfterFailureResetsBackoff()
     {
+        var notModifiedResponse = new TrackingHttpResponseMessage(HttpStatusCode.NotModified);
         var handler = new QueueHttpHandler(
             _ => StatusResponse(),
             _ => throw new HttpRequestException("agent unavailable"),
             request =>
             {
                 Assert.Contains(request.Headers.IfNoneMatch, tag => tag.Tag == "\"status-1\"");
-                return new HttpResponseMessage(HttpStatusCode.NotModified);
+                return notModifiedResponse;
             });
         using var client = new LocalApiClient(new HttpClient(handler));
 
@@ -57,6 +58,20 @@ public class LocalApiClientTests
         Assert.True(client.IsConnected);
         Assert.Equal(0, client.FailureCount);
         Assert.Equal(TimeSpan.FromSeconds(30), client.CurrentPollingInterval);
+        Assert.True(notModifiedResponse.Disposed);
+    }
+
+    [Fact]
+    public async Task PollStatusDisposesSuccessfulResponse()
+    {
+        var response = StatusResponse();
+        using var client = new LocalApiClient(new HttpClient(new QueueHttpHandler(_ => response)));
+
+        client.Configure("8091", "token");
+
+        await client.PollStatusForTestingAsync();
+
+        Assert.True(response.Disposed);
     }
 
     [Fact]
@@ -82,9 +97,9 @@ public class LocalApiClientTests
         Assert.Equal(TimeSpan.FromSeconds(30), client.CurrentPollingInterval);
     }
 
-    private static HttpResponseMessage StatusResponse()
+    private static TrackingHttpResponseMessage StatusResponse()
     {
-        var response = new HttpResponseMessage(HttpStatusCode.OK)
+        var response = new TrackingHttpResponseMessage(HttpStatusCode.OK)
         {
             Content = new StringContent(
                 """
@@ -120,6 +135,17 @@ public class LocalApiClientTests
                 throw new InvalidOperationException("No queued HTTP response available.");
 
             return Task.FromResult(_responses.Dequeue()(request));
+        }
+    }
+
+    private sealed class TrackingHttpResponseMessage(HttpStatusCode statusCode) : HttpResponseMessage(statusCode)
+    {
+        public bool Disposed { get; private set; }
+
+        protected override void Dispose(bool disposing)
+        {
+            Disposed = true;
+            base.Dispose(disposing);
         }
     }
 }
