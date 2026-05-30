@@ -208,7 +208,15 @@ public class AgentProcess : IDisposable
 
             return string.Equals(NormalizeExecutablePath(actual), expectedPath, StringComparison.OrdinalIgnoreCase);
         }
-        catch
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return false;
+        }
+        catch (NotSupportedException)
         {
             return false;
         }

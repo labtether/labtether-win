@@ -66,6 +66,9 @@ public class AppState : IDisposable
     /// </summary>
     public void StartAgent()
     {
+        if (_disposed)
+            return;
+
         var binaryPath = FindAgentBinary();
         if (binaryPath == null)
         {
@@ -124,15 +127,14 @@ public class AppState : IDisposable
     {
         ApiClient.StopPolling();
 
-        if (!_disposed && exitCode != 0 && !AgentProcess.LastExitWasUserInitiated)
-        {
-            // Crash — wait for backoff delay then restart
-            var delay = AgentProcess.CrashCoordinator.NextDelay();
-            AgentProcess.LogReader.AppendRaw($"Crash detected, restarting in {delay.TotalSeconds:F0}s (attempt {AgentProcess.CrashCoordinator.AttemptCount})");
-            await Task.Delay(delay);
-            if (!_disposed)
-                StartAgent();
-        }
+        if (_disposed || exitCode == 0 || AgentProcess.LastExitWasUserInitiated)
+            return;
+
+        // Crash — wait for backoff delay then restart
+        var delay = AgentProcess.CrashCoordinator.NextDelay();
+        AgentProcess.LogReader.AppendRaw($"Crash detected, restarting in {delay.TotalSeconds:F0}s (attempt {AgentProcess.CrashCoordinator.AttemptCount})");
+        await Task.Delay(delay);
+        StartAgent();
     }
 
     private static string? FindAgentBinary()
