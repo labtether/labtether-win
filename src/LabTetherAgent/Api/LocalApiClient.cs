@@ -19,8 +19,11 @@ public class LocalApiClient : IDisposable
     private AgentStatusResponse? _cachedStatus;
     private Timer? _pollTimer;
     private readonly SemaphoreSlim _pollGate = new(1, 1);
+    private readonly object _visibilityLock = new();
     private readonly SynchronizationContext? _callbackContext;
+    private bool _manualVisible;
     private bool _isVisible;
+    private int _visibleScopeCount;
     private int _failureCount;
     private TimeSpan _currentPollingInterval;
     private bool _disposed;
@@ -83,17 +86,47 @@ public class LocalApiClient : IDisposable
     /// </summary>
     public void SetVisible(bool visible)
     {
+        lock (_visibilityLock)
+        {
+            _manualVisible = visible;
+            ApplyVisibilityStateLocked();
+        }
+    }
+
+    /// <summary>
+    /// Mark one visible UI surface as active until the returned scope is disposed.
+    /// Multiple windows can be visible at once, so each window owns its own scope.
+    /// </summary>
+    public IDisposable EnterVisibleScope()
+    {
+        lock (_visibilityLock)
+        {
+            _visibleScopeCount++;
+            ApplyVisibilityStateLocked();
+        }
+        return new VisibleScope(this);
+    }
+
+    private void ExitVisibleScope()
+    {
+        lock (_visibilityLock)
+        {
+            if (_visibleScopeCount > 0)
+                _visibleScopeCount--;
+            ApplyVisibilityStateLocked();
+        }
+    }
+
+    private void ApplyVisibilityStateLocked()
+    {
+        var visible = _manualVisible || _visibleScopeCount > 0;
         if (_isVisible == visible) return;
         _isVisible = visible;
 
         if (_pollTimer != null)
-        {
             ChangePollingInterval(TimeSpan.Zero, NormalPollingInterval); // poll immediately + reset interval
-        }
         else
-        {
             _currentPollingInterval = NormalPollingInterval;
-        }
     }
 
     /// <summary>
@@ -264,5 +297,16 @@ public class LocalApiClient : IDisposable
         _disposed = true;
         StopPolling();
         _httpClient.Dispose();
+    }
+
+    private sealed class VisibleScope(LocalApiClient client) : IDisposable
+    {
+        private LocalApiClient? _client = client;
+
+        public void Dispose()
+        {
+            var clientToRelease = Interlocked.Exchange(ref _client, null);
+            clientToRelease?.ExitVisibleScope();
+        }
     }
 }

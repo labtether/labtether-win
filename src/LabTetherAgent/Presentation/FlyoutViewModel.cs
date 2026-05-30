@@ -9,10 +9,14 @@ namespace LabTetherAgent.Presentation;
 /// ViewModel for the main flyout window.
 /// Binds to AgentStatus from the LocalApiClient polling loop.
 /// </summary>
-public partial class FlyoutViewModel : ObservableObject
+public partial class FlyoutViewModel : ObservableObject, IDisposable
 {
     private readonly LocalApiClient _apiClient;
     private readonly SynchronizationContext? _uiContext;
+    private readonly Action<AgentStatus> _statusUpdatedHandler;
+    private readonly Action<bool> _connectionStateHandler;
+    private IDisposable? _visibleScope;
+    private bool _disposed;
 
     [ObservableProperty] private bool _isConnected;
     [ObservableProperty] private string _connectionState = "Disconnected";
@@ -32,8 +36,8 @@ public partial class FlyoutViewModel : ObservableObject
     {
         _apiClient = apiClient;
         _uiContext = SynchronizationContext.Current;
-        _apiClient.OnStatusUpdated += status => RunOnUiThread(() => ApplyStatus(status));
-        _apiClient.OnConnectionStateChanged += connected =>
+        _statusUpdatedHandler = status => RunOnUiThread(() => ApplyStatus(status));
+        _connectionStateHandler = connected =>
         {
             RunOnUiThread(() =>
             {
@@ -41,6 +45,8 @@ public partial class FlyoutViewModel : ObservableObject
                 ConnectionState = connected ? "Connected" : "Disconnected";
             });
         };
+        _apiClient.OnStatusUpdated += _statusUpdatedHandler;
+        _apiClient.OnConnectionStateChanged += _connectionStateHandler;
     }
 
     public void UpdateFromStatus(AgentStatus status)
@@ -79,12 +85,13 @@ public partial class FlyoutViewModel : ObservableObject
 
     public void OnFlyoutOpened()
     {
-        _apiClient.SetVisible(true);
+        if (_disposed) return;
+        _visibleScope ??= _apiClient.EnterVisibleScope();
     }
 
     public void OnFlyoutClosed()
     {
-        _apiClient.SetVisible(false);
+        Dispose();
     }
 
     [RelayCommand]
@@ -133,5 +140,15 @@ public partial class FlyoutViewModel : ObservableObject
     private static void LogOpenUrlFailure(string url, Exception ex)
     {
         System.Diagnostics.Debug.WriteLine($"Failed to open URL '{url}': {ex.GetType().Name}: {ex.Message}");
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _visibleScope?.Dispose();
+        _visibleScope = null;
+        _apiClient.OnStatusUpdated -= _statusUpdatedHandler;
+        _apiClient.OnConnectionStateChanged -= _connectionStateHandler;
     }
 }
