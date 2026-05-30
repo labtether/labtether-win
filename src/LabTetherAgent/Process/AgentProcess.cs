@@ -18,7 +18,24 @@ public class AgentProcess : IDisposable
 
     public AgentLogReader LogReader { get; } = new();
 
-    public bool IsRunning => _process is { HasExited: false };
+    public bool IsRunning
+    {
+        get
+        {
+            var process = _process;
+            if (process == null)
+                return false;
+
+            try
+            {
+                return !process.HasExited;
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
+        }
+    }
     public bool IsStarting { get; private set; }
     public bool NeedsRestart { get; set; }
     public bool LastExitWasUserInitiated { get; private set; }
@@ -49,6 +66,8 @@ public class AgentProcess : IDisposable
         LastExitWasUserInitiated = false;
         NeedsRestart = false;
 
+        System.Diagnostics.Process? process = null;
+        CancellationTokenSource? logCts = null;
         try
         {
             var startInfo = new ProcessStartInfo
@@ -66,25 +85,29 @@ public class AgentProcess : IDisposable
             foreach (var (key, value) in environment)
                 startInfo.Environment[key] = value;
 
-            _process = new System.Diagnostics.Process { StartInfo = startInfo, EnableRaisingEvents = true };
-            _process.Exited += OnProcessExited;
+            process = new System.Diagnostics.Process { StartInfo = startInfo, EnableRaisingEvents = true };
+            process.Exited += OnProcessExited;
 
-            _logCts = new CancellationTokenSource();
-            _process.Start();
+            logCts = new CancellationTokenSource();
+            if (!process.Start())
+                throw new InvalidOperationException("agent process did not start");
 
             // Start reading stdout and stderr
-            _ = LogReader.ReadAsync(_process.StandardOutput, _logCts.Token);
-            _ = LogReader.ReadAsync(_process.StandardError, _logCts.Token);
+            _process = process;
+            _logCts = logCts;
+            _ = LogReader.ReadAsync(process.StandardOutput, logCts.Token);
+            _ = LogReader.ReadAsync(process.StandardError, logCts.Token);
 
             _crashCoordinator.RecordStart();
             IsStarting = false;
 
-            LogReader.AppendRaw($"Agent started (PID {_process.Id})");
+            LogReader.AppendRaw($"Agent started (PID {process.Id})");
             OnStarted?.Invoke();
         }
         catch (Exception ex)
         {
             IsStarting = false;
+            CleanupFailedStart(process, logCts);
             OnError?.Invoke($"Failed to start agent: {ex.Message}");
         }
     }
@@ -163,12 +186,12 @@ public class AgentProcess : IDisposable
             var orphans = System.Diagnostics.Process.GetProcessesByName(binaryName);
             foreach (var orphan in orphans)
             {
-                if (orphan.Id == _process?.Id) continue; // skip our own
-                if (orphan.Id == Environment.ProcessId) continue;
-                if (!ProcessMatchesExecutable(orphan, expectedPath)) continue;
-
                 try
                 {
+                    if (orphan.Id == _process?.Id) continue; // skip our own
+                    if (orphan.Id == Environment.ProcessId) continue;
+                    if (!ProcessMatchesExecutable(orphan, expectedPath)) continue;
+
                     orphan.Kill();
                     LogReader.AppendRaw($"Killed orphaned agent process (PID {orphan.Id})");
                 }
@@ -184,7 +207,10 @@ public class AgentProcess : IDisposable
                 {
                     LogReader.AppendRaw($"Failed to kill orphaned agent process (PID {orphan.Id}): {ex.Message}");
                 }
-                finally { orphan.Dispose(); }
+                finally
+                {
+                    orphan.Dispose();
+                }
             }
         }
         catch (Win32Exception ex)
@@ -277,6 +303,47 @@ public class AgentProcess : IDisposable
         {
             return false;
         }
+    }
+
+    private void CleanupFailedStart(System.Diagnostics.Process? process, CancellationTokenSource? logCts)
+    {
+        logCts?.Cancel();
+        logCts?.Dispose();
+        if (ReferenceEquals(_logCts, logCts))
+            _logCts = null;
+
+        process ??= _process;
+        if (process == null)
+            return;
+
+        try
+        {
+            process.Exited -= OnProcessExited;
+        }
+        catch (InvalidOperationException)
+        {
+            // Process object was never associated with an OS process.
+        }
+        try
+        {
+            if (!process.HasExited)
+                process.Kill();
+        }
+        catch (InvalidOperationException)
+        {
+            // Process object was never associated with an OS process.
+        }
+        catch (Win32Exception ex)
+        {
+            LogReader.AppendRaw($"Failed to kill partially started agent process: {ex.Message}");
+        }
+        catch (NotSupportedException ex)
+        {
+            LogReader.AppendRaw($"Failed to kill partially started agent process: {ex.Message}");
+        }
+        process.Dispose();
+        if (ReferenceEquals(_process, process))
+            _process = null;
     }
 
     /// <summary>

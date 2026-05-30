@@ -22,6 +22,7 @@ public class LocalApiClient : IDisposable
     private readonly SynchronizationContext? _callbackContext;
     private bool _isVisible;
     private int _failureCount;
+    private TimeSpan _currentPollingInterval;
     private bool _disposed;
 
     private static readonly TimeSpan VisibleInterval = TimeSpan.FromSeconds(5);
@@ -35,11 +36,15 @@ public class LocalApiClient : IDisposable
 
     public bool IsConnected { get; private set; }
 
+    internal int FailureCount => _failureCount;
+    internal TimeSpan CurrentPollingInterval => _currentPollingInterval;
+
     public LocalApiClient(HttpClient? httpClient = null)
     {
         _httpClient = httpClient ?? new HttpClient();
         _httpClient.Timeout = TimeSpan.FromSeconds(5);
         _callbackContext = SynchronizationContext.Current;
+        _currentPollingInterval = NormalPollingInterval;
     }
 
     /// <summary>
@@ -59,7 +64,8 @@ public class LocalApiClient : IDisposable
     public void StartPolling()
     {
         StopPolling();
-        var interval = _isVisible ? VisibleInterval : HiddenInterval;
+        var interval = NormalPollingInterval;
+        _currentPollingInterval = interval;
         _pollTimer = new Timer(async _ => await PollStatusAsync(), null, TimeSpan.Zero, interval);
     }
 
@@ -82,8 +88,11 @@ public class LocalApiClient : IDisposable
 
         if (_pollTimer != null)
         {
-            var interval = visible ? VisibleInterval : HiddenInterval;
-            _pollTimer.Change(TimeSpan.Zero, interval); // poll immediately + reset interval
+            ChangePollingInterval(TimeSpan.Zero, NormalPollingInterval); // poll immediately + reset interval
+        }
+        else
+        {
+            _currentPollingInterval = NormalPollingInterval;
         }
     }
 
@@ -140,6 +149,7 @@ public class LocalApiClient : IDisposable
             {
                 // Cache is still valid — update connection state but skip parsing
                 SetConnected(true);
+                ResetFailureBackoff();
                 return;
             }
 
@@ -155,7 +165,7 @@ public class LocalApiClient : IDisposable
             {
                 var status = MapToAgentStatus(_cachedStatus);
                 SetConnected(true);
-                _failureCount = 0;
+                ResetFailureBackoff();
                 RaiseOnCallbackContext(() => OnStatusUpdated?.Invoke(status));
             }
         }
@@ -165,17 +175,38 @@ public class LocalApiClient : IDisposable
             SetConnected(false);
 
             // Apply exponential backoff on failure
-            if (_pollTimer != null)
-            {
-                var backoff = TimeSpan.FromSeconds(
-                    Math.Min(5 * Math.Pow(2, _failureCount - 1), MaxBackoff.TotalSeconds));
-                _pollTimer.Change(backoff, backoff);
-            }
+            var backoff = TimeSpan.FromSeconds(
+                Math.Min(5 * Math.Pow(2, _failureCount - 1), MaxBackoff.TotalSeconds));
+            ChangePollingInterval(backoff, backoff);
         }
         finally
         {
             _pollGate.Release();
         }
+    }
+
+    internal Task PollStatusForTestingAsync()
+    {
+        return PollStatusAsync();
+    }
+
+    private TimeSpan NormalPollingInterval => _isVisible ? VisibleInterval : HiddenInterval;
+
+    private void ResetFailureBackoff()
+    {
+        _failureCount = 0;
+        var interval = NormalPollingInterval;
+        if (_currentPollingInterval != interval)
+            ChangePollingInterval(interval, interval);
+    }
+
+    private void ChangePollingInterval(TimeSpan dueTime, TimeSpan period)
+    {
+        if (_disposed)
+            return;
+
+        _currentPollingInterval = period;
+        _pollTimer?.Change(dueTime, period);
     }
 
     private void SetConnected(bool connected)
