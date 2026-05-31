@@ -26,6 +26,28 @@ public class AgentStatusTests
     }
 
     [Fact]
+    public void ExtractWindowsStatus_RejectsMalformedCounts()
+    {
+        var status = new AgentStatus
+        {
+            Metadata = new Dictionary<string, string>
+            {
+                ["hyperv_enabled"] = "true",
+                ["hyperv_vm_count"] = "4vms",
+                ["hyperv_running_count"] = "-2",
+                ["windows_update_pending"] = "3pending",
+            }
+        };
+
+        status.ExtractWindowsStatus();
+
+        Assert.NotNull(status.HyperV);
+        Assert.Equal(0, status.HyperV.VmCount);
+        Assert.Equal(0, status.HyperV.RunningCount);
+        Assert.Null(status.WindowsUpdate);
+    }
+
+    [Fact]
     public void ExtractWindowsStatus_HyperVDisabled()
     {
         var status = new AgentStatus

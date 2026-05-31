@@ -87,6 +87,18 @@ public class AgentEnvironmentBuilderTests
         Assert.Equal("60", env["LABTETHER_DOCKER_DISCOVERY_INTERVAL"]);
     }
 
+    [Theory]
+    [InlineData("30abc")]
+    [InlineData("1e3")]
+    [InlineData("9999")]
+    public void BuildEnvironment_DefaultsMalformedDockerInterval(string interval)
+    {
+        var settings = new AgentSettings { DockerDiscoveryInterval = interval };
+        var env = AgentEnvironmentBuilder.BuildEnvironment(settings, "9090", "auth");
+
+        Assert.Equal("30", env["LABTETHER_DOCKER_DISCOVERY_INTERVAL"]);
+    }
+
     [Fact]
     public void BuildEnvironment_SetsParentPid()
     {
