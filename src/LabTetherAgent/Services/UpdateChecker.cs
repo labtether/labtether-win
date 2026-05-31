@@ -9,6 +9,8 @@ namespace LabTetherAgent.Services;
 /// </summary>
 public class UpdateChecker
 {
+    internal const string DefaultUpdateUrl = "https://api.github.com/repos/labtether/labtether-win/releases/latest";
+
     private static readonly TimeSpan CheckInterval = TimeSpan.FromHours(12);
     private static readonly TimeSpan HttpTimeout = TimeSpan.FromSeconds(15);
 
@@ -22,7 +24,7 @@ public class UpdateChecker
     {
         _currentVersion = currentVersion.Trim();
         _updateUrl = string.IsNullOrWhiteSpace(updateUrl)
-            ? "https://api.github.com/repos/labtether/win-agent/releases/latest"
+            ? DefaultUpdateUrl
             : updateUrl.Trim();
     }
 
