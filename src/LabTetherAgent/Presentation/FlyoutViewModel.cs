@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LabTetherAgent.Api;
+using LabTetherAgent.Settings;
 using LabTetherAgent.State;
 
 namespace LabTetherAgent.Presentation;
@@ -99,11 +100,9 @@ public partial class FlyoutViewModel : ObservableObject, IDisposable
     {
         if (!string.IsNullOrEmpty(_hubUrl) && _hubUrl != "--")
         {
-            var consoleUrl = _hubUrl
-                .Replace("wss://", "https://", StringComparison.OrdinalIgnoreCase)
-                .Replace("ws://", "http://", StringComparison.OrdinalIgnoreCase)
-                .Replace("/ws/agent", "", StringComparison.OrdinalIgnoreCase);
-            OpenUrl(consoleUrl);
+            var consoleUrl = SettingsValidator.DeriveApiBaseUrl(_hubUrl);
+            if (!string.IsNullOrEmpty(consoleUrl))
+                OpenUrl(consoleUrl);
         }
     }
 
