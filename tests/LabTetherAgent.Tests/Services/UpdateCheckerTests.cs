@@ -4,6 +4,15 @@ namespace LabTetherAgent.Tests.Services;
 
 public class UpdateCheckerTests
 {
+    [Fact]
+    public void DefaultUpdateUrlPointsAtWindowsAgentRepository()
+    {
+        Assert.Equal(
+            "https://api.github.com/repos/labtether/labtether-win/releases/latest",
+            UpdateChecker.DefaultUpdateUrl
+        );
+    }
+
     [Theory]
     [InlineData("1.1.0", "1.0.0", true)]
     [InlineData("2.0.0", "1.9.9", true)]
