@@ -29,6 +29,7 @@ public class AppState : IDisposable
 
     private string? _localApiPort;
     private string? _localApiAuthToken;
+    private readonly CrashRestartCancellation _crashRestartCancellation = new();
     private readonly NetworkAvailabilityChangedEventHandler _networkAvailabilityChangedHandler;
     private bool _disposed;
 
@@ -72,6 +73,8 @@ public class AppState : IDisposable
         if (_disposed)
             return;
 
+        _crashRestartCancellation.Cancel();
+
         var binaryPath = FindAgentBinary();
         if (binaryPath == null)
         {
@@ -99,6 +102,7 @@ public class AppState : IDisposable
     /// </summary>
     public async Task StopAgentAsync()
     {
+        _crashRestartCancellation.Cancel();
         ApiClient.StopPolling();
         await AgentProcess.StopAsync();
     }
@@ -143,12 +147,34 @@ public class AppState : IDisposable
 
         // Crash — wait for backoff delay then restart
         var delay = AgentProcess.CrashCoordinator.NextDelay();
+        var restartCts = _crashRestartCancellation.Begin();
+        var restartToken = restartCts.Token;
         AgentProcess.LogReader.AppendRaw($"Crash detected, restarting in {delay.TotalSeconds:F0}s (attempt {AgentProcess.CrashCoordinator.AttemptCount})");
-        await Task.Delay(delay);
-        if (_disposed || AgentProcess.IsRunning || AgentProcess.LastExitWasUserInitiated)
-            return;
 
-        StartAgent();
+        try
+        {
+            await Task.Delay(delay, restartToken);
+            if (_disposed ||
+                restartToken.IsCancellationRequested ||
+                !_crashRestartCancellation.IsCurrent(restartCts) ||
+                AgentProcess.IsRunning ||
+                AgentProcess.LastExitWasUserInitiated)
+            {
+                return;
+            }
+
+            _crashRestartCancellation.ClearIfCurrent(restartCts);
+            StartAgent();
+        }
+        catch (OperationCanceledException) when (restartToken.IsCancellationRequested)
+        {
+            // User stopped or manually restarted the agent before backoff expired.
+        }
+        finally
+        {
+            _crashRestartCancellation.ClearIfCurrent(restartCts);
+            restartCts.Dispose();
+        }
     }
 
     private static string? FindAgentBinary()
@@ -215,6 +241,7 @@ public class AppState : IDisposable
         NetworkChange.NetworkAvailabilityChanged -= _networkAvailabilityChangedHandler;
         AgentProcess.OnExited -= OnAgentExited;
         AgentProcess.OnStarted -= OnAgentStarted;
+        _crashRestartCancellation.Dispose();
         ApiClient.Dispose();
         AgentProcess.Dispose();
     }
