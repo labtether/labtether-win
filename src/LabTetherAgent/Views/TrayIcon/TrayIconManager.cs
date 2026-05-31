@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using H.NotifyIcon;
 using Microsoft.UI.Xaml;
 using LabTetherAgent.App;
+using LabTetherAgent.Settings;
 using LabTetherAgent.Views.Onboarding;
 
 namespace LabTetherAgent.Views.TrayIcon;
@@ -99,11 +100,9 @@ public class TrayIconManager : IDisposable
         var openConsole = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem { Text = "Open Console" };
         openConsole.Click += (_, _) =>
         {
-            // Open hub URL in browser
-            var hubUrl = _appState.Settings.HubUrl
-                .Replace("wss://", "https://")
-                .Replace("ws://", "http://")
-                .Replace("/ws/agent", "");
+            var hubUrl = SettingsValidator.DeriveApiBaseUrl(_appState.Settings.HubUrl);
+            if (string.IsNullOrEmpty(hubUrl))
+                return;
             try
             {
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(hubUrl) { UseShellExecute = true });

@@ -81,7 +81,9 @@ public class SettingsValidatorTests
 
     [Theory]
     [InlineData("wss://hub.example.com/ws/agent", "https://hub.example.com")]
+    [InlineData("wss://hub.example.com/custom/path", "https://hub.example.com")]
     [InlineData("ws://192.168.1.100:8080/ws/agent", "http://192.168.1.100:8080")]
+    [InlineData("https://hub.example.com/custom/path", "https://hub.example.com")]
     [InlineData("wss://hub.example.com/ws/agent?token=secret", null)]
     [InlineData("wss://user:pass@hub.example.com/ws/agent", null)]
     [InlineData("", null)]
