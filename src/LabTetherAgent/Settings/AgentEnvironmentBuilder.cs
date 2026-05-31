@@ -42,8 +42,8 @@ public static class AgentEnvironmentBuilder
         env["LABTETHER_DOCKER_ENABLED"] = settings.DockerEnabled;
         if (!string.IsNullOrWhiteSpace(settings.DockerEndpoint))
             env["LABTETHER_DOCKER_SOCKET"] = settings.DockerEndpoint.Trim();
-        if (!string.IsNullOrWhiteSpace(settings.DockerDiscoveryInterval))
-            env["LABTETHER_DOCKER_DISCOVERY_INTERVAL"] = settings.DockerDiscoveryInterval.Trim();
+        env["LABTETHER_DOCKER_DISCOVERY_INTERVAL"] =
+            SettingsValidator.NormalizeDockerDiscoveryInterval(settings.DockerDiscoveryInterval);
 
         // Files
         env["LABTETHER_FILES_ROOT_MODE"] = settings.FilesRootMode;

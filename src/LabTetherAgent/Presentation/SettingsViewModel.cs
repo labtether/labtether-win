@@ -1,3 +1,4 @@
+using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LabTetherAgent.Settings;
@@ -57,10 +58,15 @@ public partial class SettingsViewModel : ObservableObject
     /// </summary>
     public double DockerDiscoveryIntervalNumber
     {
-        get => double.TryParse(DockerDiscoveryInterval, out var v) ? v : 30;
+        get => SettingsValidator.TryParseIntegerInRange(DockerDiscoveryInterval, 10, 600, out var seconds)
+            ? seconds
+            : 30;
         set
         {
-            DockerDiscoveryInterval = ((int)value).ToString();
+            var seconds = double.IsFinite(value)
+                ? Math.Clamp((int)Math.Round(value), 10, 600)
+                : 30;
+            DockerDiscoveryInterval = seconds.ToString(CultureInfo.InvariantCulture);
             OnPropertyChanged();
         }
     }
@@ -84,7 +90,8 @@ public partial class SettingsViewModel : ObservableObject
         _settings.StartAtLogin = StartAtLogin;
         _settings.LowPowerMode = LowPowerMode;
         _settings.DockerEndpoint = DockerEndpoint;
-        _settings.DockerDiscoveryInterval = DockerDiscoveryInterval;
+        _settings.DockerDiscoveryInterval =
+            SettingsValidator.NormalizeDockerDiscoveryInterval(DockerDiscoveryInterval);
         _settings.WebRtcEnabled = WebRtcEnabled;
         _settings.AllowRemoteOverrides = AllowRemoteOverrides;
         _settings.AutoUpdateEnabled = AutoUpdateEnabled;

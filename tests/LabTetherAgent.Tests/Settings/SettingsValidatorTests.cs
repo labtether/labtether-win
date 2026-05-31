@@ -39,14 +39,33 @@ public class SettingsValidatorTests
     [InlineData("8080", true)]
     [InlineData("1", true)]
     [InlineData("65535", true)]
+    [InlineData(" 8080 ", true)]
     [InlineData("0", false)]
     [InlineData("65536", false)]
+    [InlineData("+8080", false)]
+    [InlineData("1e3", false)]
+    [InlineData("80abc", false)]
     [InlineData("", false)]
     [InlineData(null, false)]
     [InlineData("abc", false)]
     public void IsValidPort(string? port, bool expected)
     {
         Assert.Equal(expected, SettingsValidator.IsValidPort(port));
+    }
+
+    [Theory]
+    [InlineData("10", "10")]
+    [InlineData("600", "600")]
+    [InlineData(" 60 ", "60")]
+    [InlineData("9", "30")]
+    [InlineData("601", "30")]
+    [InlineData("30abc", "30")]
+    [InlineData("1e3", "30")]
+    [InlineData("+30", "30")]
+    [InlineData(null, "30")]
+    public void NormalizeDockerDiscoveryInterval(string? interval, string expected)
+    {
+        Assert.Equal(expected, SettingsValidator.NormalizeDockerDiscoveryInterval(interval));
     }
 
     [Theory]

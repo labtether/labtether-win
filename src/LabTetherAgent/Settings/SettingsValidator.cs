@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace LabTetherAgent.Settings;
 
 /// <summary>
@@ -20,10 +22,32 @@ public static class SettingsValidator
 
     public static bool IsValidPort(string? port)
     {
-        if (string.IsNullOrWhiteSpace(port))
+        return TryParseIntegerInRange(port, 1, 65535, out _);
+    }
+
+    public static bool TryParseIntegerInRange(string? value, int min, int max, out int parsed)
+    {
+        parsed = 0;
+        if (string.IsNullOrWhiteSpace(value))
             return false;
 
-        return int.TryParse(port.Trim(), out var p) && p is > 0 and <= 65535;
+        var trimmed = value.Trim();
+        foreach (var c in trimmed)
+        {
+            if (c is < '0' or > '9')
+                return false;
+        }
+
+        return int.TryParse(trimmed, NumberStyles.None, CultureInfo.InvariantCulture, out parsed) &&
+               parsed >= min &&
+               parsed <= max;
+    }
+
+    public static string NormalizeDockerDiscoveryInterval(string? interval)
+    {
+        return TryParseIntegerInRange(interval, 10, 600, out var seconds)
+            ? seconds.ToString(CultureInfo.InvariantCulture)
+            : "30";
     }
 
     public static bool IsValidLogLevel(string? level)

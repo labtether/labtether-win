@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace LabTetherAgent.State;
 
 /// <summary>
@@ -47,9 +49,9 @@ public class AgentStatus
             var vmCount = 0;
             var runningCount = 0;
             if (Metadata.TryGetValue("hyperv_vm_count", out var vmCountStr))
-                int.TryParse(vmCountStr, out vmCount);
+                vmCount = ParseNonNegativeCount(vmCountStr);
             if (Metadata.TryGetValue("hyperv_running_count", out var runningStr))
-                int.TryParse(runningStr, out runningCount);
+                runningCount = ParseNonNegativeCount(runningStr);
             HyperV = new HyperVStatus(true, vmCount, runningCount);
         }
         else
@@ -61,13 +63,30 @@ public class AgentStatus
         var pendingCount = 0;
         var rebootRequired = false;
         if (Metadata.TryGetValue("windows_update_pending", out var pendingStr))
-            int.TryParse(pendingStr, out pendingCount);
+            pendingCount = ParseNonNegativeCount(pendingStr);
         if (Metadata.TryGetValue("windows_update_reboot_required", out var rebootStr))
             rebootRequired = string.Equals(rebootStr, "true", StringComparison.OrdinalIgnoreCase);
         if (pendingCount > 0 || rebootRequired)
             WindowsUpdate = new WindowsUpdateStatus(pendingCount, rebootRequired);
         else
             WindowsUpdate = null;
+    }
+
+    private static int ParseNonNegativeCount(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return 0;
+
+        var trimmed = value.Trim();
+        foreach (var c in trimmed)
+        {
+            if (c is < '0' or > '9')
+                return 0;
+        }
+
+        return int.TryParse(trimmed, NumberStyles.None, CultureInfo.InvariantCulture, out var count)
+            ? count
+            : 0;
     }
 }
 
