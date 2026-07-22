@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Microsoft.Windows.AppNotifications;
 using Microsoft.Windows.AppNotifications.Builder;
 
@@ -9,13 +10,28 @@ namespace LabTetherAgent.Services;
 /// </summary>
 public class ToastNotificationService
 {
+    internal const string WindowsReleaseUrl = "https://github.com/labtether/labtether-win/releases/latest";
     private readonly Dictionary<string, DateTime> _throttle = new();
     private static readonly TimeSpan ThrottleInterval = TimeSpan.FromMinutes(5);
+    private bool _registered;
 
-    public void Initialize()
+    public bool TryInitialize()
     {
-        AppNotificationManager.Default.NotificationInvoked += OnNotificationInvoked;
-        AppNotificationManager.Default.Register();
+        if (_registered) return true;
+        try
+        {
+            AppNotificationManager.Default.NotificationInvoked += OnNotificationInvoked;
+            AppNotificationManager.Default.Register();
+            _registered = true;
+            return true;
+        }
+        catch (Exception ex) when (ex is COMException or InvalidOperationException)
+        {
+            AppNotificationManager.Default.NotificationInvoked -= OnNotificationInvoked;
+            System.Diagnostics.Debug.WriteLine(
+                $"Windows notifications unavailable: {ex.GetType().Name}: {ex.Message}");
+            return false;
+        }
     }
 
     public void NotifyDisconnected()
@@ -26,7 +42,7 @@ public class ToastNotificationService
             .AddText("Hub Connection Lost")
             .AddText("LabTether Agent has lost connection to the hub. Retrying...");
 
-        AppNotificationManager.Default.Show(builder.BuildNotification());
+        TryShow(builder.BuildNotification());
     }
 
     public void NotifyReconnected()
@@ -37,7 +53,7 @@ public class ToastNotificationService
             .AddText("Hub Connection Restored")
             .AddText("LabTether Agent has reconnected to the hub.");
 
-        AppNotificationManager.Default.Show(builder.BuildNotification());
+        TryShow(builder.BuildNotification());
     }
 
     public void NotifyUpdateAvailable(string version)
@@ -45,10 +61,13 @@ public class ToastNotificationService
         if (!ShouldNotify("update")) return;
 
         var builder = new AppNotificationBuilder()
-            .AddText("Agent Update Available")
-            .AddText($"LabTether Agent v{version} is available.");
+            .AddText("LabTether for Windows Update Available")
+            .AddText($"LabTether Agent v{version} is available.")
+            .AddArgument("action", "view-update")
+            .AddButton(new AppNotificationButton("View release")
+                .AddArgument("action", "view-update"));
 
-        AppNotificationManager.Default.Show(builder.BuildNotification());
+        TryShow(builder.BuildNotification());
     }
 
     public void NotifyAlert(string name, string severity, string? message)
@@ -64,12 +83,15 @@ public class ToastNotificationService
             .AddText(title)
             .AddText(message ?? "An alert is firing on this device.");
 
-        AppNotificationManager.Default.Show(builder.BuildNotification());
+        TryShow(builder.BuildNotification());
     }
 
     public void Cleanup()
     {
+        if (!_registered) return;
+        AppNotificationManager.Default.NotificationInvoked -= OnNotificationInvoked;
         AppNotificationManager.Default.Unregister();
+        _registered = false;
     }
 
     private bool ShouldNotify(string key)
@@ -82,9 +104,35 @@ public class ToastNotificationService
         return true;
     }
 
+    private void TryShow(AppNotification notification)
+    {
+        if (!_registered)
+            return;
+        try
+        {
+            AppNotificationManager.Default.Show(notification);
+        }
+        catch (Exception ex) when (ex is COMException or InvalidOperationException)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"Windows notification failed: {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
     private static void OnNotificationInvoked(AppNotificationManager sender, AppNotificationActivatedEventArgs args)
     {
-        // Handle notification click — bring app to foreground
-        // The notification arguments can specify which view to open
+        if (!args.Arguments.TryGetValue("action", out var action) || action != "view-update")
+            return;
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(WindowsReleaseUrl)
+            {
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to open update release: {ex.Message}");
+        }
     }
 }

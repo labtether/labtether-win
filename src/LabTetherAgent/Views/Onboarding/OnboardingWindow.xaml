@@ -49,6 +49,7 @@
                     Visibility="{x:Bind IsNotLastStep(ViewModel.CurrentStep), Mode=OneWay}" />
             <Button Grid.Column="2" Content="Finish &amp; Start Agent" Style="{ThemeResource AccentButtonStyle}"
                     Command="{x:Bind ViewModel.FinishCommand}"
+                    IsEnabled="{x:Bind ViewModel.CanFinish, Mode=OneWay}"
                     Visibility="{x:Bind IsLastStep(ViewModel.CurrentStep), Mode=OneWay}" />
         </Grid>
     </Grid>

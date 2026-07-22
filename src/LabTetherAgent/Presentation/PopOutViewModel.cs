@@ -50,7 +50,7 @@ public partial class PopOutViewModel : ObservableObject, IDisposable
     private void ApplyStatus(AgentStatus status)
     {
         IsConnected = status.IsConnected;
-        ConnectionState = status.IsConnected ? "Connected" : "Disconnected";
+        ConnectionState = status.ConnectionDisplayText;
         CpuPercent = status.CpuPercent;
         MemoryText = status.MemoryDisplayText;
         DiskPercent = status.DiskPercent;

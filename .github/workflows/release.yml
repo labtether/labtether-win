@@ -6,27 +6,75 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
+  artifact-metadata: write
 
 jobs:
   build:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-dotnet@v5
+      - name: Check out matching bundled agent core
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          repository: labtether/labtether-agent
+          ref: ${{ github.ref_name }}
+          path: agent-core
+          persist-credentials: false
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: agent-core/go.mod
+
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         with:
           dotnet-version: "8.0.x"
 
       - name: Add msbuild to PATH
-        uses: microsoft/setup-msbuild@v2
+        uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce # v2
 
       - name: Resolve version from tag
         id: meta
         shell: bash
         run: |
           version="${GITHUB_REF_NAME#v}"
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          if [[ ! "$version" =~ ^[0-9]+(\.[0-9]+){1,3}([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Release tag '$GITHUB_REF_NAME' is not a supported numeric version." >&2
+            exit 1
+          fi
+
+          numeric_version="${version%%[+-]*}"
+          IFS='.' read -r -a numeric_parts <<< "$numeric_version"
+          binary_parts=(0 0 0 0)
+          for index in "${!numeric_parts[@]}"; do
+            component="${numeric_parts[$index]}"
+            component_value=$((10#$component))
+            if (( component_value > 65534 )); then
+              echo "Version component '$component' exceeds the Windows binary-version limit (65534)." >&2
+              exit 1
+            fi
+            binary_parts[index]="$component_value"
+          done
+          binary_version="${binary_parts[0]}.${binary_parts[1]}.${binary_parts[2]}.${binary_parts[3]}"
+
+          {
+            echo "version=${version}"
+            echo "assembly_version=${binary_version}"
+            echo "file_version=${binary_version}"
+            echo "package_version=${binary_version}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build bundled Go agent core
+        shell: bash
+        run: >-
+          ./scripts/build-bundled-agent.sh
+          --agent-repo "${GITHUB_WORKSPACE}/agent-core"
+          --version "${GITHUB_REF_NAME}"
 
       - name: Restore
         run: >-
@@ -34,6 +82,30 @@ jobs:
           -t:Restore
           -p:RuntimeIdentifier=win-x64
           -p:Platform=x64
+
+      - name: Prepare clean publish directory
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $publishRoot = [IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE "publish"))
+          $publishDir = [IO.Path]::GetFullPath((Join-Path $publishRoot "win-x64"))
+          if (-not ([IO.Path]::GetFullPath((Split-Path $publishDir -Parent))).Equals($publishRoot, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Refusing to clean publish path outside the workspace publish root: $publishDir"
+          }
+          if (Test-Path -LiteralPath $publishDir) {
+            $publishItem = Get-Item -LiteralPath $publishDir -Force
+            if (($publishItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+              throw "Refusing to clean a publish path that is a reparse point: $publishDir"
+            }
+            Remove-Item -LiteralPath $publishDir -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $publishDir | Out-Null
+          $sentinel = Join-Path $publishDir ".labtether-clean-publish"
+          Set-Content -LiteralPath $sentinel -Value "clean" -NoNewline
+          if (-not (Test-Path -LiteralPath $sentinel -PathType Leaf)) {
+            throw "Unable to verify the clean publish directory: $publishDir"
+          }
+          Remove-Item -LiteralPath $sentinel -Force
 
       - name: Publish
         run: >-
@@ -44,9 +116,201 @@ jobs:
           -p:Platform=x64
           -p:SelfContained=true
           -p:WindowsPackageType=None
-          -p:EnableMsixTooling=false
+          -p:EnableMsixTooling=true
           -p:GenerateAppxPackageOnBuild=false
+          -p:RequireBundledAgent=true
+          -p:PublishTrimmed=false
+          -p:PublishReadyToRun=false
+          -p:Version=${{ steps.meta.outputs.version }}
+          -p:AssemblyVersion=${{ steps.meta.outputs.assembly_version }}
+          -p:FileVersion=${{ steps.meta.outputs.file_version }}
+          -p:InformationalVersion=${{ steps.meta.outputs.version }}
+          -p:IncludeSourceRevisionInInformationalVersion=false
+          -p:AppxPackageVersion=${{ steps.meta.outputs.package_version }}
           -p:PublishDir=..\..\publish\win-x64\
+
+      - name: Authenticode sign published PE payloads
+        shell: pwsh
+        env:
+          WINDOWS_CODE_SIGNING_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CODE_SIGNING_CERT_PFX_BASE64 }}
+          WINDOWS_CODE_SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_CODE_SIGNING_CERT_PASSWORD }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          Set-StrictMode -Version Latest
+
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CODE_SIGNING_CERT_PFX_BASE64)) {
+            throw "WINDOWS_CODE_SIGNING_CERT_PFX_BASE64 repository secret is required; refusing to publish unsigned artifacts."
+          }
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CODE_SIGNING_CERT_PASSWORD)) {
+            throw "WINDOWS_CODE_SIGNING_CERT_PASSWORD repository secret is required; refusing to publish unsigned artifacts."
+          }
+
+          $pfxPath = Join-Path $env:RUNNER_TEMP "labtether-release-signing.pfx"
+          $importedThumbprints = @()
+          try {
+            try {
+              $pfxBytes = [Convert]::FromBase64String($env:WINDOWS_CODE_SIGNING_CERT_PFX_BASE64)
+            } catch {
+              throw "WINDOWS_CODE_SIGNING_CERT_PFX_BASE64 is not valid base64."
+            }
+            [IO.File]::WriteAllBytes($pfxPath, $pfxBytes)
+
+            $password = ConvertTo-SecureString -String $env:WINDOWS_CODE_SIGNING_CERT_PASSWORD -AsPlainText -Force
+            $imported = @(Import-PfxCertificate -FilePath $pfxPath -CertStoreLocation Cert:\CurrentUser\My -Password $password)
+            $importedThumbprints = @($imported | ForEach-Object { $_.Thumbprint })
+
+            $codeSigningOid = "1.3.6.1.5.5.7.3.3"
+            $signingCertificates = @($imported | Where-Object {
+              $_.HasPrivateKey -and
+              @($_.EnhancedKeyUsageList | Where-Object { $_.ObjectId.Value -eq $codeSigningOid }).Count -gt 0
+            })
+            if ($signingCertificates.Count -ne 1) {
+              throw "The PFX must contain exactly one private-key certificate authorized for code signing."
+            }
+
+            $certificate = $signingCertificates[0]
+            $now = Get-Date
+            if ($now -lt $certificate.NotBefore -or $now -gt $certificate.NotAfter) {
+              throw "The Windows code-signing certificate is not currently valid."
+            }
+
+            $signTool = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter signtool.exe -File -Recurse |
+              Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+              Sort-Object FullName -Descending |
+              Select-Object -First 1
+            if ($null -eq $signTool) {
+              throw "signtool.exe was not found on the release runner."
+            }
+
+            # Sign only LabTether-authored PE files. Do not re-sign the bundled
+            # Microsoft/.NET runtime DLLs in this self-contained publication.
+            $requiredAuthoredPayloads = @(
+              "publish/win-x64/LabTetherAgent.exe",
+              "publish/win-x64/LabTetherAgent.dll",
+              "publish/win-x64/Assets/labtether-agent.exe"
+            )
+            $authoredPayloads = @()
+            foreach ($payload in $requiredAuthoredPayloads) {
+              if (-not (Test-Path -LiteralPath $payload -PathType Leaf)) {
+                throw "Required LabTether PE payload is missing: $payload"
+              }
+              $authoredPayloads += Resolve-Path $payload
+            }
+
+            foreach ($payload in $authoredPayloads) {
+              & $signTool.FullName sign /fd SHA256 /td SHA256 /tr "http://timestamp.digicert.com" /sha1 $certificate.Thumbprint $payload.Path
+              if ($LASTEXITCODE -ne 0) {
+                throw "Authenticode signing failed for $($payload.Path)."
+              }
+
+              & $signTool.FullName verify /pa /all /v $payload.Path
+              if ($LASTEXITCODE -ne 0) {
+                throw "Authenticode verification failed for $($payload.Path)."
+              }
+            }
+          } finally {
+            Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue
+            foreach ($thumbprint in $importedThumbprints) {
+              Remove-Item -LiteralPath "Cert:\CurrentUser\My\$thumbprint" -Force -ErrorAction SilentlyContinue
+            }
+          }
+
+      - name: Validate published application bundle
+        shell: pwsh
+        env:
+          EXPECTED_AGENT_VERSION: ${{ github.ref_name }}
+          EXPECTED_WRAPPER_VERSION: ${{ steps.meta.outputs.version }}
+          EXPECTED_WRAPPER_BINARY_VERSION: ${{ steps.meta.outputs.assembly_version }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $child = "publish/win-x64/Assets/labtether-agent.exe"
+          $versionFile = "publish/win-x64/AGENT_VERSION"
+          $wrapperExe = "publish/win-x64/LabTetherAgent.exe"
+          $wrapperDll = "publish/win-x64/LabTetherAgent.dll"
+          $requiredWinUiPayloads = @(
+            "publish/win-x64/LabTetherAgent.pri",
+            "publish/win-x64/Microsoft.UI.Xaml.dll",
+            "publish/win-x64/Microsoft.UI.Xaml.Controls.dll",
+            "publish/win-x64/Microsoft.UI.pri",
+            "publish/win-x64/Microsoft.UI.Xaml.Controls.pri"
+          )
+          if (-not (Test-Path -LiteralPath $child -PathType Leaf)) {
+            throw "Published application is missing its Go child agent."
+          }
+          if (-not (Test-Path -LiteralPath $versionFile -PathType Leaf)) {
+            throw "Published application is missing AGENT_VERSION."
+          }
+          foreach ($requiredPayload in $requiredWinUiPayloads) {
+            if (-not (Test-Path -LiteralPath $requiredPayload -PathType Leaf)) {
+              throw "Published application is missing required WinUI payload: $requiredPayload"
+            }
+          }
+          foreach ($wrapperPayload in @($wrapperExe, $wrapperDll)) {
+            if (-not (Test-Path -LiteralPath $wrapperPayload -PathType Leaf)) {
+              throw "Published application is missing required wrapper payload: $wrapperPayload"
+            }
+
+            $versionInfo = [Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path $wrapperPayload).Path)
+            if ($versionInfo.FileVersion -ne $env:EXPECTED_WRAPPER_BINARY_VERSION) {
+              throw "Published wrapper '$wrapperPayload' has file version '$($versionInfo.FileVersion)'; expected '$env:EXPECTED_WRAPPER_BINARY_VERSION'."
+            }
+            if ($versionInfo.ProductVersion -ne $env:EXPECTED_WRAPPER_VERSION) {
+              throw "Published wrapper '$wrapperPayload' has product version '$($versionInfo.ProductVersion)'; expected '$env:EXPECTED_WRAPPER_VERSION'."
+            }
+          }
+          $assemblyVersion = [Reflection.AssemblyName]::GetAssemblyName((Resolve-Path $wrapperDll).Path).Version.ToString()
+          if ($assemblyVersion -ne $env:EXPECTED_WRAPPER_BINARY_VERSION) {
+            throw "Published wrapper assembly version '$assemblyVersion' does not match '$env:EXPECTED_WRAPPER_BINARY_VERSION'."
+          }
+          $makePri = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter makepri.exe -File -Recurse |
+            Where-Object { $_.FullName -match '\\x64\\makepri\.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+          if ($null -eq $makePri) {
+            throw "makepri.exe was not found for x64; cannot validate the unpackaged application PRI."
+          }
+          $priDumpPath = Join-Path $env:RUNNER_TEMP "labtether-published-pri.xml"
+          try {
+            & $makePri.FullName dump /if "publish/win-x64/LabTetherAgent.pri" /of $priDumpPath /o | Out-Null
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $priDumpPath -PathType Leaf)) {
+              throw "Unable to inspect the published application PRI."
+            }
+            [xml]$priDump = Get-Content -LiteralPath $priDumpPath -Raw
+            $primaryMap = $priDump.SelectSingleNode("//ResourceMap[@primary='true']")
+            if ($null -eq $primaryMap -or $primaryMap.name -ne "Application") {
+              $actualName = if ($null -eq $primaryMap) { "<missing>" } else { $primaryMap.name }
+              throw "Published application PRI has primary map '$actualName'; unpackaged WinUI requires 'Application'."
+            }
+            if ($null -ne $priDump.SelectSingleNode("//ResourceMap[@name='LabTetherAgent']")) {
+              throw "Published application PRI contains the package-style 'LabTetherAgent' resource map."
+            }
+          } finally {
+            Remove-Item -LiteralPath $priDumpPath -Force -ErrorAction SilentlyContinue
+          }
+          $app = (Resolve-Path "publish/win-x64/LabTetherAgent.exe").Path
+          $appDirectory = Split-Path $app -Parent
+          $probe = Start-Process `
+            -FilePath $app `
+            -ArgumentList "--winui-runtime-probe" `
+            -WorkingDirectory $appDirectory `
+            -PassThru
+          if (-not $probe.WaitForExit(30000)) {
+            Stop-Process -Id $probe.Id -Force -ErrorAction SilentlyContinue
+            throw "Published application did not complete its WinUI runtime probe within 30 seconds."
+          }
+          $probe.Refresh()
+          if ($probe.ExitCode -ne 0) {
+            throw "Published application failed its WinUI runtime probe with exit code $($probe.ExitCode)."
+          }
+          $publishedVersion = (Get-Content -LiteralPath $versionFile -Raw).Trim()
+          if ($publishedVersion -ne $env:EXPECTED_AGENT_VERSION) {
+            throw "Published child version '$publishedVersion' does not match '$env:EXPECTED_AGENT_VERSION'."
+          }
+          $help = & $child help
+          $expectedHelp = "labtether-agent $env:EXPECTED_AGENT_VERSION"
+          if ($LASTEXITCODE -ne 0 -or @($help)[0] -ne $expectedHelp) {
+            throw "Published child failed its help smoke test."
+          }
 
       - name: Package release artifact
         shell: bash
@@ -56,8 +320,13 @@ jobs:
           cd ../..
           sha256sum "labtether-agent-win-x64.zip" > "labtether-agent-win-x64.zip.sha256"
 
+      - name: Attest release provenance
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: labtether-agent-win-x64.zip
+
       - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3
         with:
           name: "LabTether Windows Agent ${{ steps.meta.outputs.version }}"
           files: |

@@ -13,12 +13,34 @@
     <SelfContained>true</SelfContained>
     <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
-    <Version>1.2.0</Version>
+    <!-- Keep the checked-in development baseline aligned with the latest
+         released native wrapper. Release builds override all version fields
+         from the tag so the wrapper and its update checker cannot drift. -->
+    <Version>1.4.0</Version>
+    <AssemblyVersion>1.4.0.0</AssemblyVersion>
+    <FileVersion>1.4.0.0</FileVersion>
     <PublishSingleFile>false</PublishSingleFile>
+    <!-- WinUI self-contained payloads rely on their complete framework and
+         resource graph. Keep trimming and ReadyToRun disabled explicitly so
+         release builds cannot inherit unsafe publish defaults. -->
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishReadyToRun>false</PublishReadyToRun>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <DefineConstants>$(DefineConstants);WINDOWS</DefineConstants>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <BundledAgentPath Condition="'$(BundledAgentPath)' == ''">$(MSBuildProjectDirectory)\Assets\labtether-agent.exe</BundledAgentPath>
+    <BundledAgentVersionPath Condition="'$(BundledAgentVersionPath)' == ''">$(MSBuildProjectDirectory)\Assets\AGENT_VERSION</BundledAgentVersionPath>
+    <RequireBundledAgent Condition="'$(RequireBundledAgent)' == '' and '$(Configuration)' == 'Release'">true</RequireBundledAgent>
+    <RequireBundledAgent Condition="'$(RequireBundledAgent)' == ''">false</RequireBundledAgent>
+    <!-- MRT Core discovers an unpackaged application's PRI beside the EXE
+         under the executable base name, but the primary map must use the
+         identity-free Application namespace. A package identity name makes
+         an unpackaged WinUI process fail during XAML initialization. -->
+    <ProjectPriFileName Condition="'$(WindowsPackageType)' == 'None' and '$(ProjectPriFileName)' == ''">$(MSBuildProjectName).pri</ProjectPriFileName>
+    <ProjectPriIndexName Condition="'$(WindowsPackageType)' == 'None'">Application</ProjectPriIndexName>
+    <AppxPriInitialPath Condition="'$(WindowsPackageType)' == 'None'"></AppxPriInitialPath>
+    <PrependPriInitialPath Condition="'$(WindowsPackageType)' == 'None'">false</PrependPriInitialPath>
     <!--
       Allow dotnet restore/build from non-Windows hosts (e.g. GitHub's
       automatic NuGet dependency-submission workflow on ubuntu-latest).
@@ -35,19 +57,47 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.*" />
-    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.*" />
-    <PackageReference Include="H.NotifyIcon.WinUI" Version="2.3.*" />
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.*" />
-    <PackageReference Include="Microsoft.Extensions.Http" Version="8.*" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260529003" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1839" />
+    <PackageReference Include="H.NotifyIcon.WinUI" Version="2.3.2" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.1" />
+    <PackageReference Include="System.IO.FileSystem.AccessControl" Version="5.0.0" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
   </ItemGroup>
 
-  <!-- Include the Go agent binary if present -->
-  <ItemGroup Condition="Exists('Assets\labtether-agent.exe')">
-    <Content Include="Assets\labtether-agent.exe">
+  <!-- The release app is only functional when the matching Go agent core is bundled. -->
+  <ItemGroup Condition="Exists('$(BundledAgentPath)')">
+    <Content Include="$(BundledAgentPath)" Link="Assets\labtether-agent.exe">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
   </ItemGroup>
+
+  <ItemGroup Condition="Exists('$(BundledAgentVersionPath)')">
+    <Content Include="$(BundledAgentVersionPath)" Link="AGENT_VERSION">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+  <Target Name="EnsureBundledAgent" BeforeTargets="PrepareForBuild" Condition="'$(RequireBundledAgent)' == 'true'">
+    <Error Condition="!Exists('$(BundledAgentPath)')" Text="Required Go child agent is missing at $(BundledAgentPath). Run scripts/build-bundled-agent.sh first." />
+    <Error Condition="!Exists('$(BundledAgentVersionPath)')" Text="Required Go child version file is missing at $(BundledAgentVersionPath). Run scripts/build-bundled-agent.sh first." />
+  </Target>
+
+  <Target Name="EnsureUnpackagedWinUiPayload" AfterTargets="Publish" Condition="'$(WindowsPackageType)' == 'None'">
+    <PropertyGroup>
+      <_PublishedApplicationPri>$([System.IO.Path]::Combine('$(PublishDir)', '$(ProjectPriFileName)'))</_PublishedApplicationPri>
+    </PropertyGroup>
+    <Error Condition="!Exists('$(_PublishedApplicationPri)')" Text="The unpackaged WinUI publish is missing its application PRI at $(_PublishedApplicationPri). Keep EnableMsixTooling enabled for release publish." />
+  </Target>
+
+  <Target Name="EnsureUnpackagedPriInputs" BeforeTargets="_GenerateProjectPriFileCore" Condition="'$(WindowsPackageType)' == 'None'">
+    <Error Condition="'@(SourceAppxManifest)' != ''" Text="The unpackaged WinUI build must not consume a package manifest." />
+    <Error Condition="'$(ProjectPriIndexName)' != 'Application'" Text="The unpackaged WinUI PRI must use the identity-free Application resource-map namespace." />
+    <Error Condition="'$(AppxPriInitialPath)' != '' or '$(PrependPriInitialPath)' == 'true'" Text="The unpackaged WinUI PRI must not prepend a package initial path." />
+  </Target>
 
   <!-- Icon resources -->
   <ItemGroup>

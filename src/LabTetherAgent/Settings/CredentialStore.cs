@@ -1,4 +1,7 @@
 using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 #if WINDOWS
 using Windows.Security.Credentials;
 #endif
@@ -13,6 +16,7 @@ namespace LabTetherAgent.Settings;
 /// </summary>
 public class CredentialStore
 {
+    private static readonly byte[] FallbackHeader = "LTDPAPI1\n"u8.ToArray();
     public const string ApiTokenResource = "LabTether:ApiToken";
     public const string EnrollmentTokenResource = "LabTether:EnrollmentToken";
     public const string LocalApiAuthResource = "LabTether:LocalApiAuth";
@@ -27,19 +31,22 @@ public class CredentialStore
     private readonly Dictionary<string, string> _fallbackStore = new();
     private readonly string? _fallbackPath;
 
-    public CredentialStore()
+    public CredentialStore() : this(vaultAvailable: null, fallbackPath: null)
     {
-        _vaultAvailable = ProbeVault();
+    }
+
+    internal CredentialStore(bool? vaultAvailable, string? fallbackPath)
+    {
+        _vaultAvailable = vaultAvailable ?? ProbeVault();
 
         if (!_vaultAvailable)
         {
             Trace.TraceWarning(
                 "CredentialStore: Windows PasswordVault is not available. " +
-                "Falling back to file-based credential storage. " +
-                "Secrets will NOT be protected by the OS credential manager.");
+                "Falling back to a current-user DPAPI-protected credential file.");
 
-            var settingsDir = AgentSettings.GetSettingsDirectory();
-            _fallbackPath = Path.Combine(settingsDir, ".credentials");
+            _fallbackPath = fallbackPath
+                ?? Path.Combine(AgentSettings.GetSettingsDirectory(), ".credentials");
             LoadFallback();
         }
     }
@@ -109,7 +116,10 @@ public class CredentialStore
     {
         settings.ApiToken = Retrieve(ApiTokenResource) ?? string.Empty;
         settings.EnrollmentToken = Retrieve(EnrollmentTokenResource) ?? string.Empty;
-        settings.LocalApiAuthToken = Retrieve(LocalApiAuthResource) ?? string.Empty;
+        // Local API credentials are process-scoped and must never survive an
+        // app restart. Remove any value written by older builds.
+        Remove(LocalApiAuthResource);
+        settings.LocalApiAuthToken = string.Empty;
         settings.WebRtcTurnPass = Retrieve(WebRtcTurnPassResource) ?? string.Empty;
     }
 
@@ -120,7 +130,7 @@ public class CredentialStore
     {
         Store(ApiTokenResource, settings.ApiToken);
         Store(EnrollmentTokenResource, settings.EnrollmentToken);
-        Store(LocalApiAuthResource, settings.LocalApiAuthToken);
+        Remove(LocalApiAuthResource);
         Store(WebRtcTurnPassResource, settings.WebRtcTurnPass);
     }
 
@@ -210,11 +220,47 @@ public class CredentialStore
         if (_fallbackPath == null || !File.Exists(_fallbackPath))
             return;
 
-        foreach (var line in File.ReadAllLines(_fallbackPath))
+        try
         {
-            var sep = line.IndexOf('=');
-            if (sep > 0)
-                _fallbackStore[line[..sep]] = line[(sep + 1)..];
+            var payload = File.ReadAllBytes(_fallbackPath);
+            if (payload.AsSpan().StartsWith(FallbackHeader))
+            {
+                var protectedPayload = payload.AsSpan(FallbackHeader.Length).ToArray();
+                var plaintext = ProtectedData.Unprotect(
+                    protectedPayload,
+                    optionalEntropy: FallbackHeader,
+                    scope: DataProtectionScope.CurrentUser);
+                try
+                {
+                    var stored = JsonSerializer.Deserialize<Dictionary<string, string>>(plaintext);
+                    if (stored != null)
+                    {
+                        foreach (var (key, value) in stored)
+                            _fallbackStore[key] = value;
+                    }
+                }
+                finally
+                {
+                    CryptographicOperations.ZeroMemory(plaintext);
+                    CryptographicOperations.ZeroMemory(protectedPayload);
+                }
+                return;
+            }
+
+            // One-time migration from older plaintext fallback files. The
+            // migrated data is immediately replaced atomically with DPAPI data.
+            foreach (var line in Encoding.UTF8.GetString(payload).Split('\n'))
+            {
+                var sep = line.IndexOf('=');
+                if (sep > 0)
+                    _fallbackStore[line[..sep]] = line[(sep + 1)..].TrimEnd('\r');
+            }
+            SaveFallback();
+        }
+        catch (Exception ex)
+        {
+            Trace.TraceError($"CredentialStore: failed to decrypt fallback credentials: {ex.Message}");
+            _fallbackStore.Clear();
         }
     }
 
@@ -227,7 +273,23 @@ public class CredentialStore
         if (dir != null)
             Directory.CreateDirectory(dir);
 
-        var lines = _fallbackStore.Select(kv => $"{kv.Key}={kv.Value}");
-        File.WriteAllLines(_fallbackPath, lines);
+        var plaintext = JsonSerializer.SerializeToUtf8Bytes(_fallbackStore);
+        try
+        {
+            var protectedPayload = ProtectedData.Protect(
+                plaintext,
+                optionalEntropy: FallbackHeader,
+                scope: DataProtectionScope.CurrentUser);
+            var output = new byte[FallbackHeader.Length + protectedPayload.Length];
+            Buffer.BlockCopy(FallbackHeader, 0, output, 0, FallbackHeader.Length);
+            Buffer.BlockCopy(protectedPayload, 0, output, FallbackHeader.Length, protectedPayload.Length);
+            SecureFile.WriteAllBytes(_fallbackPath, output);
+            CryptographicOperations.ZeroMemory(protectedPayload);
+            CryptographicOperations.ZeroMemory(output);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(plaintext);
+        }
     }
 }

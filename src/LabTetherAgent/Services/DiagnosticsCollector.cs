@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Text.RegularExpressions;
 using System.Text.Json;
 using LabTetherAgent.Api;
 using LabTetherAgent.Process;
@@ -12,6 +13,17 @@ namespace LabTetherAgent.Services;
 /// </summary>
 public class DiagnosticsCollector
 {
+    private const string Redacted = "[REDACTED]";
+    private static readonly Regex NamedSecretPattern = new(
+        @"(?ix)(?<prefix>\b(?:authorization|api[_-]?token|enrollment[_-]?token|auth[_-]?token|access[_-]?token|refresh[_-]?token|password|secret)\b\s*[:=]\s*(?:bearer\s+)?)(?<value>[^\s,;]+)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex SecretQueryPattern = new(
+        @"(?ix)(?<prefix>[?&](?:token|api[_-]?token|access[_-]?token|auth[_-]?token|key)=)(?<value>[^&#\s]+)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex QuotedSecretPattern = new(
+        @"(?ix)(?<prefix>[""'](?:authorization|api[_-]?token|enrollment[_-]?token|auth[_-]?token|access[_-]?token|refresh[_-]?token|password|secret)[""']\s*:\s*[""'])(?<value>[^""']*)(?<suffix>[""'])",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     private readonly AgentSettings _settings;
     private readonly AgentLogReader _logReader;
     private readonly LocalApiClient _apiClient;
@@ -37,7 +49,7 @@ public class DiagnosticsCollector
         await using (var writer = new StreamWriter(logEntry.Open()))
         {
             foreach (var line in logs)
-                await writer.WriteLineAsync(line.Raw);
+                await writer.WriteLineAsync(RedactLogLine(line.Raw, _settings));
         }
 
         // Settings (secrets redacted)
@@ -51,6 +63,7 @@ public class DiagnosticsCollector
                 _settings.GroupId,
                 _settings.AgentPort,
                 _settings.TlsSkipVerify,
+                _settings.TlsCaFile,
                 _settings.DockerEnabled,
                 _settings.DockerEndpoint,
                 _settings.DockerDiscoveryInterval,
@@ -60,8 +73,8 @@ public class DiagnosticsCollector
                 _settings.LowPowerMode,
                 _settings.LogLevel,
                 _settings.WebRtcEnabled,
-                ApiToken = _settings.ApiToken.Length > 0 ? "[REDACTED]" : "",
-                EnrollmentToken = _settings.EnrollmentToken.Length > 0 ? "[REDACTED]" : "",
+                ApiToken = _settings.ApiToken.Length > 0 ? Redacted : "",
+                EnrollmentToken = _settings.EnrollmentToken.Length > 0 ? Redacted : "",
             };
             var json = JsonSerializer.Serialize(redacted, new JsonSerializerOptions { WriteIndented = true });
             await writer.WriteAsync(json);
@@ -100,6 +113,36 @@ public class DiagnosticsCollector
             }
         }
         catch { /* API may not be reachable */ }
+    }
+
+    internal static string RedactLogLine(string raw, AgentSettings settings)
+    {
+        var redacted = raw ?? string.Empty;
+        foreach (var secret in EnumerateKnownSecrets(settings))
+        {
+            redacted = redacted.Replace(secret, Redacted, StringComparison.Ordinal);
+        }
+
+        redacted = QuotedSecretPattern.Replace(
+            redacted,
+            match => $"{match.Groups["prefix"].Value}{Redacted}{match.Groups["suffix"].Value}");
+        redacted = NamedSecretPattern.Replace(
+            redacted,
+            match => $"{match.Groups["prefix"].Value}{Redacted}");
+        return SecretQueryPattern.Replace(
+            redacted,
+            match => $"{match.Groups["prefix"].Value}{Redacted}");
+    }
+
+    private static IEnumerable<string> EnumerateKnownSecrets(AgentSettings settings)
+    {
+        return new[]
+        {
+            settings.ApiToken,
+            settings.EnrollmentToken,
+            settings.WebRtcTurnPass,
+            settings.LocalApiAuthToken,
+        }.Where(value => !string.IsNullOrEmpty(value)).Distinct(StringComparer.Ordinal);
     }
 
     private static string? FindAgentVersionFile()

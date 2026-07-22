@@ -9,6 +9,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <!-- Filter bar -->
@@ -23,12 +24,12 @@
                      Text="{x:Bind ViewModel.FilterText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
             <ComboBox Grid.Column="1" SelectedItem="{x:Bind ViewModel.SelectedLevel, Mode=TwoWay}"
                       ItemsSource="{x:Bind ViewModel.LevelOptions}" Width="100" />
-            <Button Grid.Column="2" Content="Export" Command="{x:Bind ViewModel.ExportCommand}" />
+            <Button Grid.Column="2" Content="Export" Click="OnExport" />
             <Button Grid.Column="3" Content="Clear" Command="{x:Bind ViewModel.ClearCommand}" />
         </Grid>
 
         <!-- Log list -->
-        <ListView Grid.Row="1" ItemsSource="{x:Bind ViewModel.FilteredLines, Mode=OneWay}"
+        <ListView x:Name="LogList" Grid.Row="1" ItemsSource="{x:Bind ViewModel.FilteredLines, Mode=OneWay}"
                   SelectionMode="Extended">
             <ListView.ItemTemplate>
                 <DataTemplate>
@@ -64,5 +65,8 @@
             <CheckBox Content="Auto-scroll" HorizontalAlignment="Right"
                       IsChecked="{x:Bind ViewModel.AutoScroll, Mode=TwoWay}" />
         </Grid>
+
+        <InfoBar x:Name="ExportStatus" Grid.Row="3" Margin="0,8,0,0"
+                 IsOpen="False" IsClosable="True" />
     </Grid>
 </Window>

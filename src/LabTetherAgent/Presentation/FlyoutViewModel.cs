@@ -58,7 +58,7 @@ public partial class FlyoutViewModel : ObservableObject, IDisposable
     private void ApplyStatus(AgentStatus status)
     {
         IsConnected = status.IsConnected;
-        ConnectionState = status.IsConnected ? "Connected" : "Disconnected";
+        ConnectionState = status.ConnectionDisplayText;
         CpuPercent = status.CpuPercent;
         MemoryText = status.MemoryDisplayText;
         DiskPercent = status.DiskPercent;
@@ -98,9 +98,9 @@ public partial class FlyoutViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void OpenConsole()
     {
-        if (!string.IsNullOrEmpty(_hubUrl) && _hubUrl != "--")
+        if (!string.IsNullOrEmpty(HubUrl) && HubUrl != "--")
         {
-            var consoleUrl = SettingsValidator.DeriveApiBaseUrl(_hubUrl);
+            var consoleUrl = SettingsValidator.DeriveApiBaseUrl(HubUrl);
             if (!string.IsNullOrEmpty(consoleUrl))
                 OpenUrl(consoleUrl);
         }

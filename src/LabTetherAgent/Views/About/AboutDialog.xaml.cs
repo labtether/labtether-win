@@ -1,5 +1,4 @@
 using System.Reflection;
-using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml.Controls;
 using Windows.Storage.Pickers;
 using LabTetherAgent.App;
@@ -11,14 +10,14 @@ namespace LabTetherAgent.Views.About;
 public sealed partial class AboutDialog : ContentDialog
 {
     private readonly AppState _appState;
+    private readonly nint _ownerWindowHandle;
+    private bool _exportInProgress;
 
-    [DllImport("user32.dll", ExactSpelling = true)]
-    private static extern nint GetActiveWindow();
-
-    public AboutDialog(AppState appState)
+    public AboutDialog(AppState appState, nint ownerWindowHandle)
     {
         this.InitializeComponent();
         _appState = appState;
+        _ownerWindowHandle = ownerWindowHandle;
 
         // Populate version info
         var assemblyVersion = Assembly.GetExecutingAssembly().GetName().Version;
@@ -42,31 +41,64 @@ public sealed partial class AboutDialog : ContentDialog
     }
 
     // Handle "Export Diagnostics" button
-    protected void OnPrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
+    private async void OnPrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
         args.Cancel = true; // Don't close dialog yet
+        if (_exportInProgress)
+            return;
 
-        _ = ExportDiagnosticsAsync();
+        var deferral = args.GetDeferral();
+        _exportInProgress = true;
+        IsPrimaryButtonEnabled = false;
+        ExportStatus.IsOpen = false;
+        try
+        {
+            var exported = await ExportDiagnosticsAsync();
+            if (exported)
+            {
+                ExportStatus.Severity = InfoBarSeverity.Success;
+                ExportStatus.Title = "Diagnostics exported";
+                ExportStatus.Message = "The ZIP archive was saved successfully.";
+                ExportStatus.IsOpen = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"Diagnostics export failed: {ex.GetType().Name}: {ex.Message}");
+            ExportStatus.Severity = InfoBarSeverity.Error;
+            ExportStatus.Title = "Diagnostics export failed";
+            ExportStatus.Message = "Choose another location and try again.";
+            ExportStatus.IsOpen = true;
+        }
+        finally
+        {
+            _exportInProgress = false;
+            IsPrimaryButtonEnabled = true;
+            deferral.Complete();
+        }
     }
 
-    private async Task ExportDiagnosticsAsync()
+    private async Task<bool> ExportDiagnosticsAsync()
     {
         var picker = new FileSavePicker
         {
             SuggestedStartLocation = PickerLocationId.Desktop,
-            SuggestedFileName = $"labtether-diagnostics-{DateTime.Now:yyyyMMdd-HHmmss}",
+            SuggestedFileName = DiagnosticsExport.CreateSuggestedFileName(DateTimeOffset.Now),
         };
         picker.FileTypeChoices.Add("ZIP Archive", [".zip"]);
 
         // WinUI 3 requires initializing the picker with the owning window handle.
-        // Use GetActiveWindow() since this ContentDialog is always shown within
-        // an active window, and the tray-only app has no persistent MainWindow.
-        var hwnd = GetActiveWindow();
-        InitializeWithWindow.Initialize(picker, hwnd);
+        // Use the exact flyout HWND. GetActiveWindow() can return a transient
+        // shell/dialog window in a tray-only process and make picker ownership
+        // nondeterministic.
+        if (_ownerWindowHandle == 0)
+            throw new InvalidOperationException("The diagnostics picker has no owner window.");
+        InitializeWithWindow.Initialize(picker, _ownerWindowHandle);
 
         var file = await picker.PickSaveFileAsync();
         if (file == null)
-            return; // User cancelled
+            return false; // User cancelled
 
         var collector = new DiagnosticsCollector(
             _appState.Settings,
@@ -80,6 +112,7 @@ public sealed partial class AboutDialog : ContentDialog
             await collector.ExportAsync(tempPath);
             var bytes = await File.ReadAllBytesAsync(tempPath);
             await Windows.Storage.FileIO.WriteBytesAsync(file, bytes);
+            return true;
         }
         finally
         {

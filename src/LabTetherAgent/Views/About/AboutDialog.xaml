@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="About LabTether Agent"
     PrimaryButtonText="Export Diagnostics"
+    PrimaryButtonClick="OnPrimaryButtonClick"
     CloseButtonText="Close"
     DefaultButton="Close">
 
@@ -65,5 +66,7 @@
             <HyperlinkButton Content="Website" NavigateUri="https://labtether.com" />
             <HyperlinkButton Content="Documentation" NavigateUri="https://labtether.com/docs" />
         </StackPanel>
+
+        <InfoBar x:Name="ExportStatus" IsOpen="False" IsClosable="True" />
     </StackPanel>
 </ContentDialog>

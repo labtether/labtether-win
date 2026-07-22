@@ -9,6 +9,7 @@ public class AgentStatus
 {
     public bool IsConnected { get; set; }
     public string HubConnectionState { get; set; } = "disconnected";
+    public string LastError { get; set; } = string.Empty;
     public string? Uptime { get; set; }
 
     // Metrics
@@ -36,6 +37,23 @@ public class AgentStatus
         MemoryTotalBytes > 0
             ? $"{MemoryUsedBytes / (1024.0 * 1024 * 1024):F1} GB"
             : $"{MemoryPercent:F0}%";
+
+    public string ConnectionDisplayText
+    {
+        get
+        {
+            if (IsConnected)
+                return "Connected";
+
+            return (HubConnectionState ?? string.Empty).Trim().ToLowerInvariant() switch
+            {
+                "connecting" => "Connecting",
+                "auth_failed" => "Authentication Failed",
+                "disconnected" or "" => "Disconnected",
+                _ => "Disconnected",
+            };
+        }
+    }
 
     /// <summary>
     /// Extract Windows-specific status from capabilities metadata.

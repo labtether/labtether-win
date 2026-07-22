@@ -11,7 +11,7 @@
         <!-- Token type selector -->
         <RadioButtons Header="Token Type">
             <RadioButton Content="Enrollment Token" IsChecked="{x:Bind ViewModel.UseEnrollmentToken, Mode=TwoWay}" />
-            <RadioButton Content="API Token" />
+            <RadioButton Content="API Token" IsChecked="{x:Bind ViewModel.UseApiToken, Mode=TwoWay}" />
         </RadioButtons>
 
         <PasswordBox Header="Token"
