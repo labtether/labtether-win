@@ -5,14 +5,11 @@
 - `tray-disconnected.svg` — Grey LT badge (agent disconnected)
 - `tray-error.svg` — Red LT badge (agent error state)
 
-## Converting to .ico (required for Windows)
-On Windows, convert SVGs to multi-resolution .ico files:
-```powershell
-# Using ImageMagick:
-magick tray-connected.svg -define icon:auto-resize=16,32,48 tray-connected.ico
-magick tray-disconnected.svg -define icon:auto-resize=16,32,48 tray-disconnected.ico
-magick tray-error.svg -define icon:auto-resize=16,32,48 tray-error.ico
-```
+The current tray runtime uses H.NotifyIcon's generated icon source so the
+connected and disconnected indicators are deterministic in every release
+payload. These SVGs remain the design sources for a future artwork-based icon;
+switching back to file-backed icons requires committing and validating the
+actual multi-resolution ICO payloads.
 
 ## MSIX Visual Assets
 The following placeholder PNGs are needed for Package.appxmanifest:

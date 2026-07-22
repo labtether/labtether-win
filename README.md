@@ -17,7 +17,19 @@ A native system tray app that connects your Windows machines to your [LabTether]
 
 ## Install
 
-Download **LabTether Agent** from [Releases](https://github.com/labtether/labtether-win/releases/latest) and run the installer. The system tray icon walks you through hub enrollment.
+Download `labtether-agent-win-x64.zip` and its `.sha256` file from
+[Releases](https://github.com/labtether/labtether-win/releases/latest). Verify
+the checksum and build provenance, then extract the Authenticode-signed app:
+
+```powershell
+$expected = ((Get-Content .\labtether-agent-win-x64.zip.sha256 -Raw).Trim() -split '\s+')[0]
+$actual = (Get-FileHash .\labtether-agent-win-x64.zip -Algorithm SHA256).Hash
+if ($actual -ne $expected) { throw "Checksum mismatch" }
+gh attestation verify .\labtether-agent-win-x64.zip -R labtether/labtether-win
+Expand-Archive .\labtether-agent-win-x64.zip .\LabTetherAgent
+```
+
+Launch `LabTetherAgent.exe`; the system tray icon walks you through hub enrollment.
 
 For detailed setup, see the [Windows agent setup guide](https://labtether.com/docs/install-upgrade/agent-install-commands-by-os).
 
@@ -25,8 +37,8 @@ For detailed setup, see the [Windows agent setup guide](https://labtether.com/do
 
 ## What It Does
 
-- **System telemetry** -- CPU, memory, disk, network, and temperature reported to your hub every heartbeat.
-- **Remote access** -- Terminal and desktop sessions from the LabTether console. No RDP configuration needed.
+- **System telemetry** -- CPU, memory, disk, and network reported to your hub every heartbeat, with temperature included when Windows exposes a usable sensor source.
+- **Remote access** -- Terminal sessions through the bundled agent. Remote desktop requires a supported local VNC server or a separately configured direct RDP connection.
 - **System tray status** -- Connection state and quick actions from the notification area.
 - **Windows services** -- Monitor and manage Windows services from the dashboard.
 - **Hyper-V monitoring** -- VM status and management for Hyper-V hosts.
@@ -44,13 +56,23 @@ For detailed setup, see the [Windows agent setup guide](https://labtether.com/do
 
 ## Build From Source
 
-Requires Visual Studio 2022+ with .NET 8 and Windows App SDK workload.
+Requires Visual Studio 2022+ with .NET 8 and the Windows App SDK workload,
+plus Go and a sibling `labtether-agent` checkout. Release builds fail closed if
+the matching Go child or its version marker is missing.
 
 ```powershell
-dotnet build src\LabTetherAgent\LabTetherAgent.csproj
+git clone https://github.com/labtether/labtether-agent ..\labtether-agent
+bash .\scripts\build-bundled-agent.sh --version dev
+msbuild src\LabTetherAgent\LabTetherAgent.csproj -t:Build -p:Configuration=Release -p:Platform=x64
+.\scripts\build-unpackaged.ps1 -Arch x64 -OutputDir build
 ```
 
-For most users, download the pre-built installer from [Releases](https://github.com/labtether/labtether-win/releases/latest) instead.
+`build-unpackaged.ps1` produces the same self-contained folder layout that the
+release workflow Authenticode-signs and packages as a ZIP. The legacy
+`build-msix.ps1` name remains as a compatibility wrapper, but it does not
+produce an MSIX.
+
+For most users, download the pre-built signed archive from [Releases](https://github.com/labtether/labtether-win/releases/latest) instead.
 
 ---
 
@@ -64,9 +86,12 @@ The agent handles enrollment, credential storage (Windows Credential Manager), a
 
 ## Uninstall
 
-1. Exit LabTether Agent from the system tray.
-2. Uninstall via **Settings > Apps > Installed apps** or **Add/Remove Programs**.
+1. Disable **Start at login** in LabTether Agent settings, then exit the tray app.
+2. Delete the directory where you extracted the release ZIP.
 3. Remove the agent from your hub's asset list via the console.
+
+For complete local-data removal, also delete `%LOCALAPPDATA%\LabTether` and
+the LabTether credentials from Windows Credential Manager.
 
 ---
 

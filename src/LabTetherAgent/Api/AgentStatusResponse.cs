@@ -7,6 +7,32 @@ namespace LabTetherAgent.Api;
 /// </summary>
 public class AgentStatusResponse
 {
+    // Current Go agent status contract.
+    [JsonPropertyName("connected")]
+    public bool? Connected { get; set; }
+
+    [JsonPropertyName("connection_state")]
+    public string ConnectionState { get; set; } = string.Empty;
+
+    [JsonPropertyName("last_error")]
+    public string LastError { get; set; } = string.Empty;
+
+    [JsonPropertyName("metrics")]
+    public AgentMetricsResponse? Metrics { get; set; }
+
+    [JsonPropertyName("agent_version")]
+    public string AgentVersion { get; set; } = string.Empty;
+
+    [JsonPropertyName("device_fingerprint")]
+    public string? DeviceFingerprint { get; set; }
+
+    [JsonPropertyName("update_available")]
+    public bool UpdateAvailable { get; set; }
+
+    [JsonPropertyName("latest_version")]
+    public string? LatestVersion { get; set; }
+
+    // Legacy flat wrapper contract, retained for backwards compatibility.
     [JsonPropertyName("hub_connection_state")]
     public string HubConnectionState { get; set; } = "disconnected";
 
@@ -39,6 +65,35 @@ public class AgentStatusResponse
 
     [JsonPropertyName("metadata")]
     public Dictionary<string, string>? Metadata { get; set; }
+
+    [JsonIgnore]
+    public string EffectiveConnectionState => !string.IsNullOrWhiteSpace(ConnectionState)
+        ? ConnectionState
+        : HubConnectionState;
+
+    [JsonIgnore]
+    public bool IsHubConnected => Connected ?? string.Equals(
+        EffectiveConnectionState,
+        "connected",
+        StringComparison.OrdinalIgnoreCase);
+}
+
+public class AgentMetricsResponse
+{
+    [JsonPropertyName("cpu_percent")]
+    public double CpuPercent { get; set; }
+
+    [JsonPropertyName("memory_percent")]
+    public double MemoryPercent { get; set; }
+
+    [JsonPropertyName("disk_percent")]
+    public double DiskPercent { get; set; }
+
+    [JsonPropertyName("net_rx_bytes_per_sec")]
+    public double NetworkRxBytesPerSec { get; set; }
+
+    [JsonPropertyName("net_tx_bytes_per_sec")]
+    public double NetworkTxBytesPerSec { get; set; }
 }
 
 public class AlertResponse
@@ -54,4 +109,10 @@ public class AlertResponse
 
     [JsonPropertyName("message")]
     public string? Message { get; set; }
+
+    [JsonPropertyName("title")]
+    public string? Title { get; set; }
+
+    [JsonPropertyName("summary")]
+    public string? Summary { get; set; }
 }

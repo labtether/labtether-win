@@ -1,5 +1,11 @@
 namespace LabTetherAgent.App;
 
+internal interface ILoginItemManager
+{
+    bool IsEnabled();
+    bool SetEnabled(bool enabled);
+}
+
 /// <summary>
 /// Manages Start at Login registration.
 ///
@@ -11,7 +17,7 @@ namespace LabTetherAgent.App;
 /// implemented when building on Windows. This file provides the
 /// interface and registry-based fallback logic.
 /// </summary>
-public class LoginItemManager
+public class LoginItemManager : ILoginItemManager
 {
     private const string RegistryRunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string AppName = "LabTetherAgent";
@@ -36,16 +42,17 @@ public class LoginItemManager
     /// <summary>
     /// Enable or disable Start at Login.
     /// </summary>
-    public void SetEnabled(bool enabled)
+    public bool SetEnabled(bool enabled)
     {
 #if WINDOWS
         if (IsPackaged())
         {
-            SetStartupTaskEnabled(enabled);
-            return;
+            return SetStartupTaskEnabled(enabled);
         }
 
-        SetRegistryRunEnabled(enabled);
+        return SetRegistryRunEnabled(enabled) && IsRegistryRunEnabled() == enabled;
+#else
+        return false;
 #endif
     }
 
@@ -70,26 +77,28 @@ public class LoginItemManager
         return key?.GetValue(AppName) != null;
     }
 
-    private static void SetRegistryRunEnabled(bool enabled)
+    private static bool SetRegistryRunEnabled(bool enabled)
     {
-        using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RegistryRunKey, writable: true);
-        if (key == null) return;
+        using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(RegistryRunKey, writable: true);
+        if (key == null) return false;
 
         if (enabled)
         {
             var exePath = Environment.ProcessPath ?? System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
-            if (exePath != null)
-                key.SetValue(AppName, $"\"{exePath}\"");
+            if (string.IsNullOrWhiteSpace(exePath))
+                return false;
+            key.SetValue(AppName, $"\"{Path.GetFullPath(exePath)}\"", Microsoft.Win32.RegistryValueKind.String);
         }
         else
         {
             key.DeleteValue(AppName, throwOnMissingValue: false);
         }
+        return true;
     }
 
     // MSIX StartupTask methods — require Windows.ApplicationModel.StartupTask
     // Stubbed here; will be fully implemented with WinRT interop on Windows.
     private static bool IsStartupTaskEnabled() => false;
-    private static void SetStartupTaskEnabled(bool enabled) { }
+    private static bool SetStartupTaskEnabled(bool enabled) => false;
 #endif
 }

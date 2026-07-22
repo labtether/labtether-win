@@ -3,7 +3,6 @@ using Microsoft.UI.Xaml.Media;
 using Windows.Graphics;
 using LabTetherAgent.App;
 using LabTetherAgent.Presentation;
-using LabTetherAgent.Services;
 
 namespace LabTetherAgent.Views.Onboarding;
 
@@ -21,7 +20,8 @@ public sealed partial class OnboardingWindow : Window
         ViewModel = new OnboardingViewModel(
             appState.Settings,
             appState.CredentialStore,
-            appState.ConnectionTester);
+            appState.ConnectionTester,
+            appState.ConnectAgentForSetupAsync);
 
         ViewModel.OnCompleted += () =>
         {
@@ -36,6 +36,7 @@ public sealed partial class OnboardingWindow : Window
             if (args.PropertyName == nameof(ViewModel.CurrentStep))
                 NavigateToStep(ViewModel.CurrentStep);
         };
+        Closed += (_, _) => ViewModel.CancelConnectionAttempt();
     }
 
     private void NavigateToStep(int step)

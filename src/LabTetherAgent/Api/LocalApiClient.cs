@@ -26,6 +26,7 @@ public class LocalApiClient : IDisposable
     private int _visibleScopeCount;
     private int _failureCount;
     private TimeSpan _currentPollingInterval;
+    private long _configurationVersion;
     private bool _disposed;
 
     private static readonly TimeSpan VisibleInterval = TimeSpan.FromSeconds(5);
@@ -55,6 +56,10 @@ public class LocalApiClient : IDisposable
     /// </summary>
     public void Configure(string port, string authToken)
     {
+        // Invalidate any request still completing against the previous child.
+        // Without this, a retry can briefly inherit an auth failure from the
+        // process that setup just replaced.
+        Interlocked.Increment(ref _configurationVersion);
         _baseUrl = $"http://127.0.0.1:{port}";
         _authToken = authToken;
         _statusETag = null;
@@ -79,6 +84,11 @@ public class LocalApiClient : IDisposable
     {
         _pollTimer?.Dispose();
         _pollTimer = null;
+        Interlocked.Increment(ref _configurationVersion);
+        // Stopping the child or its poll loop invalidates the last hub state.
+        // Leaving IsConnected true keeps the tray green for the entire crash
+        // backoff even though no local child is running.
+        SetConnected(false);
     }
 
     /// <summary>
@@ -142,16 +152,33 @@ public class LocalApiClient : IDisposable
     /// </summary>
     public async Task<AgentInfoResponse?> FetchInfoAsync()
     {
-        if (_baseUrl == null) return null;
+        var configurationVersion = Volatile.Read(ref _configurationVersion);
+        var baseUrl = _baseUrl;
+        var authToken = _authToken;
+        if (baseUrl == null) return null;
 
         try
         {
-            using var request = CreateRequest(HttpMethod.Get, "/agent/info");
+            // The Go child exposes wrapper-facing version, fingerprint, and
+            // update fields on /agent/status. /agent/info is only its generic
+            // endpoint-helper health payload (os/mode/status).
+            using var request = CreateRequest(HttpMethod.Get, "/agent/status", baseUrl, authToken);
             using var response = await _httpClient.SendAsync(request);
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var info = JsonSerializer.Deserialize<AgentInfoResponse>(json);
+            if (configurationVersion != Volatile.Read(ref _configurationVersion))
+                return null;
+            var status = JsonSerializer.Deserialize<AgentStatusResponse>(json);
+            var info = status == null
+                ? null
+                : new AgentInfoResponse
+                {
+                    Version = status.AgentVersion,
+                    Fingerprint = status.DeviceFingerprint,
+                    UpdateAvailable = status.UpdateAvailable,
+                    UpdateVersion = status.LatestVersion,
+                };
             if (info != null)
                 RaiseOnCallbackContext(() => OnInfoUpdated?.Invoke(info));
             return info;
@@ -165,12 +192,15 @@ public class LocalApiClient : IDisposable
 
     private async Task PollStatusAsync()
     {
-        if (_baseUrl == null || _disposed) return;
+        var configurationVersion = Volatile.Read(ref _configurationVersion);
+        var baseUrl = _baseUrl;
+        var authToken = _authToken;
+        if (baseUrl == null || _disposed) return;
         if (!await _pollGate.WaitAsync(0)) return;
 
         try
         {
-            using var request = CreateRequest(HttpMethod.Get, "/agent/status");
+            using var request = CreateRequest(HttpMethod.Get, "/agent/status", baseUrl, authToken);
 
             // ETag conditional request
             if (_statusETag != null)
@@ -178,10 +208,13 @@ public class LocalApiClient : IDisposable
 
             using var response = await _httpClient.SendAsync(request);
 
+            if (configurationVersion != Volatile.Read(ref _configurationVersion))
+                return;
+
             if (response.StatusCode == HttpStatusCode.NotModified)
             {
                 // Cache is still valid — update connection state but skip parsing
-                SetConnected(true);
+                SetConnected(_cachedStatus?.IsHubConnected ?? false);
                 ResetFailureBackoff();
                 return;
             }
@@ -197,7 +230,7 @@ public class LocalApiClient : IDisposable
             if (_cachedStatus != null)
             {
                 var status = MapToAgentStatus(_cachedStatus);
-                SetConnected(true);
+                SetConnected(status.IsConnected);
                 ResetFailureBackoff();
                 RaiseOnCallbackContext(() => OnStatusUpdated?.Invoke(status));
             }
@@ -264,30 +297,41 @@ public class LocalApiClient : IDisposable
     {
         var status = new AgentStatus
         {
-            IsConnected = true,
-            HubConnectionState = response.HubConnectionState,
+            IsConnected = response.IsHubConnected,
+            HubConnectionState = response.EffectiveConnectionState,
+            LastError = response.LastError,
             Uptime = response.Uptime,
-            CpuPercent = response.CpuPercent,
-            MemoryPercent = response.MemoryPercent,
+            CpuPercent = response.Metrics?.CpuPercent ?? response.CpuPercent,
+            MemoryPercent = response.Metrics?.MemoryPercent ?? response.MemoryPercent,
             MemoryUsedBytes = response.MemoryUsedBytes,
             MemoryTotalBytes = response.MemoryTotalBytes,
-            DiskPercent = response.DiskPercent,
-            NetworkRxBytesPerSec = response.NetworkRxBytesPerSec,
-            NetworkTxBytesPerSec = response.NetworkTxBytesPerSec,
+            DiskPercent = response.Metrics?.DiskPercent ?? response.DiskPercent,
+            NetworkRxBytesPerSec = (long)Math.Round(
+                response.Metrics?.NetworkRxBytesPerSec ?? response.NetworkRxBytesPerSec),
+            NetworkTxBytesPerSec = (long)Math.Round(
+                response.Metrics?.NetworkTxBytesPerSec ?? response.NetworkTxBytesPerSec),
             Metadata = response.Metadata ?? [],
             Alerts = response.Alerts?.Select(a =>
-                new AlertSnapshot(a.Name, a.State, a.Severity, a.Message)).ToList() ?? [],
+                new AlertSnapshot(
+                    string.IsNullOrWhiteSpace(a.Name) ? a.Title ?? string.Empty : a.Name,
+                    a.State ?? string.Empty,
+                    a.Severity ?? string.Empty,
+                    a.Message ?? a.Summary)).ToList() ?? [],
         };
 
         status.ExtractWindowsStatus();
         return status;
     }
 
-    private HttpRequestMessage CreateRequest(HttpMethod method, string path)
+    private static HttpRequestMessage CreateRequest(
+        HttpMethod method,
+        string path,
+        string baseUrl,
+        string? authToken)
     {
-        var request = new HttpRequestMessage(method, $"{_baseUrl}{path}");
-        if (_authToken != null)
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _authToken);
+        var request = new HttpRequestMessage(method, $"{baseUrl}{path}");
+        if (authToken != null)
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", authToken);
         return request;
     }
 

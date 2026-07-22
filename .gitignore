@@ -62,6 +62,7 @@ desktop.ini
 
 # Agent binary (downloaded at build time)
 src/LabTetherAgent/Assets/labtether-agent.exe
+src/LabTetherAgent/Assets/AGENT_VERSION
 
 # Env
 .env

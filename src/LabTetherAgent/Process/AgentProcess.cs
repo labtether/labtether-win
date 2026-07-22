@@ -57,7 +57,7 @@ public class AgentProcess : IDisposable
 
         if (!File.Exists(binaryPath))
         {
-            OnError?.Invoke($"Agent binary not found: {binaryPath}");
+            ReportError($"Agent binary not found: {binaryPath}");
             return;
         }
 
@@ -70,20 +70,7 @@ public class AgentProcess : IDisposable
         CancellationTokenSource? logCts = null;
         try
         {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = binaryPath,
-                Arguments = "--console", // force interactive mode
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                WorkingDirectory = Path.GetDirectoryName(binaryPath) ?? ".",
-            };
-
-            // Set environment variables
-            foreach (var (key, value) in environment)
-                startInfo.Environment[key] = value;
+            var startInfo = CreateStartInfo(binaryPath, environment);
 
             process = new System.Diagnostics.Process { StartInfo = startInfo, EnableRaisingEvents = true };
             process.Exited += OnProcessExited;
@@ -108,8 +95,40 @@ public class AgentProcess : IDisposable
         {
             IsStarting = false;
             CleanupFailedStart(process, logCts);
-            OnError?.Invoke($"Failed to start agent: {ex.Message}");
+            ReportError($"Failed to start agent: {ex.Message}");
         }
+    }
+
+    internal static ProcessStartInfo CreateStartInfo(
+        string binaryPath,
+        IReadOnlyDictionary<string, string> environment
+    )
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = binaryPath,
+            // A child launched by the tray app is already an interactive
+            // process, so no service or CLI runtime argument is required.
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            WorkingDirectory = Path.GetDirectoryName(binaryPath) ?? ".",
+        };
+
+        foreach (var (key, value) in environment)
+            startInfo.Environment[key] = value;
+
+        return startInfo;
+    }
+
+    /// <summary>
+    /// Record and publish a lifecycle error even when no child process could be started.
+    /// </summary>
+    public void ReportError(string message)
+    {
+        LogReader.AppendRaw(message);
+        OnError?.Invoke(message);
     }
 
     /// <summary>

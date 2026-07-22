@@ -62,7 +62,86 @@ public class AgentSettings
     [JsonIgnore]
     public bool IsEnrolled =>
         SettingsValidator.IsValidHubUrl(HubUrl) &&
-        (SettingsValidator.IsValidToken(ApiToken) || SettingsValidator.IsValidToken(EnrollmentToken));
+        MinimumCredentialConfigured(ApiToken, EnrollmentToken, HasPersistedAgentToken);
+
+    /// <summary>
+    /// Whether the Go child has persisted its durable, asset-bound bearer.
+    /// This is authoritative after one-use enrollment and must survive native
+    /// wrapper relaunches without retaining the consumed enrollment secret.
+    /// </summary>
+    [JsonIgnore]
+    public bool HasPersistedAgentToken => HasPrivatePersistedAgentTokenAt(
+        Path.Combine(SettingsDir, "agent-token"));
+
+    internal static bool MinimumCredentialConfigured(
+        string apiToken,
+        string enrollmentToken,
+        bool hasPersistedAgentToken) =>
+        SettingsValidator.IsValidToken(apiToken) ||
+        SettingsValidator.IsValidToken(enrollmentToken) ||
+        hasPersistedAgentToken;
+
+    internal static bool HasPrivatePersistedAgentTokenAt(string path) =>
+        SecureFile.IsPrivateRegularFile(path);
+
+    /// <summary>
+    /// Remove a consumed one-use enrollment secret while preserving the
+    /// durable bearer written by the Go child.
+    /// </summary>
+    public bool ClearConsumedEnrollmentTokenPreservingAgentToken(CredentialStore credentialStore)
+    {
+        if (!HasPersistedAgentToken || string.IsNullOrWhiteSpace(EnrollmentToken))
+            return false;
+
+        credentialStore.Remove(CredentialStore.EnrollmentTokenResource);
+        EnrollmentToken = string.Empty;
+        SecureFile.DeleteIfExists(Path.Combine(SettingsDir, "enrollment-token"));
+        SecureFile.DeleteIfExists(Path.Combine(SettingsDir, "enrollment-token.sha256"));
+        return true;
+    }
+
+    /// <summary>
+    /// Clear the one-time group placement requested during enrollment after a
+    /// durable credential exists. The Hub's stored asset placement is now
+    /// authoritative; omitting AGENT_GROUP_ID from later heartbeats preserves
+    /// that placement and avoids reviving a group that was renamed or removed.
+    /// </summary>
+    public bool ClearPersistedGroupIntentAfterEnrollment() =>
+        ClearPersistedGroupIntentAfterEnrollmentAt(
+            Path.Combine(SettingsDir, "agent-token"),
+            Save);
+
+    internal bool ClearPersistedGroupIntentAfterEnrollmentAt(
+        string agentTokenPath,
+        Action persist)
+    {
+        ArgumentNullException.ThrowIfNull(persist);
+        // A configured enrollment token may be a deliberate re-enrollment
+        // against an existing durable installation. Preserve its new group
+        // intent until the child replaces the durable credential and the
+        // completion path clears the consumed token first.
+        if (!string.IsNullOrWhiteSpace(EnrollmentToken) ||
+            !HasPrivatePersistedAgentTokenAt(agentTokenPath) ||
+            string.IsNullOrWhiteSpace(GroupId))
+        {
+            return false;
+        }
+
+        // Clear in memory before persisting so this process fails safe even if
+        // a transient filesystem error prevents the migration from being
+        // committed. A later launch will retry the persisted migration, while
+        // AgentEnvironmentBuilder still refuses to export durable stale intent.
+        GroupId = string.Empty;
+        persist();
+        return true;
+    }
+
+    /// <summary>Remove the per-process localhost API credential after stop.</summary>
+    public void CleanupEphemeralSecrets()
+    {
+        LocalApiAuthToken = string.Empty;
+        SecureFile.DeleteIfExists(Path.Combine(SettingsDir, "local-api-auth-token"));
+    }
 
     public void IncrementVersion() => SettingsVersion++;
 
@@ -77,7 +156,7 @@ public class AgentSettings
             WriteIndented = true,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault
         });
-        File.WriteAllText(SettingsPath, json);
+        SecureFile.WriteAllText(SettingsPath, json);
         IncrementVersion();
     }
 
@@ -97,4 +176,47 @@ public class AgentSettings
     /// Get the settings directory path.
     /// </summary>
     public static string GetSettingsDirectory() => SettingsDir;
+
+    internal static string GetSettingsPath() => SettingsPath;
+
+    /// <summary>
+    /// Create an independent setup candidate. Secrets are copied in memory so
+    /// onboarding can replace them without mutating the active installation.
+    /// </summary>
+    internal AgentSettings CloneForSetup() => (AgentSettings)MemberwiseClone();
+
+    /// <summary>
+    /// Publish an already-persisted setup candidate into the long-lived app
+    /// state. This is deliberately separate from Save so failed setup never
+    /// makes partially entered values appear active in the tray UI.
+    /// </summary>
+    internal void ApplyCommittedSetup(AgentSettings source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        HubUrl = source.HubUrl;
+        AssetId = source.AssetId;
+        GroupId = source.GroupId;
+        AgentPort = source.AgentPort;
+        TlsSkipVerify = source.TlsSkipVerify;
+        TlsCaFile = source.TlsCaFile;
+        DockerEnabled = source.DockerEnabled;
+        DockerEndpoint = source.DockerEndpoint;
+        DockerDiscoveryInterval = source.DockerDiscoveryInterval;
+        FilesRootMode = source.FilesRootMode;
+        AutoUpdateEnabled = source.AutoUpdateEnabled;
+        AllowRemoteOverrides = source.AllowRemoteOverrides;
+        LowPowerMode = source.LowPowerMode;
+        StartAtLogin = source.StartAtLogin;
+        LogLevel = source.LogLevel;
+        WebRtcEnabled = source.WebRtcEnabled;
+        WebRtcStunUrl = source.WebRtcStunUrl;
+        WebRtcTurnUrl = source.WebRtcTurnUrl;
+        WebRtcTurnUser = source.WebRtcTurnUser;
+        ApiToken = source.ApiToken;
+        EnrollmentToken = source.EnrollmentToken;
+        WebRtcTurnPass = source.WebRtcTurnPass;
+        LocalApiAuthToken = source.LocalApiAuthToken;
+        SettingsVersion = source.SettingsVersion;
+    }
 }

@@ -5,35 +5,37 @@
 
     <StackPanel Spacing="16" VerticalAlignment="Center" Padding="0,0,0,48">
         <TextBlock Text="Step 3: Identity &amp; Connect" FontSize="18" FontWeight="SemiBold" />
-        <TextBlock Text="Optionally set an asset ID and group, then connect."
+        <TextBlock Text="Optionally set an asset ID and, for enrollment tokens, an initial group."
                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
 
         <TextBox Header="Asset ID (optional)"
                  PlaceholderText="Defaults to hostname"
                  Text="{x:Bind ViewModel.AssetId, Mode=TwoWay}" />
 
-        <TextBox Header="Group ID (optional)"
-                 PlaceholderText="Leave empty for default group"
+        <TextBox Header="Initial Group ID (enrollment token only, optional)"
+                 PlaceholderText="Leave empty for no initial group"
+                 IsEnabled="{x:Bind ViewModel.CanSetGroupId, Mode=OneWay}"
                  Text="{x:Bind ViewModel.GroupId, Mode=TwoWay}" />
 
         <!-- Connection progress -->
         <StackPanel Visibility="{x:Bind ViewModel.IsConnecting, Mode=OneWay}"
                     Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center" Margin="0,16,0,0">
             <ProgressRing IsActive="True" Width="24" Height="24" />
-            <TextBlock Text="Connecting to hub..." VerticalAlignment="Center" />
+            <TextBlock Text="Starting agent and verifying authenticated enrollment..."
+                       VerticalAlignment="Center" TextWrapping="Wrap" />
         </StackPanel>
 
         <!-- Success -->
         <StackPanel Visibility="{x:Bind ViewModel.IsConnected, Mode=OneWay}"
                     HorizontalAlignment="Center" Spacing="8" Margin="0,16,0,0">
             <FontIcon Glyph="&#xE73E;" FontSize="32" Foreground="Green" HorizontalAlignment="Center" />
-            <TextBlock Text="Connected successfully!" FontWeight="SemiBold" HorizontalAlignment="Center" />
+            <TextBlock Text="Agent enrolled and connected." FontWeight="SemiBold" HorizontalAlignment="Center" />
         </StackPanel>
 
         <!-- Error -->
         <InfoBar IsOpen="{x:Bind ViewModel.ConnectionError, Mode=OneWay, Converter={StaticResource StringToBoolConverter}}"
                  Severity="Error"
-                 Title="Connection Failed"
+                 Title="Setup Failed"
                  Message="{x:Bind ViewModel.ConnectionError, Mode=OneWay}" />
     </StackPanel>
 </Page>

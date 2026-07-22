@@ -4,6 +4,26 @@ namespace LabTetherAgent.Tests.State;
 
 public class AgentStatusTests
 {
+    [Theory]
+    [InlineData(false, "connecting", "Connecting")]
+    [InlineData(false, "auth_failed", "Authentication Failed")]
+    [InlineData(false, "disconnected", "Disconnected")]
+    [InlineData(false, "unexpected_internal_state", "Disconnected")]
+    [InlineData(true, "connecting", "Connected")]
+    public void ConnectionDisplayTextPreservesActionableKnownStates(
+        bool connected,
+        string state,
+        string expected)
+    {
+        var status = new AgentStatus
+        {
+            IsConnected = connected,
+            HubConnectionState = state,
+        };
+
+        Assert.Equal(expected, status.ConnectionDisplayText);
+    }
+
     [Fact]
     public void ExtractWindowsStatus_HyperVEnabled()
     {

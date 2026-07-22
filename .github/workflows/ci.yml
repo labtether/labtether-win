@@ -11,18 +11,54 @@ jobs:
   build-and-test:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - name: Check out bundled agent core
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          repository: labtether/labtether-agent
+          ref: main
+          path: agent-core
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: agent-core/go.mod
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         with:
           dotnet-version: '8.0.x'
       # WinUI/MSIX projects use MSBuild tasks that ship with Visual Studio,
       # not the bare dotnet SDK. setup-msbuild puts the VS MSBuild on PATH
       # so the PRI/AppxPackage tasks resolve during restore and build.
-      # (Release.yml uses the same pattern to produce MSIX artifacts.)
-      - uses: microsoft/setup-msbuild@v2
+      # (Release.yml uses the same pattern to publish the Windows payload.)
+      - uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce # v2
+      - name: Build bundled Go agent core
+        shell: bash
+        run: >-
+          ./scripts/build-bundled-agent.sh
+          --agent-repo "${GITHUB_WORKSPACE}/agent-core"
+          --version "ci-${GITHUB_SHA}"
       - name: Restore
         run: msbuild tests/LabTetherAgent.Tests/LabTetherAgent.Tests.csproj -t:Restore -p:Platform=x64 -p:Configuration=Debug
       - name: Build
-        run: msbuild tests/LabTetherAgent.Tests/LabTetherAgent.Tests.csproj -t:Build -p:Platform=x64 -p:Configuration=Debug -p:EnableMsixTooling=false -p:WindowsPackageType=None -p:GenerateAppxPackageOnBuild=false
+        run: msbuild tests/LabTetherAgent.Tests/LabTetherAgent.Tests.csproj -t:Build -p:Platform=x64 -p:Configuration=Debug -p:EnableMsixTooling=false -p:WindowsPackageType=None -p:GenerateAppxPackageOnBuild=false -p:RequireBundledAgent=true
       - name: Test
         run: dotnet test --no-build --no-restore tests/LabTetherAgent.Tests/LabTetherAgent.Tests.csproj -p:Platform=x64 -c Debug
+      - name: Validate bundled child in build output
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $children = @(Get-ChildItem -Path "src/LabTetherAgent/bin" -Filter "labtether-agent.exe" -File -Recurse)
+          if ($children.Count -eq 0) {
+            throw "Build output does not contain Assets/labtether-agent.exe."
+          }
+          foreach ($child in $children) {
+            if ($child.Directory.Name -ne "Assets") {
+              throw "Bundled child was copied to an unexpected location: $($child.FullName)"
+            }
+            $help = & $child.FullName help
+            $expectedHelp = "labtether-agent ci-$env:GITHUB_SHA"
+            if ($LASTEXITCODE -ne 0 -or @($help)[0] -ne $expectedHelp) {
+              throw "Bundled child failed its help smoke test: $($child.FullName)"
+            }
+          }
