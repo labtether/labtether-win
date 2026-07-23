@@ -43,6 +43,8 @@ public static class AgentEnvironmentBuilder
             var apiBase = SettingsValidator.DeriveApiBaseUrl(wsUrl);
             if (!string.IsNullOrEmpty(apiBase))
                 env["LABTETHER_API_BASE_URL"] = apiBase;
+            if (IsLoopbackHub(wsUrl))
+                env["LABTETHER_OUTBOUND_ALLOW_LOOPBACK"] = "true";
         }
 
         // Identity
@@ -175,5 +177,13 @@ public static class AgentEnvironmentBuilder
         env["LABTETHER_PARENT_PID"] = Environment.ProcessId.ToString();
 
         return env;
+    }
+
+    private static bool IsLoopbackHub(string wsUrl)
+    {
+        if (!Uri.TryCreate(wsUrl, UriKind.Absolute, out var uri))
+            return false;
+        return string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase)
+            || System.Net.IPAddress.TryParse(uri.Host, out var ipAddress) && System.Net.IPAddress.IsLoopback(ipAddress);
     }
 }
