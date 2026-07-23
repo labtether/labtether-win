@@ -66,6 +66,9 @@ fi
 
 publisher="$SCRIPT_DIR/publish-windows-release.sh"
 signer="$SCRIPT_DIR/sign-windows-release.sh"
+unsigned_preparer="$SCRIPT_DIR/prepare-unsigned-windows-release.ps1"
+grep -Fq '$PublishedFileRecords += [pscustomobject][ordered]@{' "$unsigned_preparer" \
+  || die "unsigned Windows preparer must emit object records for property-safe provenance aggregation"
 grep -Fq 'signing requires exact --confirm-sign TAG confirmation' "$signer" || die "signer lacks its separate exact confirmation"
 grep -Fq -- '--confirm-draft TAG | --confirm-publish TAG' "$publisher" || die "publisher lacks separate draft and publish confirmations"
 grep -Fq 'draft creation and publication require separate invocations' "$publisher" || die "publisher does not reject combined confirmations"
