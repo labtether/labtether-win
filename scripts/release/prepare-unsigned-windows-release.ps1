@@ -278,26 +278,31 @@ try {
         published_bytes = $PublishedBytes
         prepared_at = [DateTimeOffset]::UtcNow.ToString("o")
     }
-    $Provenance | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $PublishRoot "release-provenance.json") -Encoding UTF8
+    $ProvenancePath = Join-Path $PublishRoot "release-provenance.json"
+    $Provenance | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $ProvenancePath -Encoding UTF8
 
     $TemporaryArchive = Join-Path $WorkRoot $UnsignedArchiveName
+    function Add-ReleaseArchiveFile([IO.Compression.ZipArchive]$Archive, [string]$EntryName, [string]$SourcePath) {
+        $Entry = $Archive.CreateEntry($EntryName, [IO.Compression.CompressionLevel]::Optimal)
+        $EntryStream = $Entry.Open()
+        $SourceStream = [IO.File]::Open($SourcePath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+        try {
+            $SourceStream.CopyTo($EntryStream)
+        }
+        finally {
+            $SourceStream.Dispose()
+            $EntryStream.Dispose()
+        }
+    }
     $ArchiveStream = [IO.File]::Open($TemporaryArchive, [IO.FileMode]::CreateNew, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
     try {
         $Archive = [IO.Compression.ZipArchive]::new($ArchiveStream, [IO.Compression.ZipArchiveMode]::Create, $true)
         try {
             foreach ($PublishedRecord in $PublishedFileRecords) {
                 $SourcePath = Join-Path $PublishRoot ($PublishedRecord.path.Replace('/', '\'))
-                $Entry = $Archive.CreateEntry([string]$PublishedRecord.path, [IO.Compression.CompressionLevel]::Optimal)
-                $EntryStream = $Entry.Open()
-                $SourceStream = [IO.File]::Open($SourcePath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
-                try {
-                    $SourceStream.CopyTo($EntryStream)
-                }
-                finally {
-                    $SourceStream.Dispose()
-                    $EntryStream.Dispose()
-                }
+                Add-ReleaseArchiveFile $Archive ([string]$PublishedRecord.path) $SourcePath
             }
+            Add-ReleaseArchiveFile $Archive "release-provenance.json" $ProvenancePath
         }
         finally {
             $Archive.Dispose()
