@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import stat
+import struct
 import tempfile
 import warnings
 import zipfile
+from binascii import crc32
 from pathlib import Path
 
 from safe_extract_windows_release import ArchivePolicyError, extract_archive, validate_archive
@@ -20,6 +22,66 @@ def write_archive(path: Path, entries: list[tuple[zipfile.ZipInfo | str, bytes]]
                 archive.writestr(name, content)
 
 
+def write_single_raw_name_archive(path: Path, name: str, content: bytes) -> None:
+    name_bytes = name.encode("utf-8")
+    checksum = crc32(content) & 0xFFFFFFFF
+    local_header = struct.pack(
+        "<IHHHHHIIIHH",
+        0x04034B50,
+        20,
+        0,
+        0,
+        0,
+        0,
+        checksum,
+        len(content),
+        len(content),
+        len(name_bytes),
+        0,
+    )
+    central_offset = len(local_header) + len(name_bytes) + len(content)
+    central_header = struct.pack(
+        "<IHHHHHHIIIHHHHHII",
+        0x02014B50,
+        20,
+        20,
+        0,
+        0,
+        0,
+        0,
+        checksum,
+        len(content),
+        len(content),
+        len(name_bytes),
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    )
+    central_size = len(central_header) + len(name_bytes)
+    end_record = struct.pack(
+        "<IHHHHIIH",
+        0x06054B50,
+        0,
+        0,
+        1,
+        1,
+        central_size,
+        central_offset,
+        0,
+    )
+    path.write_bytes(
+        local_header
+        + name_bytes
+        + content
+        + central_header
+        + name_bytes
+        + end_record
+    )
+
+
 def expect_rejection(
     label: str,
     entries: list[tuple[zipfile.ZipInfo | str, bytes]],
@@ -27,21 +89,14 @@ def expect_rejection(
 ) -> None:
     with tempfile.TemporaryDirectory(prefix="labtether-archive-policy-") as temporary:
         archive_path = Path(temporary, "fixture.zip")
-        write_archive(archive_path, entries)
         if expected_raw_name is not None:
+            write_single_raw_name_archive(archive_path, expected_raw_name, b"x")
             with zipfile.ZipFile(archive_path, "r") as archive:
                 names = [entry.filename for entry in archive.infolist()]
             if expected_raw_name not in names:
-                normalized_name = expected_raw_name.replace("\\", "/")
-                raw = archive_path.read_bytes()
-                patched = raw.replace(normalized_name.encode(), expected_raw_name.encode())
-                if patched == raw:
-                    raise AssertionError(f"archive fixture lost its raw path: {label}")
-                archive_path.write_bytes(patched)
-                with zipfile.ZipFile(archive_path, "r") as archive:
-                    names = [entry.filename for entry in archive.infolist()]
-                if expected_raw_name not in names:
-                    raise AssertionError(f"archive fixture lost its raw path: {label}")
+                raise AssertionError(f"archive fixture lost its raw path: {label}")
+        else:
+            write_archive(archive_path, entries)
         try:
             validate_archive(archive_path)
         except ArchivePolicyError:
