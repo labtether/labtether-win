@@ -18,18 +18,130 @@ public partial class SettingsViewModel : ObservableObject
     private readonly ILoginItemManager _loginItemManager;
     private readonly Action<AgentSettings, CredentialStore> _persistSettings;
 
-    [ObservableProperty] private string _hubUrl = string.Empty;
-    [ObservableProperty] private bool _startAtLogin;
-    [ObservableProperty] private bool _lowPowerMode;
-    [ObservableProperty] private string _dockerEndpoint = string.Empty;
-    [ObservableProperty] private string _dockerDiscoveryInterval = "30";
-    [ObservableProperty] private bool _webRtcEnabled = true;
-    [ObservableProperty] private bool _allowRemoteOverrides;
-    [ObservableProperty] private bool _tlsSkipVerify;
-    [ObservableProperty] private string _tlsCaFile = string.Empty;
-    [ObservableProperty] private string _logLevel = "info";
-    [ObservableProperty] private bool _isDirty;
-    [ObservableProperty] private string? _saveError;
+    private string _hubUrl = string.Empty;
+    private bool _startAtLogin;
+    private bool _lowPowerMode;
+    private string _dockerEndpoint = string.Empty;
+    private string _dockerDiscoveryInterval = "30";
+    private bool _webRtcEnabled = true;
+    private bool _allowRemoteOverrides;
+    private bool _tlsSkipVerify;
+    private string _tlsCaFile = string.Empty;
+    private string _logLevel = "info";
+    private bool _isDirty;
+    private string? _saveError;
+
+    public string HubUrl
+    {
+        get => _hubUrl;
+        set
+        {
+            if (SetProperty(ref _hubUrl, value))
+                OnHubUrlChanged(value);
+        }
+    }
+
+    public bool StartAtLogin
+    {
+        get => _startAtLogin;
+        set
+        {
+            if (SetProperty(ref _startAtLogin, value))
+                OnStartAtLoginChanged(value);
+        }
+    }
+
+    public bool LowPowerMode
+    {
+        get => _lowPowerMode;
+        set
+        {
+            if (SetProperty(ref _lowPowerMode, value))
+                OnLowPowerModeChanged(value);
+        }
+    }
+
+    public string DockerEndpoint
+    {
+        get => _dockerEndpoint;
+        set
+        {
+            if (SetProperty(ref _dockerEndpoint, value))
+                OnDockerEndpointChanged(value);
+        }
+    }
+
+    public string DockerDiscoveryInterval
+    {
+        get => _dockerDiscoveryInterval;
+        set
+        {
+            if (SetProperty(ref _dockerDiscoveryInterval, value))
+                OnDockerDiscoveryIntervalChanged(value);
+        }
+    }
+
+    public bool WebRtcEnabled
+    {
+        get => _webRtcEnabled;
+        set
+        {
+            if (SetProperty(ref _webRtcEnabled, value))
+                OnWebRtcEnabledChanged(value);
+        }
+    }
+
+    public bool AllowRemoteOverrides
+    {
+        get => _allowRemoteOverrides;
+        set
+        {
+            if (SetProperty(ref _allowRemoteOverrides, value))
+                OnAllowRemoteOverridesChanged(value);
+        }
+    }
+
+    public bool TlsSkipVerify
+    {
+        get => _tlsSkipVerify;
+        set
+        {
+            if (SetProperty(ref _tlsSkipVerify, value))
+                OnTlsSkipVerifyChanged(value);
+        }
+    }
+
+    public string TlsCaFile
+    {
+        get => _tlsCaFile;
+        set
+        {
+            if (SetProperty(ref _tlsCaFile, value))
+                OnTlsCaFileChanged(value);
+        }
+    }
+
+    public string LogLevel
+    {
+        get => _logLevel;
+        set
+        {
+            if (SetProperty(ref _logLevel, value))
+                OnLogLevelChanged(value);
+        }
+    }
+
+    public bool IsDirty
+    {
+        get => _isDirty;
+        set => SetProperty(ref _isDirty, value);
+    }
+
+    public string? SaveError
+    {
+        get => _saveError;
+        set => SetProperty(ref _saveError, value);
+    }
 
     public event Action? OnSaved;
     public event Action? OnRestartRequired;
@@ -97,16 +209,16 @@ public partial class SettingsViewModel : ObservableObject
     }
 
     // Track changes via partial methods
-    partial void OnHubUrlChanged(string value) => IsDirty = true;
-    partial void OnStartAtLoginChanged(bool value) => IsDirty = true;
-    partial void OnLowPowerModeChanged(bool value) => IsDirty = true;
-    partial void OnDockerEndpointChanged(string value) => IsDirty = true;
-    partial void OnDockerDiscoveryIntervalChanged(string value) => IsDirty = true;
-    partial void OnWebRtcEnabledChanged(bool value) => IsDirty = true;
-    partial void OnAllowRemoteOverridesChanged(bool value) => IsDirty = true;
-    partial void OnTlsSkipVerifyChanged(bool value) => IsDirty = true;
-    partial void OnTlsCaFileChanged(string value) => IsDirty = true;
-    partial void OnLogLevelChanged(string value) => IsDirty = true;
+    private void OnHubUrlChanged(string value) => IsDirty = true;
+    private void OnStartAtLoginChanged(bool value) => IsDirty = true;
+    private void OnLowPowerModeChanged(bool value) => IsDirty = true;
+    private void OnDockerEndpointChanged(string value) => IsDirty = true;
+    private void OnDockerDiscoveryIntervalChanged(string value) => IsDirty = true;
+    private void OnWebRtcEnabledChanged(bool value) => IsDirty = true;
+    private void OnAllowRemoteOverridesChanged(bool value) => IsDirty = true;
+    private void OnTlsSkipVerifyChanged(bool value) => IsDirty = true;
+    private void OnTlsCaFileChanged(string value) => IsDirty = true;
+    private void OnLogLevelChanged(string value) => IsDirty = true;
 
     [RelayCommand]
     private void Save()

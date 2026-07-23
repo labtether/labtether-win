@@ -19,19 +19,97 @@ public partial class FlyoutViewModel : ObservableObject, IDisposable
     private IDisposable? _visibleScope;
     private bool _disposed;
 
-    [ObservableProperty] private bool _isConnected;
-    [ObservableProperty] private string _connectionState = "Disconnected";
-    [ObservableProperty] private double _cpuPercent;
-    [ObservableProperty] private string _memoryText = "--";
-    [ObservableProperty] private double _diskPercent;
-    [ObservableProperty] private string _hubUrl = "--";
-    [ObservableProperty] private string _uptime = "--";
-    [ObservableProperty] private List<AlertSnapshot> _firingAlerts = [];
-    [ObservableProperty] private bool _hasAlerts;
-    [ObservableProperty] private HyperVStatus? _hyperVStatus;
-    [ObservableProperty] private WindowsUpdateStatus? _windowsUpdateStatus;
-    [ObservableProperty] private bool _hasHyperV;
-    [ObservableProperty] private bool _hasWindowsUpdates;
+    private bool _isConnected;
+    private string _connectionState = "Disconnected";
+    private double _cpuPercent;
+    private string _memoryText = "--";
+    private double _diskPercent;
+    private string _hubUrl = "--";
+    private string _uptime = "--";
+    private List<AlertSnapshot> _firingAlerts = [];
+    private bool _hasAlerts;
+    private HyperVStatus? _hyperVStatus;
+    private WindowsUpdateStatus? _windowsUpdateStatus;
+    private bool _hasHyperV;
+    private bool _hasWindowsUpdates;
+
+    public bool IsConnected
+    {
+        get => _isConnected;
+        set => SetProperty(ref _isConnected, value);
+    }
+
+    public string ConnectionState
+    {
+        get => _connectionState;
+        set => SetProperty(ref _connectionState, value);
+    }
+
+    public double CpuPercent
+    {
+        get => _cpuPercent;
+        set => SetProperty(ref _cpuPercent, value);
+    }
+
+    public string MemoryText
+    {
+        get => _memoryText;
+        set => SetProperty(ref _memoryText, value);
+    }
+
+    public double DiskPercent
+    {
+        get => _diskPercent;
+        set => SetProperty(ref _diskPercent, value);
+    }
+
+    public string HubUrl
+    {
+        get => _hubUrl;
+        set => SetProperty(ref _hubUrl, value);
+    }
+
+    public string Uptime
+    {
+        get => _uptime;
+        set => SetProperty(ref _uptime, value);
+    }
+
+    public List<AlertSnapshot> FiringAlerts
+    {
+        get => _firingAlerts;
+        set => SetProperty(ref _firingAlerts, value);
+    }
+
+    public bool HasAlerts
+    {
+        get => _hasAlerts;
+        set => SetProperty(ref _hasAlerts, value);
+    }
+
+    public HyperVStatus? HyperVStatus
+    {
+        get => _hyperVStatus;
+        set => SetProperty(ref _hyperVStatus, value);
+    }
+
+    public WindowsUpdateStatus? WindowsUpdateStatus
+    {
+        get => _windowsUpdateStatus;
+        set => SetProperty(ref _windowsUpdateStatus, value);
+    }
+
+    public bool HasHyperV
+    {
+        get => _hasHyperV;
+        set => SetProperty(ref _hasHyperV, value);
+    }
+
+    public bool HasWindowsUpdates
+    {
+        get => _hasWindowsUpdates;
+        set => SetProperty(ref _hasWindowsUpdates, value);
+    }
 
     public FlyoutViewModel(LocalApiClient apiClient)
     {

@@ -16,31 +16,163 @@ public partial class OnboardingViewModel : ObservableObject
     private readonly Func<AgentSettings, bool, CancellationToken, Task<AgentConnectionAttemptResult>> _connectAgent;
     private CancellationTokenSource? _connectionAttempt;
 
-    [ObservableProperty] private int _currentStep = 1;
-    [ObservableProperty] private bool _canGoNext;
-    [ObservableProperty] private bool _canGoBack;
+    private int _currentStep = 1;
+    private bool _canGoNext;
+    private bool _canGoBack;
 
     // Step 1
-    [ObservableProperty] private string _hubUrl = "https://";
-    [ObservableProperty] private bool _isHubUrlValid;
-    [ObservableProperty] private string? _hubUrlError;
+    private string _hubUrl = "https://";
+    private bool _isHubUrlValid;
+    private string? _hubUrlError;
 
     // Step 2
-    [ObservableProperty] private bool _useEnrollmentToken = true;
-    [ObservableProperty] private string _token = string.Empty;
-    [ObservableProperty] private bool _isTokenValid;
+    private bool _useEnrollmentToken = true;
+    private string _token = string.Empty;
+    private bool _isTokenValid;
 
     // Step 3
-    [ObservableProperty] private string _assetId = string.Empty;
-    [ObservableProperty] private string _groupId = string.Empty;
-    [ObservableProperty] private bool _isConnecting;
-    [ObservableProperty] private bool _isConnected;
-    [ObservableProperty] private string? _connectionError;
+    private string _assetId = string.Empty;
+    private string _groupId = string.Empty;
+    private bool _isConnecting;
+    private bool _isConnected;
+    private string? _connectionError;
 
     // TLS trust — off by default. Must be explicitly enabled by the user for
     // self-signed homelab certificates. Flows into _settings.TlsSkipVerify on Finish.
-    [ObservableProperty] private bool _tlsSkipVerify;
-    [ObservableProperty] private string _tlsCaFile = string.Empty;
+    private bool _tlsSkipVerify;
+    private string _tlsCaFile = string.Empty;
+
+    public int CurrentStep
+    {
+        get => _currentStep;
+        set
+        {
+            if (SetProperty(ref _currentStep, value))
+                OnCurrentStepChanged(value);
+        }
+    }
+
+    public bool CanGoNext
+    {
+        get => _canGoNext;
+        set => SetProperty(ref _canGoNext, value);
+    }
+
+    public bool CanGoBack
+    {
+        get => _canGoBack;
+        set => SetProperty(ref _canGoBack, value);
+    }
+
+    public string HubUrl
+    {
+        get => _hubUrl;
+        set
+        {
+            if (SetProperty(ref _hubUrl, value))
+                OnHubUrlChanged(value);
+        }
+    }
+
+    public bool IsHubUrlValid
+    {
+        get => _isHubUrlValid;
+        set => SetProperty(ref _isHubUrlValid, value);
+    }
+
+    public string? HubUrlError
+    {
+        get => _hubUrlError;
+        set => SetProperty(ref _hubUrlError, value);
+    }
+
+    public bool UseEnrollmentToken
+    {
+        get => _useEnrollmentToken;
+        set
+        {
+            if (SetProperty(ref _useEnrollmentToken, value))
+                OnUseEnrollmentTokenChanged(value);
+        }
+    }
+
+    public string Token
+    {
+        get => _token;
+        set
+        {
+            if (SetProperty(ref _token, value))
+                OnTokenChanged(value);
+        }
+    }
+
+    public bool IsTokenValid
+    {
+        get => _isTokenValid;
+        set => SetProperty(ref _isTokenValid, value);
+    }
+
+    public string AssetId
+    {
+        get => _assetId;
+        set
+        {
+            if (SetProperty(ref _assetId, value))
+                OnAssetIdChanged(value);
+        }
+    }
+
+    public string GroupId
+    {
+        get => _groupId;
+        set
+        {
+            if (SetProperty(ref _groupId, value))
+                OnGroupIdChanged(value);
+        }
+    }
+
+    public bool IsConnecting
+    {
+        get => _isConnecting;
+        set
+        {
+            if (SetProperty(ref _isConnecting, value))
+                OnIsConnectingChanged(value);
+        }
+    }
+
+    public bool IsConnected
+    {
+        get => _isConnected;
+        set => SetProperty(ref _isConnected, value);
+    }
+
+    public string? ConnectionError
+    {
+        get => _connectionError;
+        set => SetProperty(ref _connectionError, value);
+    }
+
+    public bool TlsSkipVerify
+    {
+        get => _tlsSkipVerify;
+        set
+        {
+            if (SetProperty(ref _tlsSkipVerify, value))
+                OnTlsSkipVerifyChanged(value);
+        }
+    }
+
+    public string TlsCaFile
+    {
+        get => _tlsCaFile;
+        set
+        {
+            if (SetProperty(ref _tlsCaFile, value))
+                OnTlsCaFileChanged(value);
+        }
+    }
 
     public event Action? OnCompleted;
 
@@ -74,7 +206,7 @@ public partial class OnboardingViewModel : ObservableObject
         UpdateNavigationState();
     }
 
-    partial void OnHubUrlChanged(string value)
+    private void OnHubUrlChanged(string value)
     {
         ClearConnectionOutcome();
         IsHubUrlValid = SettingsValidator.IsValidHubUrl(value);
@@ -82,14 +214,14 @@ public partial class OnboardingViewModel : ObservableObject
         UpdateNavigationState();
     }
 
-    partial void OnTokenChanged(string value)
+    private void OnTokenChanged(string value)
     {
         ClearConnectionOutcome();
         IsTokenValid = SettingsValidator.IsValidToken(value);
         UpdateNavigationState();
     }
 
-    partial void OnUseEnrollmentTokenChanged(bool value)
+    private void OnUseEnrollmentTokenChanged(bool value)
     {
         ClearConnectionOutcome();
         OnPropertyChanged(nameof(UseApiToken));
@@ -119,15 +251,15 @@ public partial class OnboardingViewModel : ObservableObject
 
     public bool CanSetGroupId => UseEnrollmentToken;
 
-    partial void OnAssetIdChanged(string value) => ClearConnectionOutcome();
+    private void OnAssetIdChanged(string value) => ClearConnectionOutcome();
 
-    partial void OnGroupIdChanged(string value) => ClearConnectionOutcome();
+    private void OnGroupIdChanged(string value) => ClearConnectionOutcome();
 
-    partial void OnTlsSkipVerifyChanged(bool value) => ClearConnectionOutcome();
+    private void OnTlsSkipVerifyChanged(bool value) => ClearConnectionOutcome();
 
-    partial void OnTlsCaFileChanged(string value) => ClearConnectionOutcome();
+    private void OnTlsCaFileChanged(string value) => ClearConnectionOutcome();
 
-    partial void OnCurrentStepChanged(int value)
+    private void OnCurrentStepChanged(int value)
     {
         // A failure belongs to the exact values submitted on the final step.
         // Do not carry that banner back through the wizard or show it again
@@ -136,7 +268,7 @@ public partial class OnboardingViewModel : ObservableObject
         UpdateNavigationState();
     }
 
-    partial void OnIsConnectingChanged(bool value)
+    private void OnIsConnectingChanged(bool value)
     {
         OnPropertyChanged(nameof(CanFinish));
         UpdateNavigationState();
