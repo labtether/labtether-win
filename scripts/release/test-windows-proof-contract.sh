@@ -64,4 +64,27 @@ if validate_github_release_asset_readback "$wrong_state_json" "$tag" true "$arch
   die "GitHub readback fixture accepted a non-uploaded asset"
 fi
 
+publisher="$SCRIPT_DIR/publish-windows-release.sh"
+signer="$SCRIPT_DIR/sign-windows-release.sh"
+grep -Fq 'signing requires exact --confirm-sign TAG confirmation' "$signer" || die "signer lacks its separate exact confirmation"
+grep -Fq -- '--confirm-draft TAG | --confirm-publish TAG' "$publisher" || die "publisher lacks separate draft and publish confirmations"
+grep -Fq 'draft creation and publication require separate invocations' "$publisher" || die "publisher does not reject combined confirmations"
+if "$publisher" \
+  --tag "$tag" \
+  --agent-repo "$fixture_root/missing-agent" \
+  --assets-directory "$fixture_root/missing-assets" \
+  --windows-proof "$fixture_root/missing-proof" \
+  --confirm-draft "$tag" \
+  --confirm-publish "$tag" \
+  >"$fixture_root/combined-confirmations.log" 2>&1; then
+  die "publisher accepted draft and publish confirmations together"
+fi
+grep -Fq 'draft creation and publication require separate invocations' "$fixture_root/combined-confirmations.log" || die "publisher did not reject combined confirmations before release checks"
+draft_create_line="$(grep -n 'gh release create ' "$publisher" | cut -d: -f1)"
+draft_exit_line="$(grep -n '^  exit 0$' "$publisher" | cut -d: -f1)"
+publish_line="$(grep -n 'gh release edit ' "$publisher" | cut -d: -f1)"
+[[ -n "$draft_create_line" && -n "$draft_exit_line" && -n "$publish_line" ]] || die "publisher boundary statements are incomplete"
+(( draft_create_line < draft_exit_line && draft_exit_line < publish_line )) || die "publisher lacks an exit boundary between draft creation and publication"
+grep -Fq 'fresh draft inspection failed; release remains a draft' "$publisher" || die "publisher lacks fresh pre-publication draft inspection"
+
 printf 'Windows proof cross-stage contract tests passed.\n'

@@ -12,17 +12,22 @@ TAG=""
 AGENT_REPO=""
 ASSETS_DIRECTORY=""
 WINDOWS_PROOF=""
+CONFIRM_DRAFT=""
 CONFIRM_PUBLISH=""
 
 usage() {
   cat <<'USAGE'
 Usage: scripts/release/publish-windows-release.sh \
   --tag TAG --agent-repo PATH --assets-directory PATH \
-  --windows-proof PATH --confirm-publish TAG
+  --windows-proof PATH \
+  (--confirm-draft TAG | --confirm-publish TAG)
 
 Re-verifies clean tagged source, the exact two release assets, Mac-side
-Authenticode validation, and the independent Windows proof before creating a
-new GitHub release. It never overwrites an existing release.
+Authenticode validation, and the independent Windows proof. --confirm-draft
+creates and verifies a new draft, then exits. A separate later invocation with
+--confirm-publish freshly verifies the existing draft before publishing it.
+The two confirmations are mutually exclusive, and no invocation can both
+create and publish a release.
 USAGE
 }
 
@@ -32,6 +37,7 @@ while [[ $# -gt 0 ]]; do
     --agent-repo) AGENT_REPO="${2:?--agent-repo requires a value}"; shift 2 ;;
     --assets-directory) ASSETS_DIRECTORY="${2:?--assets-directory requires a value}"; shift 2 ;;
     --windows-proof) WINDOWS_PROOF="${2:?--windows-proof requires a value}"; shift 2 ;;
+    --confirm-draft) CONFIRM_DRAFT="${2:?--confirm-draft requires a value}"; shift 2 ;;
     --confirm-publish) CONFIRM_PUBLISH="${2:?--confirm-publish requires a value}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown option" ;;
@@ -40,7 +46,17 @@ done
 
 [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "release tag must use the exact vX.Y.Z format"
 [[ -n "$AGENT_REPO" && -n "$ASSETS_DIRECTORY" && -n "$WINDOWS_PROOF" ]] || die "all release arguments are required"
-[[ "$CONFIRM_PUBLISH" == "$TAG" ]] || die "publication requires exact --confirm-publish TAG confirmation"
+if [[ -n "$CONFIRM_DRAFT" && -n "$CONFIRM_PUBLISH" ]]; then
+  die "draft creation and publication require separate invocations"
+elif [[ -n "$CONFIRM_DRAFT" ]]; then
+  [[ "$CONFIRM_DRAFT" == "$TAG" ]] || die "draft creation requires exact --confirm-draft TAG confirmation"
+  RELEASE_ACTION="draft"
+elif [[ -n "$CONFIRM_PUBLISH" ]]; then
+  [[ "$CONFIRM_PUBLISH" == "$TAG" ]] || die "publication requires exact --confirm-publish TAG confirmation"
+  RELEASE_ACTION="publish"
+else
+  die "choose exactly one of --confirm-draft TAG or --confirm-publish TAG"
+fi
 require_command gh
 require_command git
 require_command jq
@@ -98,29 +114,38 @@ remote_agent_commit="$(remote_tag_commit "$AGENT_REPO" "$TAG")"
 [[ "$remote_wrapper_commit" == "$wrapper_commit" ]] || die "remote wrapper tag differs from verified local source"
 [[ "$remote_agent_commit" == "$agent_commit" ]] || die "remote agent tag differs from verified local source"
 
-if gh api "repos/labtether/labtether-win/releases/tags/$TAG" >/dev/null 2>&1; then
-  die "GitHub release already exists; refusing to overwrite it"
-fi
-
-gh release create "$TAG" \
-  "$ASSETS_DIRECTORY/$FINAL_ARCHIVE_NAME" \
-  "$ASSETS_DIRECTORY/$FINAL_CHECKSUM_NAME" \
-  --repo labtether/labtether-win \
-  --verify-tag \
-  --draft \
-  --title "LabTether Windows Agent ${TAG#v}" \
-  --generate-notes
-
 archive_size="$(stat -f '%z' -- "$ASSETS_DIRECTORY/$FINAL_ARCHIVE_NAME")"
 checksum_size="$(stat -f '%z' -- "$ASSETS_DIRECTORY/$FINAL_CHECKSUM_NAME")"
 checksum_asset_hash="$(sha256_file "$ASSETS_DIRECTORY/$FINAL_CHECKSUM_NAME")"
-draft_json="$(gh api "repos/labtether/labtether-win/releases/tags/$TAG")"
-if ! validate_github_release_asset_readback "$draft_json" "$TAG" true "$archive_hash" "$checksum_asset_hash" "$archive_size" "$checksum_size"; then
-  die "draft release inspection failed; release remains a draft"
+
+if [[ "$RELEASE_ACTION" == "draft" ]]; then
+  if gh api "repos/labtether/labtether-win/releases/tags/$TAG" >/dev/null 2>&1; then
+    die "GitHub release already exists; refusing to overwrite it"
+  fi
+
+  gh release create "$TAG" \
+    "$ASSETS_DIRECTORY/$FINAL_ARCHIVE_NAME" \
+    "$ASSETS_DIRECTORY/$FINAL_CHECKSUM_NAME" \
+    --repo labtether/labtether-win \
+    --verify-tag \
+    --draft \
+    --title "LabTether Windows Agent ${TAG#v}" \
+    --generate-notes
+
+  draft_json="$(gh api "repos/labtether/labtether-win/releases/tags/$TAG")"
+  if ! validate_github_release_asset_readback "$draft_json" "$TAG" true "$archive_hash" "$checksum_asset_hash" "$archive_size" "$checksum_size"; then
+    die "draft release inspection failed; release remains a draft"
+  fi
+  printf 'Created and verified the draft for %s. Inspect it, then use a separate --confirm-publish invocation.\n' "$TAG"
+  exit 0
 fi
 
+draft_json="$(gh api "repos/labtether/labtether-win/releases/tags/$TAG")" || die "draft release is unavailable"
+if ! validate_github_release_asset_readback "$draft_json" "$TAG" true "$archive_hash" "$checksum_asset_hash" "$archive_size" "$checksum_size"; then
+  die "fresh draft inspection failed; release remains a draft"
+fi
 gh release edit "$TAG" --repo labtether/labtether-win --draft=false >/dev/null
 published_json="$(gh api "repos/labtether/labtether-win/releases/tags/$TAG")"
 validate_github_release_asset_readback "$published_json" "$TAG" false "$archive_hash" "$checksum_asset_hash" "$archive_size" "$checksum_size" || die "published release readback failed"
 
-printf 'Published exactly two verified Windows release assets for %s after draft inspection.\n' "$TAG"
+printf 'Published exactly two verified Windows release assets for %s after a separate fresh draft inspection.\n' "$TAG"

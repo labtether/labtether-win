@@ -20,10 +20,19 @@ def write_archive(path: Path, entries: list[tuple[zipfile.ZipInfo | str, bytes]]
                 archive.writestr(name, content)
 
 
-def expect_rejection(label: str, entries: list[tuple[zipfile.ZipInfo | str, bytes]]) -> None:
+def expect_rejection(
+    label: str,
+    entries: list[tuple[zipfile.ZipInfo | str, bytes]],
+    expected_raw_name: str | None = None,
+) -> None:
     with tempfile.TemporaryDirectory(prefix="labtether-archive-policy-") as temporary:
         archive_path = Path(temporary, "fixture.zip")
         write_archive(archive_path, entries)
+        if expected_raw_name is not None:
+            with zipfile.ZipFile(archive_path, "r") as archive:
+                names = [entry.filename for entry in archive.infolist()]
+            if expected_raw_name not in names:
+                raise AssertionError(f"archive fixture lost its raw path: {label}")
         try:
             validate_archive(archive_path)
         except ArchivePolicyError:
@@ -39,6 +48,17 @@ def typed_entry(name: str, file_type: int, content: bytes = b"x") -> zipfile.Zip
     return entry
 
 
+def raw_name_entry(name: str) -> zipfile.ZipInfo:
+    entry = zipfile.ZipInfo("placeholder")
+    # ZipInfo normalizes platform path separators in its constructor on
+    # Windows. Assign both fields afterward so the serialized fixture retains
+    # the attacker-controlled name on every host.
+    entry.filename = name
+    entry.orig_filename = name
+    entry.compress_type = zipfile.ZIP_DEFLATED
+    return entry
+
+
 def main() -> int:
     malicious = {
         "parent traversal": [("../escape", b"x")],
@@ -47,7 +67,7 @@ def main() -> int:
         "leading dot segment": [("./leading", b"x")],
         "interior dot segment": [("a/./b", b"x")],
         "repeated separator": [("a//b", b"x")],
-        "backslash confusion": [("a\\b", b"x")],
+        "backslash confusion": [(raw_name_entry("a\\b"), b"x")],
         "exact duplicate": [("same", b"1"), ("same", b"2")],
         "case-fold collision": [("Payload.dll", b"1"), ("payload.dll", b"2")],
         "Unicode normalization collision": [("café", b"1"), ("café", b"2")],
@@ -59,7 +79,8 @@ def main() -> int:
         "directory type mismatch": [(typed_entry("folder/", stat.S_IFREG), b"")],
     }
     for label, entries in malicious.items():
-        expect_rejection(label, entries)
+        expected_raw_name = "a\\b" if label == "backslash confusion" else None
+        expect_rejection(label, entries, expected_raw_name)
 
     with tempfile.TemporaryDirectory(prefix="labtether-archive-bounds-") as temporary:
         archive_path = Path(temporary, "fixture.zip")

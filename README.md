@@ -114,11 +114,16 @@ Official Windows releases use a split local process:
    signatures, and runs the signed child and WinUI probes. Keep its proof file
    local; it is not a release asset.
 4. Return the two assets and proof to the Mac, then run
+   `scripts/release/publish-windows-release.sh --confirm-draft TAG`. It repeats
+   the Mac verification, requires the matching Windows proof, refuses to
+   overwrite an existing release, and uploads exactly the ZIP and checksum to
+   a draft. It verifies both GitHub asset names, sizes, states, and SHA-256
+   digests, then exits while the release is still a draft.
+5. Inspect that draft independently. In a new invocation, run
    `scripts/release/publish-windows-release.sh --confirm-publish TAG`. It
-   repeats the Mac verification, requires the matching Windows proof, refuses
-   to overwrite an existing release, and uploads exactly the ZIP and checksum
-   to a draft. It verifies both GitHub asset names, sizes, states, and SHA-256
-   digests before publishing the already-inspected draft.
+   repeats every local check and performs a fresh GitHub readback of the
+   existing draft before publishing it. The script rejects both confirmations
+   in one invocation, so no command can create and publish a release together.
 
 No signing file, private key, password, encoded secret, local certificate path,
 or Windows verification proof belongs in Git, GitHub Actions, build artifacts,
