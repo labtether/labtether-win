@@ -32,7 +32,16 @@ def expect_rejection(
             with zipfile.ZipFile(archive_path, "r") as archive:
                 names = [entry.filename for entry in archive.infolist()]
             if expected_raw_name not in names:
-                raise AssertionError(f"archive fixture lost its raw path: {label}")
+                normalized_name = expected_raw_name.replace("\\", "/")
+                raw = archive_path.read_bytes()
+                patched = raw.replace(normalized_name.encode(), expected_raw_name.encode())
+                if patched == raw:
+                    raise AssertionError(f"archive fixture lost its raw path: {label}")
+                archive_path.write_bytes(patched)
+                with zipfile.ZipFile(archive_path, "r") as archive:
+                    names = [entry.filename for entry in archive.infolist()]
+                if expected_raw_name not in names:
+                    raise AssertionError(f"archive fixture lost its raw path: {label}")
         try:
             validate_archive(archive_path)
         except ArchivePolicyError:
