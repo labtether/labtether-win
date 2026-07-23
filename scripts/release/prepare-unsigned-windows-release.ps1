@@ -247,7 +247,7 @@ try {
         if (-not $PublishedFile.FullName.StartsWith($PublishPrefix, [StringComparison]::OrdinalIgnoreCase)) {
             throw "Published file escaped the release payload root"
         }
-        $PublishedFileRecords += [ordered]@{
+        $PublishedFileRecords += [pscustomobject][ordered]@{
             path = $PublishedFile.FullName.Substring($PublishPrefix.Length).Replace('\', '/')
             size = $PublishedFile.Length
             sha256 = (Get-FileHash -LiteralPath $PublishedFile.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
