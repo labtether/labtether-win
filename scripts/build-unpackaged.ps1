@@ -211,4 +211,4 @@ if ($LASTEXITCODE -ne 0 -or $helpOutput.Count -eq 0 -or
 }
 
 Write-Host "Build complete: $publishDir"
-Write-Host "Output format: unpackaged self-contained folder (the release workflow signs and ZIPs this payload)."
+Write-Host "Output format: unpackaged self-contained folder (the local release lane signs and ZIPs this payload)."

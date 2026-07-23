@@ -14,6 +14,15 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+      - name: Enforce hosted workflow release boundary
+        shell: bash
+        run: bash scripts/release/test-source-only-workflows.sh
+      - name: Test cross-platform release archive policy
+        shell: pwsh
+        run: |
+          python -B scripts/release/test_safe_extract_windows_release.py
+          if ($LASTEXITCODE -ne 0) { throw "Mac archive-policy fixtures failed." }
+          ./scripts/release/test-windows-release-policy.ps1
       - name: Check out bundled agent core
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -30,7 +39,7 @@ jobs:
       # WinUI/MSIX projects use MSBuild tasks that ship with Visual Studio,
       # not the bare dotnet SDK. setup-msbuild puts the VS MSBuild on PATH
       # so the PRI/AppxPackage tasks resolve during restore and build.
-      # (Release.yml uses the same pattern to publish the Windows payload.)
+      # (Release.yml uses the same pattern for tag source verification.)
       - uses: microsoft/setup-msbuild@30375c66a4eea26614e0d39710365f22f8b0af57 # v3.0.0
       - name: Build bundled Go agent core
         shell: bash
