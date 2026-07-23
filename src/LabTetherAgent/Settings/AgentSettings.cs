@@ -36,7 +36,11 @@ public class AgentSettings
     public string FilesRootMode { get; set; } = "home";
 
     // Feature toggles
-    public bool AutoUpdateEnabled { get; set; } = true;
+    // Retained only so older settings.json files deserialize without losing
+    // their remaining values. Native releases update the bundled, attested Go
+    // core only as part of a whole-app update; this value is always normalized
+    // to false and is never allowed to enable child self-update.
+    public bool AutoUpdateEnabled { get; set; }
     public bool AllowRemoteOverrides { get; set; }
     public bool LowPowerMode { get; set; }
     public bool StartAtLogin { get; set; }
@@ -150,6 +154,7 @@ public class AgentSettings
     /// </summary>
     public void Save()
     {
+        NormalizeWrapperManagedUpdatePolicy();
         Directory.CreateDirectory(SettingsDir);
         var json = JsonSerializer.Serialize(this, new JsonSerializerOptions
         {
@@ -169,7 +174,23 @@ public class AgentSettings
             return new AgentSettings();
 
         var json = File.ReadAllText(SettingsPath);
-        return JsonSerializer.Deserialize<AgentSettings>(json) ?? new AgentSettings();
+        var settings = JsonSerializer.Deserialize<AgentSettings>(json) ?? new AgentSettings();
+        settings.NormalizeWrapperManagedUpdatePolicy();
+        return settings;
+    }
+
+    /// <summary>
+    /// Migrate the legacy child self-update setting to the native app's
+    /// whole-package update policy. The environment builder independently
+    /// enforces the same boundary so a stale in-memory value also fails safe.
+    /// </summary>
+    internal bool NormalizeWrapperManagedUpdatePolicy()
+    {
+        if (!AutoUpdateEnabled)
+            return false;
+
+        AutoUpdateEnabled = false;
+        return true;
     }
 
     /// <summary>
@@ -204,7 +225,7 @@ public class AgentSettings
         DockerEndpoint = source.DockerEndpoint;
         DockerDiscoveryInterval = source.DockerDiscoveryInterval;
         FilesRootMode = source.FilesRootMode;
-        AutoUpdateEnabled = source.AutoUpdateEnabled;
+        AutoUpdateEnabled = false;
         AllowRemoteOverrides = source.AllowRemoteOverrides;
         LowPowerMode = source.LowPowerMode;
         StartAtLogin = source.StartAtLogin;

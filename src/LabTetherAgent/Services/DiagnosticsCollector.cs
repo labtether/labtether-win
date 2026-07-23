@@ -68,7 +68,7 @@ public class DiagnosticsCollector
                 _settings.DockerEndpoint,
                 _settings.DockerDiscoveryInterval,
                 _settings.FilesRootMode,
-                _settings.AutoUpdateEnabled,
+                AgentCoreUpdateManagement = "LabTether Agent app",
                 _settings.AllowRemoteOverrides,
                 _settings.LowPowerMode,
                 _settings.LogLevel,

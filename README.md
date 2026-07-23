@@ -19,14 +19,28 @@ A native system tray app that connects your Windows machines to your [LabTether]
 
 Download `labtether-agent-win-x64.zip` and its `.sha256` file from
 [Releases](https://github.com/labtether/labtether-win/releases/latest). Verify
-the checksum and build provenance, then extract the Authenticode-signed app:
+the checksum, extract the app, and verify all three LabTether-authored PE
+signatures:
 
 ```powershell
 $expected = ((Get-Content .\labtether-agent-win-x64.zip.sha256 -Raw).Trim() -split '\s+')[0]
 $actual = (Get-FileHash .\labtether-agent-win-x64.zip -Algorithm SHA256).Hash
 if ($actual -ne $expected) { throw "Checksum mismatch" }
-gh attestation verify .\labtether-agent-win-x64.zip -R labtether/labtether-win
 Expand-Archive .\labtether-agent-win-x64.zip .\LabTetherAgent
+$payloads = @(
+  ".\LabTetherAgent\LabTetherAgent.exe",
+  ".\LabTetherAgent\LabTetherAgent.dll",
+  ".\LabTetherAgent\Assets\labtether-agent.exe"
+)
+$signerThumbprint = $null
+foreach ($payload in $payloads) {
+  $signature = Get-AuthenticodeSignature $payload
+  if ($signature.Status -ne "Valid" -or $null -eq $signature.TimeStamperCertificate) {
+    throw "Invalid or untimestamped Authenticode signature: $payload"
+  }
+  if ($null -eq $signerThumbprint) { $signerThumbprint = $signature.SignerCertificate.Thumbprint }
+  if ($signature.SignerCertificate.Thumbprint -ne $signerThumbprint) { throw "Signer mismatch: $payload" }
+}
 ```
 
 Launch `LabTetherAgent.exe`; the system tray icon walks you through hub enrollment.
@@ -67,12 +81,54 @@ msbuild src\LabTetherAgent\LabTetherAgent.csproj -t:Build -p:Configuration=Relea
 .\scripts\build-unpackaged.ps1 -Arch x64 -OutputDir build
 ```
 
-`build-unpackaged.ps1` produces the same self-contained folder layout that the
-release workflow Authenticode-signs and packages as a ZIP. The legacy
+`build-unpackaged.ps1` produces the same self-contained folder layout used by
+the local release lane. The legacy
 `build-msix.ps1` name remains as a compatibility wrapper, but it does not
 produce an MSIX.
 
 For most users, download the pre-built signed archive from [Releases](https://github.com/labtether/labtether-win/releases/latest) instead.
+
+### Maintainer release lane
+
+The tag-triggered GitHub workflow verifies clean matching wrapper and agent
+tags, tests, publishes, and runs the WinUI probe. It intentionally has read-only
+permissions: it does not receive signing material, sign bytes, create a release
+archive, attest an archive, or upload a release.
+
+Official Windows releases use a split local process:
+
+1. On Windows, run `scripts/release/prepare-unsigned-windows-release.ps1` from
+   clean matching tagged wrapper and agent checkouts. It builds into an
+   external current-user-only staging directory and emits one unsigned archive
+   with embedded source provenance.
+2. Transfer only that unsigned archive to the Mac and run
+   `scripts/release/sign-windows-release.sh --confirm-sign TAG`, where `TAG`
+   is the same strict `vX.Y.Z` tag. The script reads the local
+   certificate path and password silently from `/dev/tty`, consumes the
+   certificate in place through a file descriptor, Authenticode-signs the three
+   authored PE files with `osslsigncode`, and emits exactly the release ZIP and
+   its checksum in a mode-0700 external directory.
+3. Transfer only those two signed assets to Windows and run
+   `scripts/release/verify-signed-windows-release.ps1`. It re-extracts the ZIP,
+   checks source provenance and checksums, validates timestamped Authenticode
+   signatures, and runs the signed child and WinUI probes. Keep its proof file
+   local; it is not a release asset.
+4. Return the two assets and proof to the Mac, then run
+   `scripts/release/publish-windows-release.sh --confirm-draft TAG`. It repeats
+   the Mac verification, requires the matching Windows proof, refuses to
+   overwrite an existing release, and uploads exactly the ZIP and checksum to
+   a draft. It verifies both GitHub asset names, sizes, states, and SHA-256
+   digests, then exits while the release is still a draft.
+5. Inspect that draft independently. In a new invocation, run
+   `scripts/release/publish-windows-release.sh --confirm-publish TAG`. It
+   repeats every local check and performs a fresh GitHub readback of the
+   existing draft before publishing it. The script rejects both confirmations
+   in one invocation, so no command can create and publish a release together.
+
+No signing file, private key, password, encoded secret, local certificate path,
+or Windows verification proof belongs in Git, GitHub Actions, build artifacts,
+caches, or release uploads. Only the public signer information inherently
+embedded in the verified signed PE files leaves the local signing lane.
 
 ---
 

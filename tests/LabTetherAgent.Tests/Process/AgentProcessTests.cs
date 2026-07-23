@@ -15,7 +15,25 @@ public class AgentProcessTests
         Assert.Empty(info.Arguments);
         Assert.Empty(info.ArgumentList);
         Assert.Equal(@"C:\secure\token", info.Environment["LABTETHER_API_TOKEN_FILE"]);
+        Assert.Equal(Environment.ProcessId.ToString(), info.Environment["LABTETHER_PARENT_PID"]);
+        Assert.Equal("false", info.Environment["LABTETHER_AUTO_UPDATE"]);
         Assert.False(info.UseShellExecute);
+    }
+
+    [Fact]
+    public void CreateStartInfoOverridesChildSelfUpdateAndParentLifecycleValues()
+    {
+        var info = AgentProcess.CreateStartInfo(
+            @"C:\Program Files\LabTether\Assets\labtether-agent.exe",
+            new Dictionary<string, string>
+            {
+                ["LABTETHER_PARENT_PID"] = "1",
+                ["LABTETHER_AUTO_UPDATE"] = "true",
+            }
+        );
+
+        Assert.Equal(Environment.ProcessId.ToString(), info.Environment["LABTETHER_PARENT_PID"]);
+        Assert.Equal("false", info.Environment["LABTETHER_AUTO_UPDATE"]);
     }
 
     [Fact]

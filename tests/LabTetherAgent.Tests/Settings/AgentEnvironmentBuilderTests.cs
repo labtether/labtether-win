@@ -183,7 +183,9 @@ public class AgentEnvironmentBuilderTests
         };
         var env = Build(settings, "9090", "auth");
 
-        Assert.Equal("true", env["LABTETHER_AUTO_UPDATE"]);
+        // A stale legacy preference must never let the bundled child replace
+        // itself independently of the signed native app.
+        Assert.Equal("false", env["LABTETHER_AUTO_UPDATE"]);
         Assert.Equal("false", env["LABTETHER_ALLOW_REMOTE_OVERRIDES"]);
         Assert.Equal("true", env["LABTETHER_LOW_POWER_MODE"]);
         Assert.Equal("false", env["LABTETHER_WEBRTC_ENABLED"]);

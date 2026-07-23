@@ -12,6 +12,8 @@ obj/
 TestResult.xml
 [Dd]ebug/
 [Rr]elease/
+!scripts/release/
+!scripts/release/**
 x64/
 x86/
 ARM/

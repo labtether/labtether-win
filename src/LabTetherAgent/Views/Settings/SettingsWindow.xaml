@@ -25,7 +25,9 @@
             <ToggleSwitch Header="Start at Login" IsOn="{x:Bind ViewModel.StartAtLogin, Mode=TwoWay}" />
             <ToggleSwitch Header="Low Power Mode" IsOn="{x:Bind ViewModel.LowPowerMode, Mode=TwoWay}"
                           OffContent="Normal polling" OnContent="Reduced CPU usage" />
-            <ToggleSwitch Header="Auto-Update Agent Core" IsOn="{x:Bind ViewModel.AutoUpdateEnabled, Mode=TwoWay}" />
+            <TextBlock Text="Updates are managed by the LabTether Agent app. The bundled agent core is updated only with a verified whole-app update."
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="Wrap" />
             <ToggleSwitch Header="Allow Remote Overrides" IsOn="{x:Bind ViewModel.AllowRemoteOverrides, Mode=TwoWay}"
                           OffContent="Hub cannot change local settings" OnContent="Hub can push settings" />
             <ComboBox Header="Log Level" SelectedItem="{x:Bind ViewModel.LogLevel, Mode=TwoWay}"

@@ -1,14 +1,11 @@
-name: Release
+name: Release source verification
 
 on:
   push:
     tags: ["v*"]
 
 permissions:
-  contents: write
-  id-token: write
-  attestations: write
-  artifact-metadata: write
+  contents: read
 
 jobs:
   build:
@@ -19,6 +16,32 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Enforce hosted workflow release boundary
+        shell: bash
+        run: bash scripts/release/test-source-only-workflows.sh
+
+      - name: Test cross-platform release archive policy
+        shell: pwsh
+        run: |
+          python -B scripts/release/test_safe_extract_windows_release.py
+          if ($LASTEXITCODE -ne 0) { throw "Mac archive-policy fixtures failed." }
+          ./scripts/release/test-windows-release-policy.ps1
+
+      - name: Verify clean tagged wrapper source
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -Eeuo pipefail
+          if [[ -n "$(git status --porcelain=v1 --untracked-files=all)" ]]; then
+            echo "::error::wrapper release source checkout is not clean"
+            exit 1
+          fi
+          [[ "$(git rev-parse HEAD)" == "$(git rev-list -n 1 "$RELEASE_TAG")" ]] || {
+            echo "::error::wrapper release tag does not resolve to the checked-out source"
+            exit 1
+          }
+
       - name: Check out matching bundled agent core
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -26,6 +49,22 @@ jobs:
           ref: ${{ github.ref_name }}
           path: agent-core
           persist-credentials: false
+
+      - name: Verify clean tagged agent source
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -Eeuo pipefail
+          repo="$GITHUB_WORKSPACE/agent-core"
+          if [[ -n "$(git -C "$repo" status --porcelain=v1 --untracked-files=all)" ]]; then
+            echo "::error::agent release source checkout is not clean"
+            exit 1
+          fi
+          [[ "$(git -C "$repo" rev-parse HEAD)" == "$(git -C "$repo" rev-list -n 1 "$RELEASE_TAG")" ]] || {
+            echo "::error::agent release tag does not resolve to the checked-out source"
+            exit 1
+          }
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -43,7 +82,7 @@ jobs:
         shell: bash
         run: |
           version="${GITHUB_REF_NAME#v}"
-          if [[ ! "$version" =~ ^[0-9]+(\.[0-9]+){1,3}([+-][0-9A-Za-z.-]+)?$ ]]; then
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Release tag '$GITHUB_REF_NAME' is not a supported numeric version." >&2
             exit 1
           fi
@@ -71,6 +110,8 @@ jobs:
 
       - name: Build bundled Go agent core
         shell: bash
+        env:
+          GOWORK: "off"
         run: >-
           ./scripts/build-bundled-agent.sh
           --agent-repo "${GITHUB_WORKSPACE}/agent-core"
@@ -82,6 +123,40 @@ jobs:
           -t:Restore
           -p:RuntimeIdentifier=win-x64
           -p:Platform=x64
+
+      - name: Build release tests
+        run: >-
+          msbuild tests/LabTetherAgent.Tests/LabTetherAgent.Tests.csproj
+          -restore
+          -t:Build
+          -p:Platform=x64
+          -p:Configuration=Release
+          -p:EnableMsixTooling=false
+          -p:WindowsPackageType=None
+          -p:GenerateAppxPackageOnBuild=false
+          -p:RequireBundledAgent=true
+
+      - name: Run release tests
+        run: >-
+          dotnet test
+          --no-build
+          --no-restore
+          tests/LabTetherAgent.Tests/LabTetherAgent.Tests.csproj
+          -p:Platform=x64
+          -c Release
+
+      - name: Audit release packages
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $audit = @(dotnet list tests/LabTetherAgent.Tests/LabTetherAgent.Tests.csproj package --vulnerable --include-transitive 2>&1)
+          if ($LASTEXITCODE -ne 0) {
+            throw "NuGet vulnerability audit failed."
+          }
+          if (($audit -join "`n") -match "has the following vulnerable packages") {
+            throw "NuGet vulnerability audit reported vulnerable packages."
+          }
+          $audit
 
       - name: Prepare clean publish directory
         shell: pwsh
@@ -128,92 +203,6 @@ jobs:
           -p:IncludeSourceRevisionInInformationalVersion=false
           -p:AppxPackageVersion=${{ steps.meta.outputs.package_version }}
           -p:PublishDir=..\..\publish\win-x64\
-
-      - name: Authenticode sign published PE payloads
-        shell: pwsh
-        env:
-          WINDOWS_CODE_SIGNING_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CODE_SIGNING_CERT_PFX_BASE64 }}
-          WINDOWS_CODE_SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_CODE_SIGNING_CERT_PASSWORD }}
-        run: |
-          $ErrorActionPreference = "Stop"
-          Set-StrictMode -Version Latest
-
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CODE_SIGNING_CERT_PFX_BASE64)) {
-            throw "WINDOWS_CODE_SIGNING_CERT_PFX_BASE64 repository secret is required; refusing to publish unsigned artifacts."
-          }
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CODE_SIGNING_CERT_PASSWORD)) {
-            throw "WINDOWS_CODE_SIGNING_CERT_PASSWORD repository secret is required; refusing to publish unsigned artifacts."
-          }
-
-          $pfxPath = Join-Path $env:RUNNER_TEMP "labtether-release-signing.pfx"
-          $importedThumbprints = @()
-          try {
-            try {
-              $pfxBytes = [Convert]::FromBase64String($env:WINDOWS_CODE_SIGNING_CERT_PFX_BASE64)
-            } catch {
-              throw "WINDOWS_CODE_SIGNING_CERT_PFX_BASE64 is not valid base64."
-            }
-            [IO.File]::WriteAllBytes($pfxPath, $pfxBytes)
-
-            $password = ConvertTo-SecureString -String $env:WINDOWS_CODE_SIGNING_CERT_PASSWORD -AsPlainText -Force
-            $imported = @(Import-PfxCertificate -FilePath $pfxPath -CertStoreLocation Cert:\CurrentUser\My -Password $password)
-            $importedThumbprints = @($imported | ForEach-Object { $_.Thumbprint })
-
-            $codeSigningOid = "1.3.6.1.5.5.7.3.3"
-            $signingCertificates = @($imported | Where-Object {
-              $_.HasPrivateKey -and
-              @($_.EnhancedKeyUsageList | Where-Object { $_.ObjectId.Value -eq $codeSigningOid }).Count -gt 0
-            })
-            if ($signingCertificates.Count -ne 1) {
-              throw "The PFX must contain exactly one private-key certificate authorized for code signing."
-            }
-
-            $certificate = $signingCertificates[0]
-            $now = Get-Date
-            if ($now -lt $certificate.NotBefore -or $now -gt $certificate.NotAfter) {
-              throw "The Windows code-signing certificate is not currently valid."
-            }
-
-            $signTool = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter signtool.exe -File -Recurse |
-              Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
-              Sort-Object FullName -Descending |
-              Select-Object -First 1
-            if ($null -eq $signTool) {
-              throw "signtool.exe was not found on the release runner."
-            }
-
-            # Sign only LabTether-authored PE files. Do not re-sign the bundled
-            # Microsoft/.NET runtime DLLs in this self-contained publication.
-            $requiredAuthoredPayloads = @(
-              "publish/win-x64/LabTetherAgent.exe",
-              "publish/win-x64/LabTetherAgent.dll",
-              "publish/win-x64/Assets/labtether-agent.exe"
-            )
-            $authoredPayloads = @()
-            foreach ($payload in $requiredAuthoredPayloads) {
-              if (-not (Test-Path -LiteralPath $payload -PathType Leaf)) {
-                throw "Required LabTether PE payload is missing: $payload"
-              }
-              $authoredPayloads += Resolve-Path $payload
-            }
-
-            foreach ($payload in $authoredPayloads) {
-              & $signTool.FullName sign /fd SHA256 /td SHA256 /tr "http://timestamp.digicert.com" /sha1 $certificate.Thumbprint $payload.Path
-              if ($LASTEXITCODE -ne 0) {
-                throw "Authenticode signing failed for $($payload.Path)."
-              }
-
-              & $signTool.FullName verify /pa /all /v $payload.Path
-              if ($LASTEXITCODE -ne 0) {
-                throw "Authenticode verification failed for $($payload.Path)."
-              }
-            }
-          } finally {
-            Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue
-            foreach ($thumbprint in $importedThumbprints) {
-              Remove-Item -LiteralPath "Cert:\CurrentUser\My\$thumbprint" -Force -ErrorAction SilentlyContinue
-            }
-          }
 
       - name: Validate published application bundle
         shell: pwsh
@@ -312,23 +301,22 @@ jobs:
             throw "Published child failed its help smoke test."
           }
 
-      - name: Package release artifact
-        shell: bash
+      - name: Confirm source-verification output remains unsigned and local
+        shell: pwsh
         run: |
-          cd publish/win-x64
-          7z a -tzip "../../labtether-agent-win-x64.zip" .
-          cd ../..
-          sha256sum "labtether-agent-win-x64.zip" > "labtether-agent-win-x64.zip.sha256"
-
-      - name: Attest release provenance
-        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
-        with:
-          subject-path: labtether-agent-win-x64.zip
-
-      - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
-        with:
-          name: "LabTether Windows Agent ${{ steps.meta.outputs.version }}"
-          files: |
-            labtether-agent-win-x64.zip
-            labtether-agent-win-x64.zip.sha256
+          $ErrorActionPreference = "Stop"
+          $authoredPayloads = @(
+            "publish/win-x64/LabTetherAgent.exe",
+            "publish/win-x64/LabTetherAgent.dll",
+            "publish/win-x64/Assets/labtether-agent.exe"
+          )
+          foreach ($payload in $authoredPayloads) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $payload
+            if ($signature.Status -ne [Management.Automation.SignatureStatus]::NotSigned) {
+              throw "Hosted source verification unexpectedly produced a signed authored payload."
+            }
+          }
+          if (Test-Path -LiteralPath "labtether-agent-win-x64.zip") {
+            throw "Hosted source verification must not create a release archive."
+          }
+          "Source verification passed. Signing and publication require the local release scripts."
