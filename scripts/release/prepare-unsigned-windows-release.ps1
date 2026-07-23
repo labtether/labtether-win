@@ -60,7 +60,7 @@ function Protect-PrivateDirectory([string]$Path) {
         throw "Private release directory must not be a reparse point"
     }
     $Sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-    & icacls.exe $Path /inheritance:r /grant:r "$Sid`:(OI)(CI)F" | Out-Null
+    & icacls.exe $Path /inheritance:r /grant:r "*$Sid`:(OI)(CI)F" | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "Unable to apply a current-user-only ACL to release staging"
     }
