@@ -21,6 +21,19 @@ public class AgentEnvironmentBuilderTests
 
         Assert.Equal("wss://hub.example.com/ws/agent", env["LABTETHER_WS_URL"]);
         Assert.Equal("https://hub.example.com", env["LABTETHER_API_BASE_URL"]);
+        Assert.False(env.ContainsKey("LABTETHER_OUTBOUND_ALLOW_LOOPBACK"));
+    }
+
+    [Theory]
+    [InlineData("wss://localhost:29443/ws/agent")]
+    [InlineData("wss://127.0.0.1:29443/ws/agent")]
+    [InlineData("wss://[::1]:29443/ws/agent")]
+    public void BuildEnvironment_AllowsLoopbackOutboundForLoopbackHub(string hubUrl)
+    {
+        var settings = new AgentSettings { HubUrl = hubUrl };
+        var env = Build(settings, "9090", "test-auth");
+
+        Assert.Equal("true", env["LABTETHER_OUTBOUND_ALLOW_LOOPBACK"]);
     }
 
     [Fact]
