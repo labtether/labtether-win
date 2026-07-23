@@ -58,10 +58,9 @@ def typed_entry(name: str, file_type: int, content: bytes = b"x") -> zipfile.Zip
 
 
 def raw_name_entry(name: str) -> zipfile.ZipInfo:
-    entry = zipfile.ZipInfo("placeholder")
-    # ZipInfo normalizes platform path separators in its constructor on
-    # Windows. Assign both fields afterward so the serialized fixture retains
-    # the attacker-controlled name on every host.
+    # Start with the same-length normalized spelling, then patch the ZIP bytes
+    # after writing when the host zipfile module normalizes backslashes.
+    entry = zipfile.ZipInfo(name.replace("\\", "/"))
     entry.filename = name
     entry.orig_filename = name
     entry.compress_type = zipfile.ZIP_DEFLATED
