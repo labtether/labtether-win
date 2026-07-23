@@ -2,7 +2,8 @@
 param(
     [Parameter(Mandatory)][ValidateSet("x64", "arm64")][string]$Arch,
     [string]$Configuration = "Release",
-    [string]$OutputDir = "build"
+    [string]$OutputDir = "build",
+    [switch]$RequireWinUiRuntimeProbe
 )
 
 Set-StrictMode -Version Latest
@@ -190,18 +191,23 @@ if ((Get-FileHash -LiteralPath $publishedChild -Algorithm SHA256).Hash -ne
     throw "Published child agent does not match the source payload."
 }
 
-$probeProcess = Start-Process `
-    -FilePath $publishedApp `
-    -ArgumentList "--winui-runtime-probe" `
-    -WorkingDirectory $publishDir `
-    -PassThru
-if (-not $probeProcess.WaitForExit(30000)) {
-    Stop-Process -Id $probeProcess.Id -Force -ErrorAction SilentlyContinue
-    throw "Published application did not complete its WinUI runtime probe within 30 seconds."
+if ($RequireWinUiRuntimeProbe) {
+    $probeProcess = Start-Process `
+        -FilePath $publishedApp `
+        -ArgumentList "--winui-runtime-probe" `
+        -WorkingDirectory $publishDir `
+        -PassThru
+    if (-not $probeProcess.WaitForExit(30000)) {
+        Stop-Process -Id $probeProcess.Id -Force -ErrorAction SilentlyContinue
+        throw "Published application did not complete its WinUI runtime probe within 30 seconds."
+    }
+    $probeProcess.Refresh()
+    if ($probeProcess.ExitCode -ne 0) {
+        throw "Published application failed its WinUI runtime probe with exit code $($probeProcess.ExitCode)."
+    }
 }
-$probeProcess.Refresh()
-if ($probeProcess.ExitCode -ne 0) {
-    throw "Published application failed its WinUI runtime probe with exit code $($probeProcess.ExitCode)."
+else {
+    Write-Host "WinUI runtime probe skipped. Re-run with -RequireWinUiRuntimeProbe in an interactive desktop session to validate GUI startup."
 }
 
 $helpOutput = @(& $publishedChild help)

@@ -19,12 +19,56 @@ public partial class LogViewerViewModel : ObservableObject, IDisposable
     private List<LogLine> _allLines = [];
     private bool _disposed;
 
-    [ObservableProperty] private string _filterText = string.Empty;
-    [ObservableProperty] private string _selectedLevel = "All";
-    [ObservableProperty] private List<LogLine> _filteredLines = [];
-    [ObservableProperty] private int _totalCount;
-    [ObservableProperty] private int _filteredCount;
-    [ObservableProperty] private bool _autoScroll = true;
+    private string _filterText = string.Empty;
+    private string _selectedLevel = "All";
+    private List<LogLine> _filteredLines = [];
+    private int _totalCount;
+    private int _filteredCount;
+    private bool _autoScroll = true;
+
+    public string FilterText
+    {
+        get => _filterText;
+        set
+        {
+            if (SetProperty(ref _filterText, value))
+                OnFilterTextChanged(value);
+        }
+    }
+
+    public string SelectedLevel
+    {
+        get => _selectedLevel;
+        set
+        {
+            if (SetProperty(ref _selectedLevel, value))
+                OnSelectedLevelChanged(value);
+        }
+    }
+
+    public List<LogLine> FilteredLines
+    {
+        get => _filteredLines;
+        set => SetProperty(ref _filteredLines, value);
+    }
+
+    public int TotalCount
+    {
+        get => _totalCount;
+        set => SetProperty(ref _totalCount, value);
+    }
+
+    public int FilteredCount
+    {
+        get => _filteredCount;
+        set => SetProperty(ref _filteredCount, value);
+    }
+
+    public bool AutoScroll
+    {
+        get => _autoScroll;
+        set => SetProperty(ref _autoScroll, value);
+    }
 
     public readonly string[] LevelOptions = ["All", "Info", "Warning", "Error", "Debug"];
 
@@ -39,8 +83,8 @@ public partial class LogViewerViewModel : ObservableObject, IDisposable
         Refresh();
     }
 
-    partial void OnFilterTextChanged(string value) => ApplyFilter();
-    partial void OnSelectedLevelChanged(string value) => ApplyFilter();
+    private void OnFilterTextChanged(string value) => ApplyFilter();
+    private void OnSelectedLevelChanged(string value) => ApplyFilter();
 
     /// <summary>
     /// Reload all lines from the buffer and apply filter.
