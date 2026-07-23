@@ -91,9 +91,8 @@ def expect_rejection(
         archive_path = Path(temporary, "fixture.zip")
         if expected_raw_name is not None:
             write_single_raw_name_archive(archive_path, expected_raw_name, b"x")
-            with zipfile.ZipFile(archive_path, "r") as archive:
-                names = [entry.filename for entry in archive.infolist()]
-            if expected_raw_name not in names:
+            expected_raw_bytes = expected_raw_name.encode("utf-8")
+            if expected_raw_bytes not in archive_path.read_bytes():
                 raise AssertionError(f"archive fixture lost its raw path: {label}")
         else:
             write_archive(archive_path, entries)

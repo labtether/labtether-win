@@ -26,6 +26,7 @@ WINDOWS_RESERVED_BASENAMES = {
     *(f"com{number}" for number in range(1, 10)),
     *(f"lpt{number}" for number in range(1, 10)),
 }
+ZIP_CENTRAL_DIRECTORY_SIGNATURE = b"PK\x01\x02"
 
 
 class ArchivePolicyError(RuntimeError):
@@ -38,6 +39,33 @@ class ValidatedEntry:
     relative_path: str
     is_directory: bool
     collision_key: str
+
+
+def _validate_raw_central_directory_names(archive_path: Path) -> None:
+    """Reject raw ZIP names before pathlib/zipfile can normalize them on Windows."""
+    data = archive_path.read_bytes()
+    offset = 0
+    names_seen = 0
+    while True:
+        signature_offset = data.find(ZIP_CENTRAL_DIRECTORY_SIGNATURE, offset)
+        if signature_offset < 0:
+            break
+        if len(data) < signature_offset + 46:
+            raise ArchivePolicyError("archive central directory is truncated")
+        name_length = int.from_bytes(data[signature_offset + 28 : signature_offset + 30], "little")
+        extra_length = int.from_bytes(data[signature_offset + 30 : signature_offset + 32], "little")
+        comment_length = int.from_bytes(data[signature_offset + 32 : signature_offset + 34], "little")
+        name_start = signature_offset + 46
+        name_end = name_start + name_length
+        if len(data) < name_end:
+            raise ArchivePolicyError("archive central-directory path is truncated")
+        raw_name = data[name_start:name_end]
+        if b"\\" in raw_name:
+            raise ArchivePolicyError("archive contains a raw backslash path")
+        names_seen += 1
+        offset = name_end + extra_length + comment_length
+    if names_seen == 0:
+        raise ArchivePolicyError("archive contains no central-directory entries")
 
 
 def _validate_entry_name(name: str, is_directory: bool) -> tuple[str, str]:
@@ -80,6 +108,7 @@ def validate_archive(
     archive_stat = archive_path.lstat()
     if not stat.S_ISREG(archive_stat.st_mode) or archive_path.is_symlink():
         raise ArchivePolicyError("release archive must be a regular non-symlink file")
+    _validate_raw_central_directory_names(archive_path)
 
     try:
         archive = zipfile.ZipFile(archive_path, "r")
