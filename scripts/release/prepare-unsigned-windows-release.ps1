@@ -281,7 +281,31 @@ try {
     $Provenance | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $PublishRoot "release-provenance.json") -Encoding UTF8
 
     $TemporaryArchive = Join-Path $WorkRoot $UnsignedArchiveName
-    Compress-Archive -Path (Join-Path $PublishRoot "*") -DestinationPath $TemporaryArchive -CompressionLevel Optimal
+    $ArchiveStream = [IO.File]::Open($TemporaryArchive, [IO.FileMode]::CreateNew, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+    try {
+        $Archive = [IO.Compression.ZipArchive]::new($ArchiveStream, [IO.Compression.ZipArchiveMode]::Create, $true)
+        try {
+            foreach ($PublishedRecord in $PublishedFileRecords) {
+                $SourcePath = Join-Path $PublishRoot ($PublishedRecord.path.Replace('/', '\'))
+                $Entry = $Archive.CreateEntry([string]$PublishedRecord.path, [IO.Compression.CompressionLevel]::Optimal)
+                $EntryStream = $Entry.Open()
+                $SourceStream = [IO.File]::Open($SourcePath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+                try {
+                    $SourceStream.CopyTo($EntryStream)
+                }
+                finally {
+                    $SourceStream.Dispose()
+                    $EntryStream.Dispose()
+                }
+            }
+        }
+        finally {
+            $Archive.Dispose()
+        }
+    }
+    finally {
+        $ArchiveStream.Dispose()
+    }
     $UnsignedVerifyRoot = Join-Path $WorkRoot "unsigned-verification"
     [IO.Directory]::CreateDirectory($UnsignedVerifyRoot) | Out-Null
     $ExpectedUnsignedFiles = @($PublishedFileRecords | ForEach-Object { $_.path }) + @("release-provenance.json")
