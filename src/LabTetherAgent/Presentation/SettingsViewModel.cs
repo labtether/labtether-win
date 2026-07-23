@@ -25,7 +25,6 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _dockerDiscoveryInterval = "30";
     [ObservableProperty] private bool _webRtcEnabled = true;
     [ObservableProperty] private bool _allowRemoteOverrides;
-    [ObservableProperty] private bool _autoUpdateEnabled = true;
     [ObservableProperty] private bool _tlsSkipVerify;
     [ObservableProperty] private string _tlsCaFile = string.Empty;
     [ObservableProperty] private string _logLevel = "info";
@@ -72,7 +71,6 @@ public partial class SettingsViewModel : ObservableObject
         DockerDiscoveryInterval = _settings.DockerDiscoveryInterval;
         WebRtcEnabled = _settings.WebRtcEnabled;
         AllowRemoteOverrides = _settings.AllowRemoteOverrides;
-        AutoUpdateEnabled = _settings.AutoUpdateEnabled;
         TlsSkipVerify = _settings.TlsSkipVerify;
         TlsCaFile = _settings.TlsCaFile;
         LogLevel = _settings.LogLevel;
@@ -106,7 +104,6 @@ public partial class SettingsViewModel : ObservableObject
     partial void OnDockerDiscoveryIntervalChanged(string value) => IsDirty = true;
     partial void OnWebRtcEnabledChanged(bool value) => IsDirty = true;
     partial void OnAllowRemoteOverridesChanged(bool value) => IsDirty = true;
-    partial void OnAutoUpdateEnabledChanged(bool value) => IsDirty = true;
     partial void OnTlsSkipVerifyChanged(bool value) => IsDirty = true;
     partial void OnTlsCaFileChanged(string value) => IsDirty = true;
     partial void OnLogLevelChanged(string value) => IsDirty = true;
@@ -158,7 +155,7 @@ public partial class SettingsViewModel : ObservableObject
             SettingsValidator.NormalizeDockerDiscoveryInterval(DockerDiscoveryInterval);
         _settings.WebRtcEnabled = WebRtcEnabled;
         _settings.AllowRemoteOverrides = AllowRemoteOverrides;
-        _settings.AutoUpdateEnabled = AutoUpdateEnabled;
+        _settings.AutoUpdateEnabled = false;
         _settings.TlsSkipVerify = TlsSkipVerify;
         _settings.TlsCaFile = normalizedCaFile;
         _settings.LogLevel = LogLevel;

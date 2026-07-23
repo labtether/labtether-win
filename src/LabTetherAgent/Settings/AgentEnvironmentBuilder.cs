@@ -138,7 +138,10 @@ public static class AgentEnvironmentBuilder
         env["LABTETHER_FILES_ROOT_MODE"] = settings.FilesRootMode;
 
         // Feature toggles
-        env["LABTETHER_AUTO_UPDATE"] = settings.AutoUpdateEnabled ? "true" : "false";
+        // The Go core is bundled and attested as part of the native app. It
+        // must not replace itself independently of the signed app package,
+        // even when an older settings file still contains a true value.
+        env["LABTETHER_AUTO_UPDATE"] = "false";
         env["LABTETHER_ALLOW_REMOTE_OVERRIDES"] = settings.AllowRemoteOverrides ? "true" : "false";
         env["LABTETHER_LOW_POWER_MODE"] = settings.LowPowerMode ? "true" : "false";
 

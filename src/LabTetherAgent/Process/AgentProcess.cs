@@ -119,6 +119,13 @@ public class AgentProcess : IDisposable
         foreach (var (key, value) in environment)
             startInfo.Environment[key] = value;
 
+        // Final launch-boundary enforcement: a bundled child is owned by this
+        // native app and must neither outlive it nor independently replace its
+        // signed/attested executable. Override even stale or hostile settings
+        // passed by a future call site.
+        startInfo.Environment["LABTETHER_PARENT_PID"] = Environment.ProcessId.ToString();
+        startInfo.Environment["LABTETHER_AUTO_UPDATE"] = "false";
+
         return startInfo;
     }
 
