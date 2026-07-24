@@ -22,6 +22,33 @@ public class AgentEnvironmentBuilderTests
         Assert.Equal("wss://hub.example.com/ws/agent", env["LABTETHER_WS_URL"]);
         Assert.Equal("https://hub.example.com", env["LABTETHER_API_BASE_URL"]);
         Assert.False(env.ContainsKey("LABTETHER_OUTBOUND_ALLOW_LOOPBACK"));
+        Assert.False(env.ContainsKey("LABTETHER_ALLOW_INSECURE_TRANSPORT"));
+    }
+
+    [Theory]
+    [InlineData("http://hub.example.com", "ws://hub.example.com/ws/agent")]
+    [InlineData("ws://hub.example.com/custom", "ws://hub.example.com/custom")]
+    public void BuildEnvironment_ExplicitlyAllowsConfiguredPlaintextHubTransport(
+        string hubUrl,
+        string expectedWsUrl)
+    {
+        var settings = new AgentSettings { HubUrl = hubUrl };
+        var env = Build(settings, "9090", "test-auth");
+
+        Assert.Equal(expectedWsUrl, env["LABTETHER_WS_URL"]);
+        Assert.Equal("true", env["LABTETHER_ALLOW_INSECURE_TRANSPORT"]);
+    }
+
+    [Theory]
+    [InlineData("https://hub.example.com")]
+    [InlineData("wss://hub.example.com/ws/agent")]
+    public void BuildEnvironment_DoesNotAllowInsecureTransportForSecureHub(string hubUrl)
+    {
+        var settings = new AgentSettings { HubUrl = hubUrl };
+        var env = Build(settings, "9090", "test-auth");
+
+        Assert.StartsWith("wss://", env["LABTETHER_WS_URL"], StringComparison.Ordinal);
+        Assert.False(env.ContainsKey("LABTETHER_ALLOW_INSECURE_TRANSPORT"));
     }
 
     [Theory]

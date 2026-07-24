@@ -43,6 +43,12 @@ public static class AgentEnvironmentBuilder
             var apiBase = SettingsValidator.DeriveApiBaseUrl(wsUrl);
             if (!string.IsNullOrEmpty(apiBase))
                 env["LABTETHER_API_BASE_URL"] = apiBase;
+            // The Go core defaults to secure transport and otherwise upgrades
+            // ws:// to wss://. A user-selected http:// or ws:// Hub therefore
+            // needs the matching explicit opt-in or the child attempts TLS
+            // against the plaintext endpoint and can never connect.
+            if (UsesInsecureHubTransport(wsUrl))
+                env["LABTETHER_ALLOW_INSECURE_TRANSPORT"] = "true";
             if (IsLoopbackHub(wsUrl))
                 env["LABTETHER_OUTBOUND_ALLOW_LOOPBACK"] = "true";
         }
@@ -185,5 +191,11 @@ public static class AgentEnvironmentBuilder
             return false;
         return string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase)
             || System.Net.IPAddress.TryParse(uri.Host, out var ipAddress) && System.Net.IPAddress.IsLoopback(ipAddress);
+    }
+
+    private static bool UsesInsecureHubTransport(string wsUrl)
+    {
+        return Uri.TryCreate(wsUrl, UriKind.Absolute, out var uri)
+            && string.Equals(uri.Scheme, "ws", StringComparison.OrdinalIgnoreCase);
     }
 }
