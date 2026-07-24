@@ -21,6 +21,7 @@ public class TrayIconManager : IDisposable
     private readonly AppState _appState;
     private TaskbarIcon? _taskbarIcon;
     private System.Drawing.Icon? _trayDrawingIcon;
+    private Window? _lifetimeWindow;
     private FlyoutWindow? _flyoutWindow;
     private OnboardingWindow? _onboardingWindow;
     private SynchronizationContext? _uiContext;
@@ -38,6 +39,13 @@ public class TrayIconManager : IDisposable
     public void Initialize()
     {
         _uiContext = SynchronizationContext.Current;
+        // WinUI exits when its last Window closes, even if a native tray icon
+        // is still registered. Keep one never-shown window alive so completing
+        // onboarding or closing a flyout cannot silently stop the wrapper and
+        // its child agent.
+        _lifetimeWindow = new Window();
+        _lifetimeWindow.AppWindow.Hide();
+
         _taskbarIcon = new TaskbarIcon
         {
             ToolTipText = "LabTether Agent",
@@ -385,5 +393,7 @@ public class TrayIconManager : IDisposable
         _trayDrawingIcon?.Dispose();
         _flyoutWindow?.Close();
         _onboardingWindow?.Close();
+        _lifetimeWindow?.Close();
+        _lifetimeWindow = null;
     }
 }

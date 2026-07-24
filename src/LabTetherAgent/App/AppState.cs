@@ -92,9 +92,30 @@ public class AppState : IDisposable
         // replaying a stale group and a future launch will retry the migration.
         TryClearCompletedEnrollmentGroupIntent();
 
+        var settingsDirectory = AgentSettings.GetSettingsDirectory();
+        try
+        {
+            if (AgentManagedState.MigrateLegacyDeviceIdentityIfNeeded(settingsDirectory))
+            {
+                AgentProcess.LogReader.AppendRaw(
+                    "Migrated the enrolled native agent identity out of machine-wide service storage.");
+            }
+        }
+        catch (Exception ex) when (
+            ex is IOException or
+            UnauthorizedAccessException or
+            InvalidOperationException or
+            PlatformNotSupportedException or
+            System.Security.SecurityException)
+        {
+            AgentProcess.ReportError(
+                $"The enrolled device identity could not be migrated safely: {ex.Message}");
+            return;
+        }
+
         StartAgentWithSettings(
             Settings,
-            AgentSettings.GetSettingsDirectory(),
+            settingsDirectory,
             completesEnrollment: true);
     }
 
@@ -195,7 +216,7 @@ public class AppState : IDisposable
         var stagingDirectory = Path.Combine(
             AgentSettings.GetSettingsDirectory(),
             $".setup-{Guid.NewGuid():N}");
-        byte[]? stagedBearer = null;
+        Dictionary<string, byte[]>? stagedArtifacts = null;
 
         try
         {
@@ -221,16 +242,7 @@ public class AppState : IDisposable
                         await StopAgentAsync();
                     token.ThrowIfCancellationRequested();
 
-                    var stagedBearerPath = Path.Combine(stagingDirectory, "agent-token");
-                    if (!SecureFile.IsPrivateRegularFile(stagedBearerPath))
-                    {
-                        throw new InvalidOperationException(
-                            "The staged setup did not produce a protected durable credential.");
-                    }
-
-                    stagedBearer = File.ReadAllBytes(stagedBearerPath);
-                    if (stagedBearer.Length == 0)
-                        throw new InvalidOperationException("The staged durable credential was empty.");
+                    stagedArtifacts = AgentManagedState.CaptureSetupArtifacts(stagingDirectory);
 
                     // Remove every staged copy, including the one-use token,
                     // before publishing any replacement state.
@@ -246,7 +258,7 @@ public class AppState : IDisposable
                     }
 
                     persistenceTouched = true;
-                    PersistCommittedSetup(committed, stagedBearer);
+                    PersistCommittedSetup(committed, stagedArtifacts);
                     token.ThrowIfCancellationRequested();
 
                     StartAgent();
@@ -281,8 +293,8 @@ public class AppState : IDisposable
         }
         finally
         {
-            if (stagedBearer != null)
-                CryptographicOperations.ZeroMemory(stagedBearer);
+            if (stagedArtifacts != null)
+                AgentManagedState.ZeroArtifacts(stagedArtifacts);
             try
             {
                 DeleteSetupDirectory(stagingDirectory);
@@ -332,7 +344,7 @@ public class AppState : IDisposable
                     return await terminalFailure.Task;
 
                 var durableCredentialReady = !requiresDurableEnrollment ||
-                    SecureFile.IsPrivateRegularFile(Path.Combine(stagingDirectory, "agent-token"));
+                    AgentManagedState.IsSetupStateReady(stagingDirectory);
                 if (ApiClient.IsConnected && durableCredentialReady)
                     return AgentConnectionAttemptResult.Connected();
 
@@ -504,10 +516,12 @@ public class AppState : IDisposable
         }
     }
 
-    private void PersistCommittedSetup(AgentSettings committed, byte[] stagedBearer)
+    private void PersistCommittedSetup(
+        AgentSettings committed,
+        IReadOnlyDictionary<string, byte[]> stagedArtifacts)
     {
         var settingsDirectory = AgentSettings.GetSettingsDirectory();
-        SecureFile.WriteAllBytes(Path.Combine(settingsDirectory, "agent-token"), stagedBearer);
+        AgentManagedState.CommitArtifacts(settingsDirectory, stagedArtifacts);
         SecureFile.DeleteIfExists(Path.Combine(settingsDirectory, "enrollment-token"));
         SecureFile.DeleteIfExists(Path.Combine(settingsDirectory, "enrollment-token.sha256"));
 
@@ -568,17 +582,19 @@ public class AppState : IDisposable
             CredentialStore credentialStore)
         {
             var directory = AgentSettings.GetSettingsDirectory();
+            var filePaths = AgentManagedState.SnapshotArtifactNames
+                .Select(fileName => Path.Combine(directory, fileName))
+                .Concat(new[]
+                {
+                    AgentSettings.GetSettingsPath(),
+                    Path.Combine(directory, "enrollment-token"),
+                    Path.Combine(directory, "enrollment-token.sha256"),
+                    Path.Combine(directory, "local-api-auth-token"),
+                    Path.Combine(directory, "webrtc-turn-password"),
+                });
             return new SetupPersistenceSnapshot(
                 settings.CloneForSetup(),
-                new[]
-                {
-                    FileSnapshot.Capture(AgentSettings.GetSettingsPath()),
-                    FileSnapshot.Capture(Path.Combine(directory, "agent-token")),
-                    FileSnapshot.Capture(Path.Combine(directory, "enrollment-token")),
-                    FileSnapshot.Capture(Path.Combine(directory, "enrollment-token.sha256")),
-                    FileSnapshot.Capture(Path.Combine(directory, "local-api-auth-token")),
-                    FileSnapshot.Capture(Path.Combine(directory, "webrtc-turn-password")),
-                },
+                filePaths.Select(FileSnapshot.Capture).ToArray(),
                 credentialStore.Retrieve(CredentialStore.ApiTokenResource),
                 credentialStore.Retrieve(CredentialStore.EnrollmentTokenResource),
                 credentialStore.Retrieve(CredentialStore.WebRtcTurnPassResource));

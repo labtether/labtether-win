@@ -72,9 +72,22 @@ public static class AgentEnvironmentBuilder
         SecureFile.WriteAllText(localAuthPath, localApiAuthToken.Trim() + Environment.NewLine);
         env["LABTETHER_AGENT_LOCAL_AUTH_TOKEN_FILE"] = localAuthPath;
 
+        // Every durable child-owned file belongs to this native wrapper. Using
+        // the Go core's machine-wide ProgramData defaults here makes a native
+        // install silently reuse the standalone Windows service's identity and
+        // configuration, which causes Hub enrollment to reject the new app.
+        env["LABTETHER_AGENT_SETTINGS_FILE"] =
+            Path.Combine(secretDirectory, AgentManagedState.AgentConfigFileName);
+        env["LABTETHER_DEVICE_KEY_FILE"] =
+            Path.Combine(secretDirectory, AgentManagedState.DeviceKeyFileName);
+        env["LABTETHER_DEVICE_PUBLIC_KEY_FILE"] =
+            Path.Combine(secretDirectory, AgentManagedState.DevicePublicKeyFileName);
+        env["LABTETHER_DEVICE_FINGERPRINT_FILE"] =
+            Path.Combine(secretDirectory, AgentManagedState.DeviceFingerprintFileName);
+
         // File-backed secrets avoid exposing bearer tokens in the child
         // process environment and receive a protected current-user DACL.
-        var apiTokenPath = Path.Combine(secretDirectory, "agent-token");
+        var apiTokenPath = Path.Combine(secretDirectory, AgentManagedState.AgentTokenFileName);
         var enrollmentTokenPath = Path.Combine(secretDirectory, "enrollment-token");
         var enrollmentMarkerPath = Path.Combine(secretDirectory, "enrollment-token.sha256");
         var hasApiToken = !string.IsNullOrWhiteSpace(settings.ApiToken);

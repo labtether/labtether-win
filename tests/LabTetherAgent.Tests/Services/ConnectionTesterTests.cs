@@ -119,7 +119,27 @@ public class ConnectionTesterTests
     }
 
     [Fact]
-    public async Task TestAsyncProbesOnlyCanonicalHubRoot()
+    public async Task TestAsyncAcceptsUnifiedConsoleDiscoveryIdentity()
+    {
+        var tester = CreateTester(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = JsonContent(
+                """
+                {
+                  "hub": "labtether",
+                  "hub_ws_url": "wss://hub.example.test/ws/agent",
+                  "enroll_url": "https://hub.example.test/api/v1/enroll"
+                }
+                """)
+        });
+
+        var result = await tester.TestAsync("wss://hub.example.test/ws/agent");
+
+        Assert.True(result.Success);
+    }
+
+    [Fact]
+    public async Task TestAsyncProbesOnlyPublicDiscoveryRoute()
     {
         Uri? requestedUri = null;
         var tester = CreateTester(request =>
@@ -134,7 +154,7 @@ public class ConnectionTesterTests
         var result = await tester.TestAsync("wss://hub.example.test:8443/custom/agent/path");
 
         Assert.True(result.Success);
-        Assert.Equal(new Uri("https://hub.example.test:8443/"), requestedUri);
+        Assert.Equal(new Uri("https://hub.example.test:8443/api/v1/discover"), requestedUri);
     }
 
     [Theory]
@@ -177,6 +197,9 @@ public class ConnectionTesterTests
     [Theory]
     [InlineData("{\"service\":\"something-else\"}")]
     [InlineData("{\"status\":\"ok\"}")]
+    [InlineData("{\"hub\":\"labtether\",\"hub_ws_url\":\"wss://hub.example.test/ws/agent\"}")]
+    [InlineData("{\"hub\":\"labtether\",\"hub_ws_url\":\"wss://hub.example.test/ws/agent\",\"enroll_url\":\"https://hub.example.test/not-enroll\"}")]
+    [InlineData("{\"hub\":\"labtether\",\"hub_ws_url\":\"wss://user:secret@hub.example.test/ws/agent\",\"enroll_url\":\"https://hub.example.test/api/v1/enroll\"}")]
     [InlineData("not-json")]
     public async Task TestAsyncRejectsUnrelatedOrMalformedEndpoint(string body)
     {

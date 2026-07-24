@@ -59,6 +59,7 @@ public class AgentSettings
     [JsonIgnore] public string EnrollmentToken { get; set; } = string.Empty;
     [JsonIgnore] public string WebRtcTurnPass { get; set; } = string.Empty;
     [JsonIgnore] public string LocalApiAuthToken { get; set; } = string.Empty;
+    [JsonIgnore] internal string? PersistedAgentTokenPathOverride { get; set; }
 
     // Change tracking
     [JsonIgnore] public int SettingsVersion { get; private set; }
@@ -75,7 +76,7 @@ public class AgentSettings
     /// </summary>
     [JsonIgnore]
     public bool HasPersistedAgentToken => HasPrivatePersistedAgentTokenAt(
-        Path.Combine(SettingsDir, "agent-token"));
+        PersistedAgentTokenPathOverride ?? Path.Combine(SettingsDir, "agent-token"));
 
     internal static bool MinimumCredentialConfigured(
         string apiToken,
@@ -238,6 +239,7 @@ public class AgentSettings
         EnrollmentToken = source.EnrollmentToken;
         WebRtcTurnPass = source.WebRtcTurnPass;
         LocalApiAuthToken = source.LocalApiAuthToken;
+        PersistedAgentTokenPathOverride = source.PersistedAgentTokenPathOverride;
         SettingsVersion = source.SettingsVersion;
     }
 }

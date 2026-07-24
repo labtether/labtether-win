@@ -73,12 +73,15 @@ public class OnboardingViewModelTests
     [Fact]
     public async Task ReachableHubWithRejectedEnrollmentKeepsWizardOpenAndShowsCredentialError()
     {
-        var settings = new AgentSettings();
         var credentialPath = Path.Combine(
             Path.GetTempPath(),
             "LabTetherAgentTests",
             Guid.NewGuid().ToString("N"),
             ".credentials");
+        var settings = new AgentSettings
+        {
+            PersistedAgentTokenPathOverride = credentialPath + ".agent-token",
+        };
         AgentSettings? stagedCandidate = null;
         bool? requiredDurableEnrollment = null;
         var viewModel = new OnboardingViewModel(
@@ -194,12 +197,15 @@ public class OnboardingViewModelTests
     [Fact]
     public async Task WizardCompletesOnlyAfterAgentReportsAuthenticatedConnection()
     {
-        var settings = new AgentSettings();
         var credentialPath = Path.Combine(
             Path.GetTempPath(),
             "LabTetherAgentTests",
             Guid.NewGuid().ToString("N"),
             ".credentials");
+        var settings = new AgentSettings
+        {
+            PersistedAgentTokenPathOverride = credentialPath + ".agent-token",
+        };
         var viewModel = new OnboardingViewModel(
             settings,
             new CredentialStore(vaultAvailable: false, fallbackPath: credentialPath),
@@ -270,12 +276,15 @@ public class OnboardingViewModelTests
     [Fact]
     public async Task FirstInstallFailureDoesNotCreateFalseEnrollmentState()
     {
-        var settings = new AgentSettings();
         var credentialPath = Path.Combine(
             Path.GetTempPath(),
             "LabTetherAgentTests",
             Guid.NewGuid().ToString("N"),
             ".credentials");
+        var settings = new AgentSettings
+        {
+            PersistedAgentTokenPathOverride = credentialPath + ".agent-token",
+        };
         var viewModel = new OnboardingViewModel(
             settings,
             new CredentialStore(vaultAvailable: false, fallbackPath: credentialPath),
