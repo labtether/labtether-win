@@ -30,7 +30,7 @@ public class ConnectionTester
     }
 
     /// <summary>
-    /// Test if the hub URL is reachable via HTTPS.
+    /// Test if the hub URL reaches LabTether's public discovery endpoint.
     /// </summary>
     /// <param name="hubUrl">Hub URL to probe.</param>
     /// <param name="tlsSkipVerify">
@@ -48,8 +48,8 @@ public class ConnectionTester
 
         // Reuse the strict settings parser so user information, queries,
         // fragments, and unsupported schemes cannot leak into the probe.
-        var httpUrl = SettingsValidator.DeriveApiBaseUrl(hubUrl);
-        if (httpUrl is null)
+        var identityUrl = HubIdentityUrl(hubUrl);
+        if (identityUrl is null)
             return new ConnectionTestResult(false, "Invalid URL format.");
         if (HasConflictingTlsTrustOptions(tlsSkipVerify, tlsCaFile))
         {
@@ -69,7 +69,7 @@ public class ConnectionTester
             using var client = new HttpClient(handler) { Timeout = Timeout };
             using var timeout = new CancellationTokenSource(Timeout);
             using var response = await client.GetAsync(
-                httpUrl,
+                identityUrl,
                 HttpCompletionOption.ResponseHeadersRead,
                 timeout.Token);
 
@@ -100,10 +100,7 @@ public class ConnectionTester
             try
             {
                 using var document = JsonDocument.Parse(buffer.AsMemory(0, total));
-                if (document.RootElement.ValueKind != JsonValueKind.Object
-                    || !document.RootElement.TryGetProperty("service", out var service)
-                    || service.ValueKind != JsonValueKind.String
-                    || !string.Equals(service.GetString(), "labtether-hub", StringComparison.Ordinal))
+                if (!IsCanonicalHubIdentity(document.RootElement))
                 {
                     return new ConnectionTestResult(false, "The endpoint is not a LabTether hub.");
                 }
@@ -131,6 +128,56 @@ public class ConnectionTester
         {
             return new ConnectionTestResult(false, "Unexpected connection error.");
         }
+    }
+
+    internal static Uri? HubIdentityUrl(string hubUrl)
+    {
+        var apiBase = SettingsValidator.DeriveApiBaseUrl(hubUrl);
+        if (!Uri.TryCreate(apiBase?.TrimEnd('/') + "/api/v1/discover", UriKind.Absolute, out var identityUrl))
+            return null;
+        return identityUrl;
+    }
+
+    internal static bool IsCanonicalHubIdentity(JsonElement payload)
+    {
+        if (payload.ValueKind != JsonValueKind.Object)
+            return false;
+
+        // Older direct API origins identify themselves at their root with this
+        // shape. Retain compatibility while all unified console origins use
+        // the public discovery contract below.
+        if (payload.TryGetProperty("service", out var service) &&
+            service.ValueKind == JsonValueKind.String &&
+            string.Equals(service.GetString(), "labtether-hub", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        if (!payload.TryGetProperty("hub", out var hub) ||
+            hub.ValueKind != JsonValueKind.String ||
+            !string.Equals(hub.GetString(), "labtether", StringComparison.Ordinal) ||
+            !payload.TryGetProperty("hub_ws_url", out var hubWsUrl) ||
+            hubWsUrl.ValueKind != JsonValueKind.String ||
+            !payload.TryGetProperty("enroll_url", out var enrollUrl) ||
+            enrollUrl.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+
+        var wsUrl = hubWsUrl.GetString();
+        var normalizedWsUrl = SettingsValidator.NormalizeHubWebSocketUrl(wsUrl);
+        if (normalizedWsUrl is null ||
+            !string.Equals(normalizedWsUrl, wsUrl, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return Uri.TryCreate(enrollUrl.GetString(), UriKind.Absolute, out var enrollmentUri) &&
+            enrollmentUri.Scheme is "http" or "https" &&
+            string.IsNullOrEmpty(enrollmentUri.UserInfo) &&
+            string.IsNullOrEmpty(enrollmentUri.Query) &&
+            string.IsNullOrEmpty(enrollmentUri.Fragment) &&
+            string.Equals(enrollmentUri.AbsolutePath, "/api/v1/enroll", StringComparison.Ordinal);
     }
 
     internal static bool IsUsableCustomCaFile(string path)

@@ -77,6 +77,38 @@ public class AgentEnvironmentBuilderTests
     }
 
     [Fact]
+    public void BuildEnvironment_IsolatesAllChildManagedStateFromStandaloneService()
+    {
+        var env = Build(new AgentSettings(), "12345", "my-auth-token");
+
+        Assert.Equal(
+            Path.Combine(_secretDirectory, AgentManagedState.AgentConfigFileName),
+            env["LABTETHER_AGENT_SETTINGS_FILE"]);
+        Assert.Equal(
+            Path.Combine(_secretDirectory, AgentManagedState.DeviceKeyFileName),
+            env["LABTETHER_DEVICE_KEY_FILE"]);
+        Assert.Equal(
+            Path.Combine(_secretDirectory, AgentManagedState.DevicePublicKeyFileName),
+            env["LABTETHER_DEVICE_PUBLIC_KEY_FILE"]);
+        Assert.Equal(
+            Path.Combine(_secretDirectory, AgentManagedState.DeviceFingerprintFileName),
+            env["LABTETHER_DEVICE_FINGERPRINT_FILE"]);
+
+        foreach (var path in env
+                     .Where(pair => pair.Key is
+                         "LABTETHER_AGENT_SETTINGS_FILE" or
+                         "LABTETHER_DEVICE_KEY_FILE" or
+                         "LABTETHER_DEVICE_PUBLIC_KEY_FILE" or
+                         "LABTETHER_DEVICE_FINGERPRINT_FILE")
+                     .Select(pair => pair.Value))
+        {
+            Assert.Equal(
+                Path.GetFullPath(_secretDirectory),
+                Path.GetDirectoryName(Path.GetFullPath(path)));
+        }
+    }
+
+    [Fact]
     public void BuildEnvironment_PropagatesAuthenticationTurnAndCustomCAUsingSecretFiles()
     {
         var settings = new AgentSettings
