@@ -96,8 +96,11 @@ function Set-RepositoryMSBuildSdkPath([string]$SourceRoot) {
     $RequiredSdkVersion = (Get-Content -LiteralPath $GlobalJsonPath -Raw | ConvertFrom-Json).sdk.version
     Push-Location $SourceRoot
     try {
-        $SelectedSdkVersion = (& $DotNet.Source --version | Select-Object -First 1).Trim()
-        Assert-ExitCode "Resolve repository .NET SDK"
+        $SdkOutput = @(& $DotNet.Source --version)
+        if ($SdkOutput.Count -eq 0 -or [string]::IsNullOrWhiteSpace($SdkOutput[0])) {
+            throw "Unable to resolve the repository .NET SDK"
+        }
+        $SelectedSdkVersion = $SdkOutput[0].Trim()
     }
     finally {
         Pop-Location
