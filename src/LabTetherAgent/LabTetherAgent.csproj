@@ -12,8 +12,6 @@
     <WindowsPackageType>MSIX</WindowsPackageType>
     <SelfContained>true</SelfContained>
     <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
-    <!-- Keep MSBuild-only release paths on the first patched .NET 8 runtime. -->
-    <RuntimeFrameworkVersion>8.0.30</RuntimeFrameworkVersion>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <!-- Keep the checked-in development baseline aligned with the latest
          released native wrapper. Release builds override all version fields
