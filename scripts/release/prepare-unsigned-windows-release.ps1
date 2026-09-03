@@ -86,6 +86,63 @@ function Resolve-MSBuild {
     return $Candidate
 }
 
+function Set-RepositoryMSBuildSdkPath([string]$SourceRoot) {
+    $DotNet = Get-Command dotnet.exe -ErrorAction SilentlyContinue
+    if ($null -eq $DotNet) {
+        throw "dotnet.exe was not found. Install the SDK selected by global.json."
+    }
+
+    $GlobalJsonPath = Join-Path $SourceRoot "global.json"
+    $RequiredSdkVersion = (Get-Content -LiteralPath $GlobalJsonPath -Raw | ConvertFrom-Json).sdk.version
+    Push-Location $SourceRoot
+    try {
+        $SdkOutput = @(& $DotNet.Source --version)
+        if ($SdkOutput.Count -eq 0 -or [string]::IsNullOrWhiteSpace($SdkOutput[0])) {
+            throw "Unable to resolve the repository .NET SDK"
+        }
+        $SelectedSdkVersion = $SdkOutput[0].Trim()
+    }
+    finally {
+        Pop-Location
+    }
+
+    if ([version]$SelectedSdkVersion -lt [version]$RequiredSdkVersion) {
+        throw "Selected .NET SDK $SelectedSdkVersion is older than required SDK $RequiredSdkVersion"
+    }
+
+    $SdkPath = Join-Path (Split-Path $DotNet.Source -Parent) "sdk\$SelectedSdkVersion\Sdks"
+    if (-not (Test-Path -LiteralPath $SdkPath -PathType Container)) {
+        throw "Selected .NET SDK path was not found: $SdkPath"
+    }
+
+    # Never trust a caller-supplied value. It bypasses global.json and can make
+    # Visual Studio MSBuild publish with an older, vulnerable runtime pack.
+    $env:MSBuildSDKsPath = $SdkPath
+    Write-Host "Using repository .NET SDK $SelectedSdkVersion."
+}
+
+function Assert-PatchedRuntimePack([string]$PublishDirectory) {
+    $MinimumRuntimeVersion = [version]"8.0.30"
+    $DepsPath = Join-Path $PublishDirectory "LabTetherAgent.deps.json"
+    if (-not (Test-Path -LiteralPath $DepsPath -PathType Leaf)) {
+        throw "Published payload is missing runtime metadata"
+    }
+
+    $Deps = Get-Content -LiteralPath $DepsPath -Raw | ConvertFrom-Json
+    $RuntimePrefix = "runtimepack.Microsoft.NETCore.App.Runtime."
+    $RuntimeVersions = @(
+        $Deps.libraries.PSObject.Properties.Name |
+            Where-Object { $_.StartsWith($RuntimePrefix, [StringComparison]::OrdinalIgnoreCase) } |
+            ForEach-Object { [version](($_ -split '/', 2)[1]) }
+    )
+    if ($RuntimeVersions.Count -eq 0) {
+        throw "Published payload does not identify its .NET runtime pack"
+    }
+    if (@($RuntimeVersions | Where-Object { $_ -lt $MinimumRuntimeVersion }).Count -ne 0) {
+        throw "Published payload contains a .NET runtime older than $MinimumRuntimeVersion"
+    }
+}
+
 function Assert-ExitCode([string]$Step) {
     if ($LASTEXITCODE -ne 0) {
         throw "$Step failed with exit code $LASTEXITCODE"
@@ -197,6 +254,7 @@ try {
     }
     Set-Content -LiteralPath (Join-Path $AssetDirectory "AGENT_VERSION") -Value $Tag -Encoding ASCII
 
+    Set-RepositoryMSBuildSdkPath $WrapperSource
     $MsBuild = Resolve-MSBuild
     $TestProject = Join-Path $WrapperSource "tests\LabTetherAgent.Tests\LabTetherAgent.Tests.csproj"
     & $MsBuild $TestProject -restore -t:Build -p:Platform=x64 -p:Configuration=Release -p:EnableMsixTooling=false -p:WindowsPackageType=None -p:GenerateAppxPackageOnBuild=false -p:RequireBundledAgent=true -nologo -verbosity:minimal
@@ -212,6 +270,7 @@ try {
     $Project = Join-Path $WrapperSource "src\LabTetherAgent\LabTetherAgent.csproj"
     & $MsBuild $Project -restore -t:Publish -p:Configuration=Release -p:RuntimeIdentifier=win-x64 -p:Platform=x64 -p:SelfContained=true -p:WindowsPackageType=None -p:EnableMsixTooling=true -p:GenerateAppxPackageOnBuild=false -p:RequireBundledAgent=true -p:PublishTrimmed=false -p:PublishReadyToRun=false "-p:Version=$($Versions.Product)" "-p:AssemblyVersion=$($Versions.Binary)" "-p:FileVersion=$($Versions.Binary)" "-p:InformationalVersion=$($Versions.Product)" -p:IncludeSourceRevisionInInformationalVersion=false "-p:AppxPackageVersion=$($Versions.Binary)" "-p:PublishDir=$PublishRoot\" -nologo -verbosity:minimal
     Assert-ExitCode "Publish unsigned Windows payload"
+    Assert-PatchedRuntimePack $PublishRoot
 
     foreach ($RelativePath in $AuthoredPayloads) {
         $Payload = Join-Path $PublishRoot $RelativePath

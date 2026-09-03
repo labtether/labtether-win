@@ -33,6 +33,63 @@ function Resolve-MSBuild {
     throw "Visual Studio MSBuild was not found. Install Visual Studio 2022 Build Tools with the Windows App SDK workload."
 }
 
+function Set-RepositoryMSBuildSdkPath([string]$SourceRoot) {
+    $dotnet = Get-Command dotnet.exe -ErrorAction SilentlyContinue
+    if ($null -eq $dotnet) {
+        throw "dotnet.exe was not found. Install the SDK selected by global.json."
+    }
+
+    $globalJsonPath = Join-Path $SourceRoot "global.json"
+    $requiredSdkVersion = (Get-Content -LiteralPath $globalJsonPath -Raw | ConvertFrom-Json).sdk.version
+    Push-Location $SourceRoot
+    try {
+        $sdkOutput = @(& $dotnet.Source --version)
+        if ($sdkOutput.Count -eq 0 -or [string]::IsNullOrWhiteSpace($sdkOutput[0])) {
+            throw "Unable to resolve the repository .NET SDK."
+        }
+        $selectedSdkVersion = $sdkOutput[0].Trim()
+    }
+    finally {
+        Pop-Location
+    }
+
+    if ([version]$selectedSdkVersion -lt [version]$requiredSdkVersion) {
+        throw "Selected .NET SDK $selectedSdkVersion is older than required SDK $requiredSdkVersion."
+    }
+
+    $sdkPath = Join-Path (Split-Path $dotnet.Source -Parent) "sdk\$selectedSdkVersion\Sdks"
+    if (-not (Test-Path -LiteralPath $sdkPath -PathType Container)) {
+        throw "Selected .NET SDK path was not found: $sdkPath"
+    }
+
+    # Always replace a caller-supplied value. MSBuildSDKsPath otherwise bypasses
+    # global.json and can silently select an older, vulnerable runtime pack.
+    $env:MSBuildSDKsPath = $sdkPath
+    Write-Host "Using repository .NET SDK $selectedSdkVersion."
+}
+
+function Assert-PatchedRuntimePack([string]$PublishDirectory) {
+    $minimumRuntimeVersion = [version]"8.0.30"
+    $depsPath = Join-Path $PublishDirectory "LabTetherAgent.deps.json"
+    if (-not (Test-Path -LiteralPath $depsPath -PathType Leaf)) {
+        throw "Published payload is missing runtime metadata: $depsPath"
+    }
+
+    $deps = Get-Content -LiteralPath $depsPath -Raw | ConvertFrom-Json
+    $runtimePrefix = "runtimepack.Microsoft.NETCore.App.Runtime."
+    $runtimeVersions = @(
+        $deps.libraries.PSObject.Properties.Name |
+            Where-Object { $_.StartsWith($runtimePrefix, [StringComparison]::OrdinalIgnoreCase) } |
+            ForEach-Object { [version](($_ -split '/', 2)[1]) }
+    )
+    if ($runtimeVersions.Count -eq 0) {
+        throw "Published payload does not identify its .NET runtime pack."
+    }
+    if (@($runtimeVersions | Where-Object { $_ -lt $minimumRuntimeVersion }).Count -ne 0) {
+        throw "Published payload contains a .NET runtime older than $minimumRuntimeVersion."
+    }
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $rid = if ($Arch -eq "arm64") { "win-arm64" } else { "win-x64" }
 $projectPath = Join-Path $repoRoot "src\LabTetherAgent\LabTetherAgent.csproj"
@@ -47,25 +104,7 @@ if (-not (Test-Path -LiteralPath $agentBinary -PathType Leaf) -or
     throw "Bundled agent core is missing. Run scripts/build-bundled-agent.sh first."
 }
 
-# VS MSBuild sometimes needs the SDK path made explicit outside a Developer
-# PowerShell. Resolve it from the repository's global.json instead of pinning a
-# machine-specific SDK patch version.
-if ([string]::IsNullOrWhiteSpace($env:MSBuildSDKsPath)) {
-    $dotnet = Get-Command dotnet.exe -ErrorAction SilentlyContinue
-    if ($null -ne $dotnet) {
-        Push-Location $repoRoot
-        try {
-            $sdkVersion = (& $dotnet.Source --version | Select-Object -First 1).Trim()
-        }
-        finally {
-            Pop-Location
-        }
-        $sdkPath = Join-Path (Split-Path $dotnet.Source -Parent) "sdk\$sdkVersion\Sdks"
-        if (Test-Path -LiteralPath $sdkPath -PathType Container) {
-            $env:MSBuildSDKsPath = $sdkPath
-        }
-    }
-}
+Set-RepositoryMSBuildSdkPath $repoRoot
 
 $requestedOutputRoot = if ([IO.Path]::IsPathRooted($OutputDir)) {
     $OutputDir
@@ -146,6 +185,7 @@ foreach ($requiredPath in @(
         throw "Published payload is missing required file: $requiredPath"
     }
 }
+Assert-PatchedRuntimePack $publishDir
 
 $makePri = Get-ChildItem `
     -Path (Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10\bin") `
