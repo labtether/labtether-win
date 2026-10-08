@@ -10,6 +10,19 @@ permissions:
   contents: read
 
 jobs:
+  line-limit:
+    name: Handwritten code / 500-line limit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check line-limit gate behavior
+        run: python3 -m unittest scripts/ci/test_line_limit.py
+      - name: Enforce full-repository line limit
+        run: python3 scripts/ci/check-line-limit.py
+
   qa-plan:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -61,7 +74,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: labtether/labtether-agent
-          ref: main
+          # Coordinated release contract: this exact SHA must match the Go
+          # agent source accepted by the root-cause release gate.
+          ref: 5f00b0d56bdb0132c2682f6150d8ed74f24b2aa7
           path: agent-core
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -130,7 +145,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: labtether/labtether-agent
-          ref: main
+          # Keep the installed-payload child identical to build-and-test and
+          # to the exact Go agent accepted by the root release gate.
+          ref: 5f00b0d56bdb0132c2682f6150d8ed74f24b2aa7
           path: agent-core
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
