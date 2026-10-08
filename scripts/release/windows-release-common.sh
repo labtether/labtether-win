@@ -66,6 +66,26 @@ assert_clean_tagged_source() {
   printf '%s\n' "$head_sha"
 }
 
+# Permit only the exact shared instruction link, in both the index and checkout.
+canonical_guide_link_is_safe() {
+  local repo="$1" index_entry="$2"
+  local link_hash target_entry target_header target_mode target_hash target_stage local_hash
+  link_hash="$(printf 'AGENTS.md' | git -C "${repo}" hash-object --stdin)" || return 1
+  [[ "${index_entry}" == "120000 ${link_hash} 0"$'\t'"CLAUDE.md" ]] || return 1
+  [[ -L "${repo}/CLAUDE.md" ]] || return 1
+  [[ "$(readlink "${repo}/CLAUDE.md"; printf '.')" == $'AGENTS.md\n.' ]] || return 1
+  [[ -f "${repo}/AGENTS.md" && ! -L "${repo}/AGENTS.md" ]] || return 1
+  target_entry="$(git -C "${repo}" ls-files -s -- AGENTS.md)" || return 1
+  [[ "${target_entry#*$'\t'}" == "AGENTS.md" ]] || return 1
+  target_header="${target_entry%%$'\t'*}"
+  read -r target_mode target_hash target_stage <<< "${target_header}"
+  [[ "${target_mode}" == 100644 || "${target_mode}" == 100755 ]] || return 1
+  [[ "${target_stage}" == 0 ]] || return 1
+  # Let Git normalize checkout line endings before comparing the regular target.
+  local_hash="$(git -C "${repo}" hash-object --path=AGENTS.md -- AGENTS.md)" || return 1
+  [[ "${local_hash}" == "${target_hash}" ]]
+}
+
 assert_tracked_source_policy() {
   local repository="$1"
   local index_entry
@@ -82,6 +102,7 @@ assert_tracked_source_policy() {
     tracked_path="${index_entry#*$'\t'}"
     case "$mode" in
       100644|100755) ;;
+      120000) canonical_guide_link_is_safe "$repository" "$index_entry" || die "release source contains an unsafe instruction link" ;;
       *) die "release source contains a non-regular tracked entry" ;;
     esac
     if [[ "$tracked_path" =~ \.([Pp][Ff][Xx]|[Pp]12|[Pp][Kk][Cc][Ss]12|[Cc][Ee][Rr]|[Cc][Rr][Tt]|[Dd][Ee][Rr]|[Pp][Ee][Mm]|[Kk][Ee][Yy]|[Jj][Kk][Ss]|[Kk][Ee][Yy][Ss][Tt][Oo][Rr][Ee]|[Kk][Dd][Bb]|[Pp][Pp][Kk])$ ]]; then

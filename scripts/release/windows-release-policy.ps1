@@ -8,13 +8,14 @@ function Test-ReleaseJsonInteger([object]$Value) {
     return ($Value -is [int] -or $Value -is [long])
 }
 
-function Invoke-GitNulList([string]$Repository, [string]$Arguments) {
+function Invoke-GitNulList([string]$Repository, [string]$Arguments, [string]$InputText = "") {
     $StartInfo = [Diagnostics.ProcessStartInfo]::new()
     $StartInfo.FileName = "git.exe"
     $StartInfo.Arguments = $Arguments
     $StartInfo.WorkingDirectory = $Repository
     $StartInfo.UseShellExecute = $false
     $StartInfo.CreateNoWindow = $true
+    $StartInfo.RedirectStandardInput = $true
     $StartInfo.RedirectStandardOutput = $true
     $StartInfo.RedirectStandardError = $true
     $Process = [Diagnostics.Process]::new()
@@ -23,6 +24,8 @@ function Invoke-GitNulList([string]$Repository, [string]$Arguments) {
         if (-not $Process.Start()) {
             throw "Unable to start git while inspecting tracked release source"
         }
+        $Process.StandardInput.Write($InputText)
+        $Process.StandardInput.Close()
         $Output = $Process.StandardOutput.ReadToEnd()
         $ErrorOutput = $Process.StandardError.ReadToEnd()
         $Process.WaitForExit()
@@ -36,6 +39,27 @@ function Invoke-GitNulList([string]$Repository, [string]$Arguments) {
     }
 }
 
+function Test-CanonicalGuideLink([string]$Repository, [string]$IndexEntry) {
+    $Hash = (@(Invoke-GitNulList $Repository "hash-object --stdin" "AGENTS.md")[0]).Trim()
+    if ($IndexEntry -cne "120000 $Hash 0`tCLAUDE.md") { return $false }
+    $Link = Get-Item -LiteralPath (Join-Path $Repository "CLAUDE.md") -Force
+    $Guide = Get-Item -LiteralPath (Join-Path $Repository "AGENTS.md") -Force
+    $Targets = @($Link.Target)
+    if ($Link.PSIsContainer -or $Link.LinkType -cne "SymbolicLink" -or
+        $Targets.Count -ne 1 -or $Targets[0] -cne "AGENTS.md" -or
+        $Guide.PSIsContainer -or ($Guide.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        return $false
+    }
+    $TargetEntries = @(Invoke-GitNulList $Repository "ls-files -s -z -- AGENTS.md")
+    if ($TargetEntries.Count -ne 1) { return $false }
+    $TargetMatch = [regex]::Match($TargetEntries[0], '\A100(?:644|755) ([0-9a-f]{40}|[0-9a-f]{64}) 0\tAGENTS\.md\z')
+    if (-not $TargetMatch.Success) { return $false }
+    $TargetHash = $TargetMatch.Groups[1].Value
+    # Normalize checkout line endings using Git's own tracked-path rules.
+    $LocalHash = (@(Invoke-GitNulList $Repository "hash-object --path=AGENTS.md -- AGENTS.md")[0]).Trim()
+    return $LocalHash -ceq $TargetHash
+}
+
 function Assert-TrackedSourcePolicy([string]$Repository) {
     foreach ($IndexEntry in @(Invoke-GitNulList $Repository "ls-files -s -z")) {
         $Tab = $IndexEntry.IndexOf([char]9)
@@ -45,7 +69,12 @@ function Assert-TrackedSourcePolicy([string]$Repository) {
         $Header = $IndexEntry.Substring(0, $Tab)
         $TrackedPath = $IndexEntry.Substring($Tab + 1)
         $Mode = $Header.Split(' ')[0]
-        if ($Mode -notin @("100644", "100755")) {
+        if ($Mode -eq "120000") {
+            if (-not (Test-CanonicalGuideLink $Repository $IndexEntry)) {
+                throw "Release source contains an unsafe instruction link"
+            }
+        }
+        elseif ($Mode -notin @("100644", "100755")) {
             throw "Release source contains a non-regular tracked entry"
         }
         if ($TrackedPath -match '(?i)\.(pfx|p12|pkcs12|cer|crt|der|pem|key|jks|keystore|kdb|ppk)$') {

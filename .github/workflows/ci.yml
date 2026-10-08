@@ -55,9 +55,18 @@ jobs:
           python -B scripts/qa/select_native_contracts.py "${args[@]}"
 
   build-and-test:
-    needs: qa-plan
+    needs: [line-limit, qa-plan]
+    if: always()
     runs-on: windows-latest
     steps:
+      - name: Require source-size gate
+        shell: bash
+        env:
+          LINE_LIMIT_RESULT: ${{ needs.line-limit.result }}
+          QA_PLAN_RESULT: ${{ needs.qa-plan.result }}
+        run: |
+          test "${LINE_LIMIT_RESULT}" = success
+          test "${QA_PLAN_RESULT}" = success
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -76,7 +85,7 @@ jobs:
           repository: labtether/labtether-agent
           # Coordinated release contract: this exact SHA must match the Go
           # agent source accepted by the root-cause release gate.
-          ref: 5f00b0d56bdb0132c2682f6150d8ed74f24b2aa7
+          ref: 0578bb4dcd267e3a4993425f0f296d333ecc6bab
           path: agent-core
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -147,7 +156,7 @@ jobs:
           repository: labtether/labtether-agent
           # Keep the installed-payload child identical to build-and-test and
           # to the exact Go agent accepted by the root release gate.
-          ref: 5f00b0d56bdb0132c2682f6150d8ed74f24b2aa7
+          ref: 0578bb4dcd267e3a4993425f0f296d333ecc6bab
           path: agent-core
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
