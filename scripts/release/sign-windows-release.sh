@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Owner-requested signing pause. Remove only after explicit approval.
+echo "Code signing is paused by owner request (2026-09-05)." >&2
+exit 1
 set -Eeuo pipefail
 set +x
 umask 077

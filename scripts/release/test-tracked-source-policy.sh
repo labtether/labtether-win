@@ -68,4 +68,6 @@ if (assert_tracked_source_policy "$repo") 2>/dev/null; then
   die "tracked source policy accepted a forbidden local secret path"
 fi
 
+bash "$SCRIPT_DIR/test-guide-link-policy.sh"
+
 printf 'Tracked source policy fixtures passed.\n'

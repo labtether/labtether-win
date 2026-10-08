@@ -136,6 +136,8 @@ try {
     )
     Assert-SafeZipArchive $GoodArchive $Destination @("Assets/agent.exe", "root.txt")
 
+    & (Join-Path $PSScriptRoot "test-guide-link-policy.ps1")
+
     "Windows release policy malicious-fixture tests passed."
 }
 finally {
