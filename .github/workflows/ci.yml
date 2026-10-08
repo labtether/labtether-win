@@ -85,7 +85,7 @@ jobs:
           repository: labtether/labtether-agent
           # Coordinated release contract: this exact SHA must match the Go
           # agent source accepted by the root-cause release gate.
-          ref: eaebde5a9b16ca7f346bab8597c3ce665c37689d
+          ref: cc64499481c415dbccfa5909e635d57bcfe3e579
           path: agent-core
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -156,7 +156,7 @@ jobs:
           repository: labtether/labtether-agent
           # Keep the installed-payload child identical to build-and-test and
           # to the exact Go agent accepted by the root release gate.
-          ref: eaebde5a9b16ca7f346bab8597c3ce665c37689d
+          ref: cc64499481c415dbccfa5909e635d57bcfe3e579
           path: agent-core
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
