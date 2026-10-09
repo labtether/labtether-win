@@ -51,6 +51,7 @@ public class AgentProcessTests
             new Dictionary<string, string>
             {
                 ["LABTETHER_TLS_CA_FILE"] = @"C:\LabTether\ca.crt",
+                ["LABTETHER_TLS_SKIP_VERIFY"] = "true",
                 ["LABTETHER_AGENT_LOCAL_AUTH_TOKEN_FILE"] = @"C:\LabTether\local-auth",
             },
             inherited
@@ -58,7 +59,7 @@ public class AgentProcessTests
 
         Assert.False(info.Environment.ContainsKey("LABTETHER_AGENT_LOCAL_BIND_ADDRESS"));
         Assert.False(info.Environment.ContainsKey("LABTETHER_AGENT_LOCAL_ALLOW_UNAUTHENTICATED"));
-        Assert.False(info.Environment.ContainsKey("LABTETHER_TLS_SKIP_VERIFY"));
+        Assert.Equal("false", info.Environment["LABTETHER_TLS_SKIP_VERIFY"]);
         Assert.False(info.Environment.ContainsKey("AGENT_GROUP_ID"));
         Assert.Equal(@"C:\LabTether\ca.crt", info.Environment["LABTETHER_TLS_CA_FILE"]);
         Assert.Equal(@"C:\LabTether\local-auth", info.Environment["LABTETHER_AGENT_LOCAL_AUTH_TOKEN_FILE"]);

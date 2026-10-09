@@ -128,6 +128,12 @@ public class AgentProcess : IDisposable
         foreach (var (key, value) in environment)
             startInfo.Environment[key] = value;
 
+        // A future caller may pass both options. Explicit CA trust must still
+        // win at the final launch boundary, as it does in the settings UI.
+        if (startInfo.Environment.TryGetValue("LABTETHER_TLS_CA_FILE", out var caFile) &&
+            !string.IsNullOrWhiteSpace(caFile))
+            startInfo.Environment["LABTETHER_TLS_SKIP_VERIFY"] = "false";
+
         // Final launch-boundary enforcement: a bundled child is owned by this
         // native app and must neither outlive it nor independently replace its
         // signed/attested executable. Override even stale or hostile settings
