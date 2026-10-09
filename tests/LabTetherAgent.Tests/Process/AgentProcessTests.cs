@@ -37,6 +37,35 @@ public class AgentProcessTests
     }
 
     [Fact]
+    public void CreateStartInfoDropsInheritedAgentConfigurationBeforeApplyingWrapperSettings()
+    {
+        var inherited = new System.Diagnostics.ProcessStartInfo();
+        inherited.Environment["LABTETHER_AGENT_LOCAL_BIND_ADDRESS"] = "0.0.0.0";
+        inherited.Environment["LABTETHER_AGENT_LOCAL_ALLOW_UNAUTHENTICATED"] = "true";
+        inherited.Environment["LABTETHER_TLS_SKIP_VERIFY"] = "true";
+        inherited.Environment["AGENT_GROUP_ID"] = "stale-group";
+        inherited.Environment["PATH"] = "safe-system-path";
+
+        var info = AgentProcess.CreateStartInfo(
+            @"C:\Program Files\LabTether\Assets\labtether-agent.exe",
+            new Dictionary<string, string>
+            {
+                ["LABTETHER_TLS_CA_FILE"] = @"C:\LabTether\ca.crt",
+                ["LABTETHER_AGENT_LOCAL_AUTH_TOKEN_FILE"] = @"C:\LabTether\local-auth",
+            },
+            inherited
+        );
+
+        Assert.False(info.Environment.ContainsKey("LABTETHER_AGENT_LOCAL_BIND_ADDRESS"));
+        Assert.False(info.Environment.ContainsKey("LABTETHER_AGENT_LOCAL_ALLOW_UNAUTHENTICATED"));
+        Assert.False(info.Environment.ContainsKey("LABTETHER_TLS_SKIP_VERIFY"));
+        Assert.False(info.Environment.ContainsKey("AGENT_GROUP_ID"));
+        Assert.Equal(@"C:\LabTether\ca.crt", info.Environment["LABTETHER_TLS_CA_FILE"]);
+        Assert.Equal(@"C:\LabTether\local-auth", info.Environment["LABTETHER_AGENT_LOCAL_AUTH_TOKEN_FILE"]);
+        Assert.Equal("safe-system-path", info.Environment["PATH"]);
+    }
+
+    [Fact]
     public void StartCleansProcessStateWhenExecutableCannotLaunch()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), $"labtether-agent-test-{Guid.NewGuid():N}");
