@@ -101,23 +101,38 @@ public class AgentProcess : IDisposable
 
     internal static ProcessStartInfo CreateStartInfo(
         string binaryPath,
-        IReadOnlyDictionary<string, string> environment
+        IReadOnlyDictionary<string, string> environment,
+        ProcessStartInfo? inheritedStartInfo = null
     )
     {
-        var startInfo = new ProcessStartInfo
+        var startInfo = inheritedStartInfo ?? new ProcessStartInfo();
+        startInfo.FileName = binaryPath;
+        // A child launched by the tray app is already an interactive process.
+        startInfo.UseShellExecute = false;
+        startInfo.CreateNoWindow = true;
+        startInfo.RedirectStandardOutput = true;
+        startInfo.RedirectStandardError = true;
+        startInfo.WorkingDirectory = Path.GetDirectoryName(binaryPath) ?? ".";
+
+        // ProcessStartInfo inherits the tray process environment by default.
+        // Strip standalone agent settings before applying this app's settings:
+        // inherited local-bind, no-auth, or TLS-skip flags must not control
+        // the bundled child or expose its localhost API.
+        foreach (var key in startInfo.Environment.Keys.ToArray())
         {
-            FileName = binaryPath,
-            // A child launched by the tray app is already an interactive
-            // process, so no service or CLI runtime argument is required.
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            WorkingDirectory = Path.GetDirectoryName(binaryPath) ?? ".",
-        };
+            if (key.StartsWith("LABTETHER_", StringComparison.OrdinalIgnoreCase) ||
+                key.StartsWith("AGENT_", StringComparison.OrdinalIgnoreCase))
+                startInfo.Environment.Remove(key);
+        }
 
         foreach (var (key, value) in environment)
             startInfo.Environment[key] = value;
+
+        // A future caller may pass both options. Explicit CA trust must still
+        // win at the final launch boundary, as it does in the settings UI.
+        if (startInfo.Environment.TryGetValue("LABTETHER_TLS_CA_FILE", out var caFile) &&
+            !string.IsNullOrWhiteSpace(caFile))
+            startInfo.Environment["LABTETHER_TLS_SKIP_VERIFY"] = "false";
 
         // Final launch-boundary enforcement: a bundled child is owned by this
         // native app and must neither outlive it nor independently replace its
