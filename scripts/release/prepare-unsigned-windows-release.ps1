@@ -173,6 +173,11 @@ Assert-TrackedSourcePolicy $RepoRoot
 Assert-TrackedSourcePolicy $AgentRepo
 $Versions = Resolve-WindowsVersions $Tag
 Assert-ExternalPath $OutputDirectory
+$GoBuilderVersion = @(& go version)
+Assert-ExitCode "Read Go builder version"
+if ($GoBuilderVersion.Count -ne 1 -or $GoBuilderVersion[0] -notmatch '^go version go1\.26\.9 ') {
+    throw "Local Go release builder must be go1.26.9"
+}
 
 if (Test-Path -LiteralPath $OutputDirectory) {
     $OutputItem = Get-Item -LiteralPath $OutputDirectory -Force
