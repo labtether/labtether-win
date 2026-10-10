@@ -30,7 +30,7 @@ function Resolve-MSBuild {
         }
     }
 
-    throw "Visual Studio MSBuild was not found. Install Visual Studio 2022 Build Tools with the Windows App SDK workload."
+    throw "Visual Studio MSBuild was not found. Install Visual Studio 2026 Build Tools with the Windows App SDK workload."
 }
 
 function Set-RepositoryMSBuildSdkPath([string]$SourceRoot) {
@@ -69,7 +69,7 @@ function Set-RepositoryMSBuildSdkPath([string]$SourceRoot) {
 }
 
 function Assert-PatchedRuntimePack([string]$PublishDirectory) {
-    $minimumRuntimeVersion = [version]"8.0.30"
+    $minimumRuntimeVersion = [version]"10.0.12"
     $depsPath = Join-Path $PublishDirectory "LabTetherAgent.deps.json"
     if (-not (Test-Path -LiteralPath $depsPath -PathType Leaf)) {
         throw "Published payload is missing runtime metadata: $depsPath"
@@ -187,22 +187,28 @@ foreach ($requiredPath in @(
 }
 Assert-PatchedRuntimePack $publishDir
 
-$makePri = Get-ChildItem `
-    -Path (Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10\bin") `
-    -Filter "makepri.exe" `
-    -File `
-    -Recurse `
-    -ErrorAction SilentlyContinue |
-    Where-Object { $_.FullName -match "\\$Arch\\makepri\.exe$" } |
-    Sort-Object FullName -Descending |
-    Select-Object -First 1
-if ($null -eq $makePri) {
-    throw "makepri.exe was not found for $Arch; cannot validate the unpackaged application PRI."
+# Resolve the same pinned SDK tool used by the completed restore/publish.
+# An installed system SDK may be older than the project package.
+$makePriOutput = @(& $msbuild $projectPath `
+    -getProperty:MakePriExeFullPath `
+    "-p:Configuration=$Configuration" `
+    "-p:RuntimeIdentifier=$rid" `
+    "-p:Platform=$Arch" `
+    -p:WindowsPackageType=None `
+    -nologo -verbosity:quiet)
+if ($LASTEXITCODE -ne 0 -or $makePriOutput.Count -ne 1) {
+    throw "Unable to resolve makepri.exe from the restored Windows SDK package."
 }
+$makePri = $makePriOutput[0].Trim()
+if ((Split-Path -Leaf $makePri) -ne "makepri.exe" -or
+    -not (Test-Path -LiteralPath $makePri -PathType Leaf)) {
+    throw "The restored Windows SDK resolved an invalid makepri.exe path: $makePri"
+}
+Write-Host "Using Windows SDK resource tool $makePri."
 
 $priDumpPath = Join-Path ([IO.Path]::GetTempPath()) "labtether-pri-$([Guid]::NewGuid().ToString('N')).xml"
 try {
-    & $makePri.FullName dump /if $publishedApplicationPri /of $priDumpPath /o | Out-Null
+    & $makePri dump /if $publishedApplicationPri /of $priDumpPath /o | Out-Null
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $priDumpPath -PathType Leaf)) {
         throw "Unable to inspect the published application PRI."
     }

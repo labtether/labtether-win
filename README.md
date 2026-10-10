@@ -70,8 +70,9 @@ For detailed setup, see the [Windows agent setup guide](https://labtether.com/do
 
 ## Build From Source
 
-Requires Visual Studio 2022+ with .NET 8 and the Windows App SDK workload,
-plus Go and a sibling `labtether-agent` checkout. Release builds fail closed if
+Requires Visual Studio 2026 with the .NET 10 SDK selected by `global.json`
+and Windows App SDK build tools, plus Go 1.27.2 and a sibling
+`labtether-agent` checkout. Release builds fail closed if
 the matching Go child or its version marker is missing.
 
 ```powershell
