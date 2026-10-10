@@ -22,6 +22,18 @@ def classify(paths: list[str]) -> dict[str, object]:
             normalized_paths.append(path)
     normalized = sorted(set(normalized_paths))
     fail_safe = "__all__" in normalized
+    # Skip only known documentation paths; tests and unknown inputs still build.
+    native_build = fail_safe or not normalized or any(
+        not (
+            (path.startswith(("docs/", "notes/"))
+             and Path(path).suffix.lower() in (".md", ".rst", ".txt", ".png", ".jpg", ".svg", ".pdf"))
+            or ("/" not in path and (
+                Path(path).suffix.lower() in (".md", ".rst")
+                or path in ("LICENSE", "LICENSE.txt")
+            ))
+        )
+        for path in normalized
+    )
 
     connection = fail_safe or any(
         _matches(
@@ -94,6 +106,7 @@ def classify(paths: list[str]) -> dict[str, object]:
 
     installed = bool(selected)
     return {
+        "native_build": native_build,
         "connection": connection,
         "permissions": permissions,
         "packaging": packaging,
@@ -108,9 +121,9 @@ def classify(paths: list[str]) -> dict[str, object]:
 
 def changed_paths(base: str, head: str) -> list[str]:
     if not base or set(base) == {"0"}:
-        command = ["git", "diff-tree", "--root", "--no-commit-id", "--name-only", "-r", head]
+        command = ["git", "diff-tree", "--no-renames", "--root", "--no-commit-id", "--name-only", "-r", head]
     else:
-        command = ["git", "diff", "--name-only", f"{base}...{head}"]
+        command = ["git", "diff", "--no-renames", "--name-only", f"{base}...{head}"]
     try:
         output = subprocess.check_output(command, text=True, stderr=subprocess.DEVNULL)
     except (subprocess.CalledProcessError, FileNotFoundError):
@@ -141,6 +154,7 @@ def main() -> int:
         output_path = Path(args.github_output)
         with output_path.open("a", encoding="utf-8") as output:
             for key in (
+                "native_build",
                 "connection",
                 "permissions",
                 "packaging",

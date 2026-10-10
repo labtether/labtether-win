@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || (github.event_name == 'push' && github.ref_type == 'branch' && github.ref) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_type == 'branch') }}
+
 jobs:
   line-limit:
     name: Handwritten code / 500-line limit
@@ -26,6 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
+      native_build: ${{ steps.contracts.outputs.native_build }}
       connection: ${{ steps.contracts.outputs.connection }}
       installed: ${{ steps.contracts.outputs.installed }}
       contracts: ${{ steps.contracts.outputs.contracts }}
@@ -55,8 +60,9 @@ jobs:
 
   build-and-test:
     needs: [line-limit, qa-plan]
-    if: always()
+    if: ${{ !cancelled() && (needs.line-limit.result != 'success' || needs.qa-plan.result != 'success' || needs.qa-plan.outputs.native_build != 'false') }}
     runs-on: windows-latest
+    timeout-minutes: 25
     steps:
       - name: Require source-size gate
         shell: bash
@@ -131,7 +137,7 @@ jobs:
 
   installed-product-contract:
     needs: [qa-plan, build-and-test]
-    if: needs.qa-plan.outputs.installed == 'true'
+    if: needs.qa-plan.outputs.native_build != 'false' && needs.qa-plan.outputs.installed == 'true'
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
