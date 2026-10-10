@@ -61,7 +61,7 @@ jobs:
   build-and-test:
     needs: [line-limit, qa-plan]
     if: ${{ !cancelled() && (needs.line-limit.result != 'success' || needs.qa-plan.result != 'success' || needs.qa-plan.outputs.native_build != 'false') }}
-    runs-on: windows-latest
+    runs-on: windows-2025-vs2026
     timeout-minutes: 25
     steps:
       - name: Require source-size gate
@@ -90,15 +90,15 @@ jobs:
           repository: labtether/labtether-agent
           # Coordinated release contract: this exact SHA must match the Go
           # agent source accepted by the root-cause release gate.
-          ref: 8805c74b2425b038768b626bf6c8fcd2b196e74b
+          ref: b3051070bb93a9ef6fb4f6acd20b2d37c9ba9eb0
           path: agent-core
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.26.9'
+          go-version: '1.27.2'
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.401'
       # WinUI/MSIX projects use MSBuild tasks that ship with Visual Studio,
       # not the bare dotnet SDK. setup-msbuild puts the VS MSBuild on PATH
       # so the PRI/AppxPackage tasks resolve during restore and build.
@@ -138,7 +138,7 @@ jobs:
   installed-product-contract:
     needs: [qa-plan, build-and-test]
     if: needs.qa-plan.outputs.native_build != 'false' && needs.qa-plan.outputs.installed == 'true'
-    runs-on: windows-latest
+    runs-on: windows-2025-vs2026
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -150,15 +150,15 @@ jobs:
           repository: labtether/labtether-agent
           # Keep the installed-payload child identical to build-and-test and
           # to the exact Go agent accepted by the root release gate.
-          ref: 8805c74b2425b038768b626bf6c8fcd2b196e74b
+          ref: b3051070bb93a9ef6fb4f6acd20b2d37c9ba9eb0
           path: agent-core
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.26.9'
+          go-version: '1.27.2'
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.401'
       - uses: microsoft/setup-msbuild@30375c66a4eea26614e0d39710365f22f8b0af57 # v3.0.0
       - name: Build bundled Go agent core
         shell: bash
