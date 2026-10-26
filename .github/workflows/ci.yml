@@ -84,6 +84,13 @@ jobs:
           python -B scripts/release/test_safe_extract_windows_release.py
           if ($LASTEXITCODE -ne 0) { throw "Mac archive-policy fixtures failed." }
           ./scripts/release/test-windows-release-policy.ps1
+          # Release-lane scripts only run on a release host; catch syntax
+          # errors here instead of during a release.
+          foreach ($script in Get-ChildItem -Path scripts -Recurse -File -Filter "*.ps1") {
+            $parseErrors = $null
+            [Management.Automation.Language.Parser]::ParseFile($script.FullName, [ref]$null, [ref]$parseErrors) | Out-Null
+            if ($parseErrors.Count -ne 0) { throw "PowerShell syntax error in $($script.FullName): $($parseErrors[0])" }
+          }
       - name: Check out bundled agent core
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

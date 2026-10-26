@@ -22,8 +22,9 @@ Usage: scripts/release/publish-windows-release.sh \
   --windows-proof PATH \
   (--confirm-draft TAG | --confirm-publish TAG)
 
-Re-verifies clean tagged source, the exact two release assets, Mac-side
-Authenticode validation, and the independent Windows proof. --confirm-draft
+Re-verifies clean tagged source, the exact four release assets (ZIP, MSI and
+their checksums), Mac-side Authenticode validation, and the independent
+Windows proof that covers the signed MSI. --confirm-draft
 creates and verifies a new draft, then exits. A separate later invocation with
 --confirm-publish freshly verifies the existing draft before publishing it.
 The two confirmations are mutually exclusive, and no invocation can both
@@ -75,11 +76,13 @@ wrapper_commit="$(assert_clean_tagged_source "$REPO_ROOT" "$TAG")"
 agent_commit="$(assert_clean_tagged_source "$AGENT_REPO" "$TAG")"
 assert_tracked_source_policy "$REPO_ROOT"
 assert_tracked_source_policy "$AGENT_REPO"
-assert_final_asset_allowlist "$ASSETS_DIRECTORY"
+assert_final_asset_allowlist "$ASSETS_DIRECTORY" with-msi
 validate_checksum_asset "$ASSETS_DIRECTORY"
+validate_checksum_asset "$ASSETS_DIRECTORY" "$FINAL_MSI_NAME"
 archive_hash="$(sha256_file "$ASSETS_DIRECTORY/$FINAL_ARCHIVE_NAME")"
+msi_hash="$(sha256_file "$ASSETS_DIRECTORY/$FINAL_MSI_NAME")"
 
-validate_windows_verification_proof "$WINDOWS_PROOF" "$TAG" "$wrapper_commit" "$agent_commit" "$archive_hash"
+validate_windows_verification_proof "$WINDOWS_PROOF" "$TAG" "$wrapper_commit" "$agent_commit" "$archive_hash" "$msi_hash"
 
 scratch_root="$(mktemp -d "${TMPDIR:-/tmp}/labtether-win-publish.XXXXXX")"
 scratch_root="$(cd "$scratch_root" && pwd -P)"
@@ -92,7 +95,7 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
-verify_final_archive_on_mac "$ASSETS_DIRECTORY" "$TAG" "$wrapper_commit" "$agent_commit" "$scratch_root"
+verify_final_archive_on_mac "$ASSETS_DIRECTORY" "$TAG" "$wrapper_commit" "$agent_commit" "$scratch_root" with-msi
 compare_windows_proof_payloads "$WINDOWS_PROOF" "$scratch_root/extracted/$SIGNED_PAYLOAD_MANIFEST_NAME"
 
 remote_tag_commit() {
@@ -114,9 +117,7 @@ remote_agent_commit="$(remote_tag_commit "$AGENT_REPO" "$TAG")"
 [[ "$remote_wrapper_commit" == "$wrapper_commit" ]] || die "remote wrapper tag differs from verified local source"
 [[ "$remote_agent_commit" == "$agent_commit" ]] || die "remote agent tag differs from verified local source"
 
-archive_size="$(stat -f '%z' -- "$ASSETS_DIRECTORY/$FINAL_ARCHIVE_NAME")"
-checksum_size="$(stat -f '%z' -- "$ASSETS_DIRECTORY/$FINAL_CHECKSUM_NAME")"
-checksum_asset_hash="$(sha256_file "$ASSETS_DIRECTORY/$FINAL_CHECKSUM_NAME")"
+expected_assets="$(expected_release_assets_json "$ASSETS_DIRECTORY")"
 
 if [[ "$RELEASE_ACTION" == "draft" ]]; then
   if gh api "repos/labtether/labtether-win/releases/tags/$TAG" >/dev/null 2>&1; then
@@ -126,6 +127,8 @@ if [[ "$RELEASE_ACTION" == "draft" ]]; then
   gh release create "$TAG" \
     "$ASSETS_DIRECTORY/$FINAL_ARCHIVE_NAME" \
     "$ASSETS_DIRECTORY/$FINAL_CHECKSUM_NAME" \
+    "$ASSETS_DIRECTORY/$FINAL_MSI_NAME" \
+    "$ASSETS_DIRECTORY/$FINAL_MSI_CHECKSUM_NAME" \
     --repo labtether/labtether-win \
     --verify-tag \
     --draft \
@@ -133,7 +136,7 @@ if [[ "$RELEASE_ACTION" == "draft" ]]; then
     --generate-notes
 
   draft_json="$(gh api "repos/labtether/labtether-win/releases/tags/$TAG")"
-  if ! validate_github_release_asset_readback "$draft_json" "$TAG" true "$archive_hash" "$checksum_asset_hash" "$archive_size" "$checksum_size"; then
+  if ! validate_github_release_asset_readback "$draft_json" "$TAG" true "$expected_assets"; then
     die "draft release inspection failed; release remains a draft"
   fi
   printf 'Created and verified the draft for %s. Inspect it, then use a separate --confirm-publish invocation.\n' "$TAG"
@@ -141,11 +144,11 @@ if [[ "$RELEASE_ACTION" == "draft" ]]; then
 fi
 
 draft_json="$(gh api "repos/labtether/labtether-win/releases/tags/$TAG")" || die "draft release is unavailable"
-if ! validate_github_release_asset_readback "$draft_json" "$TAG" true "$archive_hash" "$checksum_asset_hash" "$archive_size" "$checksum_size"; then
+if ! validate_github_release_asset_readback "$draft_json" "$TAG" true "$expected_assets"; then
   die "fresh draft inspection failed; release remains a draft"
 fi
 gh release edit "$TAG" --repo labtether/labtether-win --draft=false >/dev/null
 published_json="$(gh api "repos/labtether/labtether-win/releases/tags/$TAG")"
-validate_github_release_asset_readback "$published_json" "$TAG" false "$archive_hash" "$checksum_asset_hash" "$archive_size" "$checksum_size" || die "published release readback failed"
+validate_github_release_asset_readback "$published_json" "$TAG" false "$expected_assets" || die "published release readback failed"
 
-printf 'Published exactly two verified Windows release assets for %s after a separate fresh draft inspection.\n' "$TAG"
+printf 'Published exactly four verified Windows release assets for %s after a separate fresh draft inspection.\n' "$TAG"
