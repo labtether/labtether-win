@@ -139,7 +139,7 @@ jobs:
     needs: [qa-plan, build-and-test]
     if: needs.qa-plan.outputs.native_build != 'false' && needs.qa-plan.outputs.installed == 'true'
     runs-on: windows-2025-vs2026
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -166,16 +166,19 @@ jobs:
           ./scripts/build-bundled-agent.sh
           --agent-repo "${GITHUB_WORKSPACE}/agent-core"
           --version "ci-${GITHUB_SHA}"
-      - name: Build and structurally smoke-test the installed payload
+      # -Msi also builds the per-user installer from this payload, runs the
+      # WiX ICE validation and checks the MSI holds exactly these files.
+      - name: Build and structurally smoke-test the installed payload and MSI
         shell: pwsh
         run: >-
           ./scripts/build-unpackaged.ps1
           -Arch x64
           -OutputDir "${env:RUNNER_TEMP}\labtether-installed-contract"
+          -Msi
       - name: Report the physical-host acceptance boundary
         shell: pwsh
         env:
           SELECTED_CONTRACTS: ${{ needs.qa-plan.outputs.contracts }}
         run: |
           "Selected installed contracts: $env:SELECTED_CONTRACTS"
-          Write-Output "::notice::Unsigned payload structure and bundled-child startup passed. Release promotion still requires scripts/build-unpackaged.ps1 -RequireWinUiRuntimeProbe on an interactive Windows desktop and the signed verification contract."
+          Write-Output "::notice::Unsigned payload structure, MSI contents and bundled-child startup passed. Release promotion still requires scripts/build-unpackaged.ps1 -RequireWinUiRuntimeProbe on an interactive Windows desktop and the signed verification contract."

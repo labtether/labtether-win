@@ -10,7 +10,7 @@ permissions:
 jobs:
   build:
     runs-on: windows-2025-vs2026
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -289,6 +289,17 @@ jobs:
             throw "Published child failed its help smoke test."
           }
 
+      # Proves the tagged installer compiles, passes ICE validation and holds
+      # exactly the published payload. The release MSI itself is rebuilt from
+      # the signed payload in the local release lane; this copy is discarded.
+      - name: Build and verify the per-user MSI from the tagged payload
+        shell: pwsh
+        run: >-
+          ./scripts/build-msi.ps1
+          -PayloadDir publish/win-x64
+          -Version ${{ steps.meta.outputs.version }}
+          -OutputPath "${env:RUNNER_TEMP}\labtether-msi-check\labtether-agent-win-x64.msi"
+
       - name: Confirm source-verification output remains unsigned and local
         shell: pwsh
         run: |
@@ -307,4 +318,8 @@ jobs:
           if (Test-Path -LiteralPath "labtether-agent-win-x64.zip") {
             throw "Hosted source verification must not create a release archive."
           }
+          if (@(Get-ChildItem -LiteralPath . -Recurse -File -Filter "*.msi").Count -ne 0) {
+            throw "Hosted source verification must not leave an installer in the workspace."
+          }
+          Remove-Item -LiteralPath (Join-Path $env:RUNNER_TEMP "labtether-msi-check") -Recurse -Force -ErrorAction SilentlyContinue
           "Source verification passed. Signing and publication require the local release scripts."

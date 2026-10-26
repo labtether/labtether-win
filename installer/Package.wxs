@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  LabTether Agent per-user installer.
+
+  Installs the unpackaged app to %LocalAppData%\Programs\LabTether without
+  elevation, adds a Start menu shortcut and an Apps & features entry, and
+  upgrades in place: keep UpgradeCode stable for every release.
+  User state in %LocalAppData%\LabTether is never touched.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="LabTether Agent"
+           Manufacturer="LabTether"
+           Version="$(var.ProductVersion)"
+           UpgradeCode="5EAA7DA9-04B5-4A9F-BBA1-7A4147B9FFA5"
+           Scope="perUser"
+           Language="1033"
+           Compressed="yes">
+    <SummaryInformation Description="LabTether Agent for Windows" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of LabTether Agent is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Property Id="ARPHELPLINK" Value="https://labtether.com/docs" />
+    <Property Id="ARPURLINFOABOUT" Value="https://labtether.com" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="LocalProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="LabTether" />
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Component Id="StartMenuShortcut">
+        <Shortcut Id="LabTetherAgentShortcut"
+                  Name="LabTether Agent"
+                  Description="LabTether Agent for Windows"
+                  Target="[INSTALLFOLDER]LabTetherAgent.exe"
+                  WorkingDirectory="INSTALLFOLDER" />
+        <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\LabTether\Agent Installer"
+                       Name="StartMenuShortcut"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
+    <!--
+      The app writes its own Start at Login value. Remove it on a real
+      uninstall (not during an upgrade) so Windows does not keep launching
+      a deleted program. Failure must never block the uninstall.
+    -->
+    <SetProperty Id="RemoveStartAtLogin"
+                 Value="&quot;[System64Folder]reg.exe&quot; delete &quot;HKCU\Software\Microsoft\Windows\CurrentVersion\Run&quot; /v LabTetherAgent /f"
+                 Before="RemoveStartAtLogin"
+                 Sequence="execute"
+                 Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+    <CustomAction Id="RemoveStartAtLogin"
+                  BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)"
+                  DllEntry="WixQuietExec"
+                  Execute="deferred"
+                  Impersonate="yes"
+                  Return="ignore" />
+    <InstallExecuteSequence>
+      <Custom Action="RemoveStartAtLogin"
+              Before="RemoveFiles"
+              Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+    </InstallExecuteSequence>
+
+    <Feature Id="Main" Title="LabTether Agent" Level="1">
+      <ComponentGroupRef Id="AppPayload" />
+      <ComponentRef Id="StartMenuShortcut" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <!-- Exactly the release payload; signing metadata stays in the ZIP only. -->
+    <ComponentGroup Id="AppPayload" Directory="INSTALLFOLDER">
+      <Files Include="$(var.PayloadDir)\**">
+        <Exclude Files="$(var.PayloadDir)\release-provenance.json" />
+        <Exclude Files="$(var.PayloadDir)\signed-payloads.json" />
+      </Files>
+    </ComponentGroup>
+  </Fragment>
+</Wix>

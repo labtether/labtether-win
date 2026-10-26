@@ -3,7 +3,9 @@ param(
     [Parameter(Mandatory)][ValidateSet("x64", "arm64")][string]$Arch,
     [string]$Configuration = "Release",
     [string]$OutputDir = "build",
-    [switch]$RequireWinUiRuntimeProbe
+    [switch]$RequireWinUiRuntimeProbe,
+    # Also build the per-user MSI next to the payload folder (x64 only).
+    [switch]$Msi
 )
 
 Set-StrictMode -Version Latest
@@ -92,6 +94,9 @@ function Assert-PatchedRuntimePack([string]$PublishDirectory) {
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $rid = if ($Arch -eq "arm64") { "win-arm64" } else { "win-x64" }
+if ($Msi -and $Arch -ne "x64") {
+    throw "The MSI installer is built for x64 only."
+}
 $projectPath = Join-Path $repoRoot "src\LabTetherAgent\LabTetherAgent.csproj"
 $agentBinary = Join-Path $repoRoot "src\LabTetherAgent\Assets\labtether-agent.exe"
 $agentVersion = Join-Path $repoRoot "src\LabTetherAgent\Assets\AGENT_VERSION"
@@ -264,3 +269,11 @@ if ($LASTEXITCODE -ne 0 -or $helpOutput.Count -eq 0 -or
 
 Write-Host "Build complete: $publishDir"
 Write-Host "Output format: unpackaged self-contained folder (the local release lane signs and ZIPs this payload)."
+
+if ($Msi) {
+    $msiPath = Join-Path $outputRoot "labtether-agent-$rid.msi"
+    if (Test-Path -LiteralPath $msiPath -PathType Leaf) {
+        Remove-Item -LiteralPath $msiPath -Force
+    }
+    & (Join-Path $PSScriptRoot "build-msi.ps1") -PayloadDir $publishDir -OutputPath $msiPath
+}

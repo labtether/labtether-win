@@ -1,0 +1,29 @@
+<Project Sdk="WixToolset.Sdk/5.0.2">
+  <!--
+    Per-user MSI for the unpackaged, self-contained app. Build it through
+    scripts/build-msi.ps1, which passes the published (or verified signed)
+    payload folder and the release version.
+  -->
+  <PropertyGroup>
+    <OutputType>Package</OutputType>
+    <OutputName>labtether-agent-win-x64</OutputName>
+    <InstallerPlatform>x64</InstallerPlatform>
+    <ProductVersion Condition="'$(ProductVersion)' == ''">1.7.0</ProductVersion>
+    <DefineConstants>ProductVersion=$(ProductVersion);PayloadDir=$(PayloadDir)</DefineConstants>
+    <!--
+      ICE38/ICE64/ICE91 target per-machine and roaming layouts. A per-user
+      package that installs into %LocalAppData% uses file key paths for the
+      harvested payload and lets Windows Installer remove its empty folders.
+    -->
+    <SuppressIces>ICE38;ICE64;ICE91</SuppressIces>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.Util.wixext" Version="5.0.2" />
+  </ItemGroup>
+
+  <Target Name="RequireLabTetherPayload" BeforeTargets="Build;CoreBuild">
+    <Error Condition="'$(PayloadDir)' == '' or !Exists('$(PayloadDir)\LabTetherAgent.exe')"
+           Text="PayloadDir must name a published LabTether Agent folder. Use scripts/build-msi.ps1." />
+  </Target>
+</Project>
