@@ -22,7 +22,7 @@
             <TextBlock Text="GENERAL" FontSize="11" FontWeight="SemiBold"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" CharacterSpacing="60"
                        Margin="0,8,0,0" />
-            <ToggleSwitch Header="Start at Login" IsOn="{x:Bind ViewModel.StartAtLogin, Mode=TwoWay}" />
+            <ToggleSwitch Header="Start at Login" IsEnabled="{x:Bind ViewModel.CanStartAtLogin}" IsOn="{x:Bind ViewModel.StartAtLogin, Mode=TwoWay}" />
             <ToggleSwitch Header="Low Power Mode" IsOn="{x:Bind ViewModel.LowPowerMode, Mode=TwoWay}"
                           OffContent="Normal polling" OnContent="Reduced CPU usage" />
             <TextBlock Text="Updates are managed by the LabTether Agent app. The bundled agent core is updated only with a verified whole-app update."

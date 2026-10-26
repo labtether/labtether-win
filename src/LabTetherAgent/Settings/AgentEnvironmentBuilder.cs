@@ -17,12 +17,11 @@ public static class AgentEnvironmentBuilder
             settings,
             localApiPort,
             localApiAuthToken,
-            AgentSettings.GetSettingsDirectory());
+            settings.Location.DirectoryPath);
 
     /// <summary>
-    /// Internal test seam for selecting the secret root. Production callers
-    /// always use the application-owned settings directory above; this path is
-    /// not populated from command-line, network, or persisted user input.
+    /// Selects either the validated instance state or its task-owned setup
+    /// transaction directory. Persisted settings cannot replace this owner.
     /// </summary>
     internal static Dictionary<string, string> BuildEnvironmentForTrustedDirectory(
         AgentSettings settings,
@@ -30,6 +29,7 @@ public static class AgentEnvironmentBuilder
         string localApiAuthToken,
         string secretDirectory)
     {
+        settings.Location.Validate();
         var env = new Dictionary<string, string>();
         if (string.IsNullOrWhiteSpace(secretDirectory))
             throw new ArgumentException("Secret directory is required.", nameof(secretDirectory));

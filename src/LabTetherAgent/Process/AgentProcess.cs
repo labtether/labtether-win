@@ -1,469 +1,333 @@
-using System.Diagnostics;
 using System.ComponentModel;
+using System.Diagnostics;
 using LabTetherAgent.Settings;
 
 namespace LabTetherAgent.Process;
 
-/// <summary>
-/// Manages the Go labtether-agent.exe binary lifecycle: start, stop, restart.
-/// Mirrors mac-agent/Sources/LabTetherAgent/Process/AgentProcess.swift.
-/// </summary>
-public class AgentProcess : IDisposable
+public sealed record AgentProcessExit(long Generation, int ExitCode, bool UserInitiated);
+
+/// <summary>Owns each child, its log readers, and asynchronous stop references.</summary>
+public partial class AgentProcess : IDisposable
 {
-    private System.Diagnostics.Process? _process;
-    private CancellationTokenSource? _logCts;
+    // AppState shares this gate only for owner state changes. Process I/O and
+    // all event subscribers run after releasing it.
+    internal object LifecycleGate { get; } = new();
+    private Child? _child;
+    private long _generation;
     private readonly CrashRestartCoordinator _crashCoordinator = new();
-    private bool _userInitiatedStop;
+    private readonly Func<ProcessStartInfo, System.Diagnostics.Process> _makeProcess;
+    private readonly Action<Action> _dispatchExit;
+    private readonly Func<System.Diagnostics.Process, TimeSpan, Task<bool>> _waitForExit;
     private bool _disposed;
+    private readonly AgentChildOwnership? _ownership;
+
+    public AgentProcess() : this(null, null, null) { }
+
+    public AgentProcess(AppStateLocation location) : this(null, null, null) =>
+        _ownership = new AgentChildOwnership(location);
+
+    internal AgentProcess(AppStateLocation location, Func<ProcessStartInfo, System.Diagnostics.Process> makeProcess)
+        : this(makeProcess, null, null) => _ownership = new AgentChildOwnership(location);
+
+    internal AgentProcess(
+        Func<ProcessStartInfo, System.Diagnostics.Process>? makeProcess,
+        Action<Action>? dispatchExit = null,
+        Func<System.Diagnostics.Process, TimeSpan, Task<bool>>? waitForExit = null)
+    {
+        _makeProcess = makeProcess ?? (info => new System.Diagnostics.Process { StartInfo = info });
+        _dispatchExit = dispatchExit ?? (action => action());
+        _waitForExit = waitForExit ?? WaitForExitAsync;
+    }
 
     public AgentLogReader LogReader { get; } = new();
-
-    public bool IsRunning
-    {
-        get
-        {
-            var process = _process;
-            if (process == null)
-                return false;
-
-            try
-            {
-                return !process.HasExited;
-            }
-            catch (InvalidOperationException)
-            {
-                return false;
-            }
-        }
-    }
+    public bool IsRunning { get { lock (LifecycleGate) return IsAlive(_child); } }
     public bool IsStarting { get; private set; }
     public bool NeedsRestart { get; set; }
     public bool LastExitWasUserInitiated { get; private set; }
-
+    public long Generation { get { lock (LifecycleGate) return _generation; } }
+    public CrashRestartCoordinator CrashCoordinator => _crashCoordinator;
     public event Action? OnStarted;
-    public event Action<int>? OnExited; // exit code
+    public event Action<int>? OnExited;
+    public event Action<long>? OnOwnedStarted;
+    public event Action<AgentProcessExit>? OnOwnedExited;
     public event Action<string>? OnError;
 
-    /// <summary>
-    /// Start the Go agent process with the given environment variables.
-    /// </summary>
     public void Start(string binaryPath, Dictionary<string, string> environment)
     {
-        if (IsRunning)
-        {
-            LogReader.AppendRaw("Agent is already running.");
-            return;
-        }
+        RefreshExitedChild();
+        PrepareStart(binaryPath, environment)?.Invoke();
+    }
 
+    // HasExited may synchronously invoke Exited in .NET. Never query it under
+    // LifecycleGate, including through a caller's reentrant monitor.
+    internal void RefreshExitedChild()
+    {
+        Child? child;
+        lock (LifecycleGate) { child = _child is { Started: true } ? RetainCurrentLocked() : null; }
+        if (child == null) return;
+        try { if (child.Process.HasExited) HandleExit(child); }
+        finally { Release(child); }
+    }
+
+    internal Action? PrepareStart(string binaryPath, Dictionary<string, string> environment, long? expectedGeneration = null)
+    {
         if (!File.Exists(binaryPath))
         {
-            ReportError($"Agent binary not found: {binaryPath}");
+            return () => ReportError($"Agent binary not found: {binaryPath}");
+        }
+        var child = new Child(_makeProcess(CreateStartInfo(binaryPath, environment)));
+        Child? retired = null;
+        bool rejected;
+        lock (LifecycleGate)
+        {
+            rejected = _disposed || IsStarting || IsAlive(_child) ||
+                (expectedGeneration.HasValue && expectedGeneration != _generation);
+            if (!rejected)
+            {
+                retired = RetainCurrentLocked();
+                if (retired != null) RetireLocked(retired);
+                child.Generation = ++_generation;
+                child.References++; // Current owner, separate from Start.
+                _child = child;
+                IsStarting = true;
+                LastExitWasUserInitiated = false;
+                NeedsRestart = false;
+            }
+        }
+        if (rejected) { Release(child); return null; }
+        return () => StartPreparedChild(child, retired);
+    }
+
+    private void StartPreparedChild(Child child, Child? retired)
+    {
+        if (retired != null) { retired.Logs.Cancel(); Release(retired); }
+        bool cancelled;
+        lock (LifecycleGate)
+        {
+            cancelled = child.UserStop || _disposed;
+            if (cancelled && ReferenceEquals(_child, child)) { IsStarting = false; RetireLocked(child); }
+        }
+        if (cancelled)
+        {
+            child.StartCompleted.TrySetResult(false);
+            Release(child);
             return;
         }
-
-        IsStarting = true;
-        _userInitiatedStop = false;
-        LastExitWasUserInitiated = false;
-        NeedsRestart = false;
-
-        System.Diagnostics.Process? process = null;
-        CancellationTokenSource? logCts = null;
+        child.ExitHandler = (_, _) => HandleExit(child);
+        child.Process.Exited += child.ExitHandler;
         try
         {
-            var startInfo = CreateStartInfo(binaryPath, environment);
-
-            process = new System.Diagnostics.Process { StartInfo = startInfo, EnableRaisingEvents = true };
-            process.Exited += OnProcessExited;
-
-            logCts = new CancellationTokenSource();
-            if (!process.Start())
-                throw new InvalidOperationException("agent process did not start");
-
-            // Start reading stdout and stderr
-            _process = process;
-            _logCts = logCts;
-            _ = LogReader.ReadAsync(process.StandardOutput, logCts.Token);
-            _ = LogReader.ReadAsync(process.StandardError, logCts.Token);
-
-            _crashCoordinator.RecordStart();
-            IsStarting = false;
-
-            LogReader.AppendRaw($"Agent started (PID {process.Id})");
-            OnStarted?.Invoke();
+            if (!child.Process.Start()) throw new InvalidOperationException("agent process did not start");
+            _ = LogReader.ReadAsync(child.Process.StandardOutput, child.Logs.Token);
+            _ = LogReader.ReadAsync(child.Process.StandardError, child.Logs.Token);
+            child.Ownership = _ownership?.Remember(child.Process);
+            var processId = child.Process.Id;
+            bool publish;
+            lock (LifecycleGate)
+            {
+                child.ProcessId = processId;
+                child.Started = true;
+                publish = ReferenceEquals(_child, child) && !child.UserStop && !_disposed;
+                if (ReferenceEquals(_child, child)) IsStarting = false;
+                if (publish) _crashCoordinator.RecordStart();
+            }
+            child.StartCompleted.TrySetResult(true);
+            // Enable notifications last. Even an immediate exit has an owner.
+            child.Process.EnableRaisingEvents = true;
+            if (publish)
+            {
+                LogReader.AppendRaw($"Agent started (PID {child.Process.Id})");
+                OnOwnedStarted?.Invoke(child.Generation);
+                OnStarted?.Invoke();
+            }
         }
         catch (Exception ex)
         {
-            IsStarting = false;
-            CleanupFailedStart(process, logCts);
-            ReportError($"Failed to start agent: {ex.Message}");
+            bool current;
+            lock (LifecycleGate)
+            {
+                current = ReferenceEquals(_child, child);
+                if (current) { IsStarting = false; RetireLocked(child); }
+            }
+            child.StartCompleted.TrySetResult(false);
+            TryKill(child);
+            ForgetExitedChild(child);
+            if (current) ReportError($"Failed to start agent: {ex.Message}");
         }
+        finally { Release(child); }
     }
 
-    internal static ProcessStartInfo CreateStartInfo(
-        string binaryPath,
-        IReadOnlyDictionary<string, string> environment,
-        ProcessStartInfo? inheritedStartInfo = null
-    )
-    {
-        var startInfo = inheritedStartInfo ?? new ProcessStartInfo();
-        startInfo.FileName = binaryPath;
-        // A child launched by the tray app is already an interactive process.
-        startInfo.UseShellExecute = false;
-        startInfo.CreateNoWindow = true;
-        startInfo.RedirectStandardOutput = true;
-        startInfo.RedirectStandardError = true;
-        startInfo.WorkingDirectory = Path.GetDirectoryName(binaryPath) ?? ".";
-
-        // ProcessStartInfo inherits the tray process environment by default.
-        // Strip standalone agent settings before applying this app's settings:
-        // inherited local-bind, no-auth, or TLS-skip flags must not control
-        // the bundled child or expose its localhost API.
-        foreach (var key in startInfo.Environment.Keys.ToArray())
-        {
-            if (key.StartsWith("LABTETHER_", StringComparison.OrdinalIgnoreCase) ||
-                key.StartsWith("AGENT_", StringComparison.OrdinalIgnoreCase))
-                startInfo.Environment.Remove(key);
-        }
-
-        foreach (var (key, value) in environment)
-            startInfo.Environment[key] = value;
-
-        // A future caller may pass both options. Explicit CA trust must still
-        // win at the final launch boundary, as it does in the settings UI.
-        if (startInfo.Environment.TryGetValue("LABTETHER_TLS_CA_FILE", out var caFile) &&
-            !string.IsNullOrWhiteSpace(caFile))
-            startInfo.Environment["LABTETHER_TLS_SKIP_VERIFY"] = "false";
-
-        // Final launch-boundary enforcement: a bundled child is owned by this
-        // native app and must neither outlive it nor independently replace its
-        // signed/attested executable. Override even stale or hostile settings
-        // passed by a future call site.
-        startInfo.Environment["LABTETHER_PARENT_PID"] = Environment.ProcessId.ToString();
-        startInfo.Environment["LABTETHER_AUTO_UPDATE"] = "false";
-
-        return startInfo;
-    }
-
-    /// <summary>
-    /// Record and publish a lifecycle error even when no child process could be started.
-    /// </summary>
     public void ReportError(string message)
     {
         LogReader.AppendRaw(message);
         OnError?.Invoke(message);
     }
 
-    /// <summary>
-    /// Stop the agent process gracefully.
-    /// On Windows, sends CTRL_BREAK_EVENT via P/Invoke with fallback to Kill().
-    /// </summary>
-    public async Task StopAsync(TimeSpan? timeout = null)
+    public Task StopAsync(TimeSpan? timeout = null) => PrepareStop(timeout)();
+
+    internal Func<Task> PrepareStop(TimeSpan? timeout = null)
     {
-        var process = _process;
-        if (process == null || process.HasExited)
-            return;
-
-        _userInitiatedStop = true;
-        timeout ??= TimeSpan.FromSeconds(10);
-
-        LogReader.AppendRaw("Stopping agent...");
-
-        try
+        Child? child;
+        lock (LifecycleGate)
         {
-            // Try graceful shutdown first
-            if (!SendGracefulShutdown(process.Id))
-            {
-                // Fallback: kill directly
-                process.Kill();
-                await WaitForExitAsync(process, timeout.Value);
-            }
-            else
-            {
-                // Wait for graceful exit
-                var exited = await WaitForExitAsync(process, timeout.Value);
-                if (!exited)
-                {
-                    LogReader.AppendRaw("Graceful shutdown timed out, forcing kill.");
-                    process.Kill();
-                    await WaitForExitAsync(process, TimeSpan.FromSeconds(5));
-                }
-            }
+            child = RetainCurrentLocked();
+            if (child != null) child.UserStop = true;
         }
-        catch (InvalidOperationException)
-        {
-            // Process already exited
-        }
-        catch (Win32Exception ex)
-        {
-            LogReader.AppendRaw($"Failed to stop agent process: {ex.Message}");
-        }
-        catch (NotSupportedException ex)
-        {
-            LogReader.AppendRaw($"Failed to stop agent process: {ex.Message}");
-        }
-
-        _logCts?.Cancel();
+        return child == null ? (() => Task.CompletedTask) : (() => StopChildAsync(child, timeout ?? TimeSpan.FromSeconds(10)));
     }
 
-    /// <summary>
-    /// Stop and restart the agent process.
-    /// </summary>
+    private async Task StopChildAsync(Child child, TimeSpan timeout)
+    {
+        try
+        {
+            if (!await child.StartCompleted.Task) return;
+            if (child.Process.HasExited) return;
+            LogReader.AppendRaw("Stopping agent...");
+            if (!SendGracefulShutdown(child.Process.Id)) TryKill(child);
+            if (!await _waitForExit(child.Process, timeout))
+            {
+                LogReader.AppendRaw("Graceful shutdown timed out, forcing kill.");
+                TryKill(child);
+                await _waitForExit(child.Process, TimeSpan.FromSeconds(5));
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or Win32Exception or NotSupportedException)
+        {
+            LogReader.AppendRaw($"Agent stop completed with process error: {ex.Message}");
+        }
+        finally
+        {
+            // This reference keeps A's resources alive through the await. It
+            // never looks up B's log source or process when A completes.
+            child.Logs.Cancel();
+            ForgetExitedChild(child);
+            Release(child);
+        }
+    }
+
     public async Task RestartAsync(string binaryPath, Dictionary<string, string> environment)
     {
+        var generation = Generation;
         await StopAsync();
-        await Task.Delay(500); // brief pause between stop and start
-        Start(binaryPath, environment);
+        await Task.Delay(500);
+        PrepareStart(binaryPath, environment, generation)?.Invoke();
     }
 
-    /// <summary>
-    /// Kill any orphaned agent processes from previous app runs.
-    /// </summary>
-    public void KillOrphanedAgents(string binaryPath)
+    private void HandleExit(Child child)
     {
-        var binaryName = Path.GetFileNameWithoutExtension(binaryPath);
-        var expectedPath = NormalizeExecutablePath(binaryPath);
-        try
+        lock (LifecycleGate)
         {
-            var orphans = System.Diagnostics.Process.GetProcessesByName(binaryName);
-            foreach (var orphan in orphans)
+            if (!ReferenceEquals(_child, child)) return;
+            child.References++; // Retain the OS handle before querying it.
+        }
+        var exitCode = TryGetExitCode(child.Process);
+        ForgetExitedChild(child);
+        AgentProcessExit exited;
+        bool current;
+        lock (LifecycleGate)
+        {
+            current = ReferenceEquals(_child, child);
+            exited = new AgentProcessExit(child.Generation, exitCode, child.UserStop);
+            if (current)
             {
-                try
-                {
-                    if (orphan.Id == _process?.Id) continue; // skip our own
-                    if (orphan.Id == Environment.ProcessId) continue;
-                    if (!ProcessMatchesExecutable(orphan, expectedPath)) continue;
-
-                    orphan.Kill();
-                    LogReader.AppendRaw($"Killed orphaned agent process (PID {orphan.Id})");
-                }
-                catch (InvalidOperationException ex)
-                {
-                    LogReader.AppendRaw($"Skipped orphaned agent process (PID {orphan.Id}): {ex.Message}");
-                }
-                catch (Win32Exception ex)
-                {
-                    LogReader.AppendRaw($"Failed to kill orphaned agent process (PID {orphan.Id}): {ex.Message}");
-                }
-                catch (NotSupportedException ex)
-                {
-                    LogReader.AppendRaw($"Failed to kill orphaned agent process (PID {orphan.Id}): {ex.Message}");
-                }
-                finally
-                {
-                    orphan.Dispose();
-                }
+                LastExitWasUserInitiated = child.UserStop;
+                IsStarting = false;
+                RetireLocked(child);
+                if (!exited.UserInitiated && exited.ExitCode != 0) _crashCoordinator.CheckStability();
             }
         }
-        catch (Win32Exception ex)
-        {
-            LogReader.AppendRaw($"Failed to enumerate orphaned agent processes: {ex.Message}");
-        }
-        catch (PlatformNotSupportedException ex)
-        {
-            LogReader.AppendRaw($"Failed to enumerate orphaned agent processes: {ex.Message}");
-        }
-    }
-
-    private void OnProcessExited(object? sender, EventArgs e)
-    {
-        var exitedProcess = sender as System.Diagnostics.Process;
-        if (exitedProcess != null && !ReferenceEquals(_process, exitedProcess))
-        {
-            exitedProcess.Exited -= OnProcessExited;
-            exitedProcess.Dispose();
-            return;
-        }
-
-        var exitCode = TryGetExitCode(exitedProcess ?? _process);
-        var userInitiated = _userInitiatedStop;
-        LastExitWasUserInitiated = userInitiated;
-        LogReader.AppendRaw($"Agent exited (code {exitCode})");
-        IsStarting = false;
-        _logCts?.Cancel();
-        if (exitedProcess != null)
-        {
-            exitedProcess.Exited -= OnProcessExited;
-            _process = null;
-        }
-
-        if (!userInitiated && exitCode != 0)
-        {
-            _crashCoordinator.CheckStability();
-        }
-
-        OnExited?.Invoke(exitCode);
-
-        if (!userInitiated && exitCode != 0)
-        {
-            // Unexpected crash — schedule restart with backoff
-            LogReader.AppendRaw("Crash detected; restart scheduling delegated to app state.");
-            // The caller (AppState) is responsible for actually restarting
-            // after the delay, since it has the binary path and environment.
-        }
-    }
-
-    private static int TryGetExitCode(System.Diagnostics.Process? process)
-    {
-        if (process == null)
-            return -1;
-
-        try
-        {
-            return process.ExitCode;
-        }
-        catch (InvalidOperationException)
-        {
-            return -1;
-        }
-    }
-
-    private static string NormalizeExecutablePath(string path)
-    {
-        return Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-    }
-
-    private static bool ProcessMatchesExecutable(System.Diagnostics.Process process, string expectedPath)
-    {
-        try
-        {
-            var actual = process.MainModule?.FileName;
-            if (string.IsNullOrWhiteSpace(actual))
-                return false;
-
-            return string.Equals(NormalizeExecutablePath(actual), expectedPath, StringComparison.OrdinalIgnoreCase);
-        }
-        catch (InvalidOperationException)
-        {
-            return false;
-        }
-        catch (System.ComponentModel.Win32Exception)
-        {
-            return false;
-        }
-        catch (NotSupportedException)
-        {
-            return false;
-        }
-    }
-
-    private void CleanupFailedStart(System.Diagnostics.Process? process, CancellationTokenSource? logCts)
-    {
-        logCts?.Cancel();
-        logCts?.Dispose();
-        if (ReferenceEquals(_logCts, logCts))
-            _logCts = null;
-
-        process ??= _process;
-        if (process == null)
-            return;
-
-        try
-        {
-            process.Exited -= OnProcessExited;
-        }
-        catch (InvalidOperationException)
-        {
-            // Process object was never associated with an OS process.
-        }
-        try
-        {
-            if (!process.HasExited)
-                process.Kill();
-        }
-        catch (InvalidOperationException)
-        {
-            // Process object was never associated with an OS process.
-        }
-        catch (Win32Exception ex)
-        {
-            LogReader.AppendRaw($"Failed to kill partially started agent process: {ex.Message}");
-        }
-        catch (NotSupportedException ex)
-        {
-            LogReader.AppendRaw($"Failed to kill partially started agent process: {ex.Message}");
-        }
-        process.Dispose();
-        if (ReferenceEquals(_process, process))
-            _process = null;
-    }
-
-    /// <summary>
-    /// Send a graceful shutdown signal to the process.
-    /// On Windows: GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT).
-    /// On other platforms: sends SIGTERM equivalent.
-    /// </summary>
-    private static bool SendGracefulShutdown(int processId)
-    {
-#if WINDOWS
-        // P/Invoke to kernel32.dll GenerateConsoleCtrlEvent
-        return NativeMethods.GenerateConsoleCtrlEvent(NativeMethods.CTRL_BREAK_EVENT, (uint)processId);
-#else
-        // On non-Windows (dev builds), just return false to trigger Kill() fallback
-        return false;
-#endif
-    }
-
-    private static async Task<bool> WaitForExitAsync(System.Diagnostics.Process process, TimeSpan timeout)
-    {
-        try
-        {
-            using var cts = new CancellationTokenSource(timeout);
-            await process.WaitForExitAsync(cts.Token);
-            return true;
-        }
-        catch (OperationCanceledException)
-        {
-            return false;
-        }
-    }
-
-    /// <summary>
-    /// Get the crash restart coordinator (for AppState to use).
-    /// </summary>
-    public CrashRestartCoordinator CrashCoordinator => _crashCoordinator;
-
-    public void Dispose()
-    {
-        if (_disposed) return;
-        _disposed = true;
-
-        _logCts?.Cancel();
-        _logCts?.Dispose();
-
-        if (_process is { HasExited: false })
+        if (!current) { Release(child); return; }
+        _dispatchExit(() =>
         {
             try
             {
-                _process.Exited -= OnProcessExited;
-                _process.Kill();
+                child.Logs.Cancel();
+                LogReader.AppendRaw($"Agent exited (code {exited.ExitCode})");
+                OnOwnedExited?.Invoke(exited);
+                OnExited?.Invoke(exited.ExitCode);
             }
-            catch (InvalidOperationException)
-            {
-                // Process already exited
-            }
-            catch (Win32Exception ex)
-            {
-                LogReader.AppendRaw($"Failed to kill agent process during dispose: {ex.Message}");
-            }
-            catch (NotSupportedException ex)
-            {
-                LogReader.AppendRaw($"Failed to kill agent process during dispose: {ex.Message}");
-            }
+            finally { Release(child); }
+        });
+    }
+
+    private void ForgetExitedChild(Child child)
+    {
+        try
+        {
+            if (child.Process.HasExited) _ownership?.Forget(child.Ownership);
         }
-        _process?.Dispose();
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or Win32Exception)
+        {
+            LogReader.AppendRaw("Could not clear the retired child ownership record; recovery will recheck its identity.");
+        }
+    }
+
+    private Child? RetainCurrentLocked()
+    {
+        if (_child != null) _child.References++;
+        return _child;
+    }
+
+    private void RetireLocked(Child child)
+    {
+        if (!ReferenceEquals(_child, child)) return;
+        _child = null;
+        child.References--;
+    }
+
+    private void Release(Child child)
+    {
+        bool dispose;
+        lock (LifecycleGate) { dispose = --child.References == 0; }
+        if (!dispose) return;
+        child.Process.Exited -= child.ExitHandler;
+        child.Logs.Cancel();
+        child.Logs.Dispose();
+        child.Process.Dispose();
+    }
+
+    private static bool IsAlive(Child? child) => child is { Started: true };
+
+    private static int TryGetExitCode(System.Diagnostics.Process process)
+    {
+        try { return process.ExitCode; }
+        catch (InvalidOperationException) { return -1; }
+    }
+
+    private void TryKill(Child child)
+    {
+        try { if (!child.Process.HasExited) child.Process.Kill(entireProcessTree: true); }
+        catch (InvalidOperationException) { }
+        catch (Exception ex) when (ex is Win32Exception or NotSupportedException)
+        {
+            LogReader.AppendRaw($"Failed to stop owned agent process: {ex.Message}");
+        }
+    }
+
+    public void Dispose()
+    {
+        Child? child;
+        lock (LifecycleGate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            child = RetainCurrentLocked();
+            if (child != null) { child.UserStop = true; RetireLocked(child); }
+        }
+        if (child != null) _ = StopChildAsync(child, TimeSpan.FromSeconds(5));
+    }
+
+    private sealed class Child(System.Diagnostics.Process process)
+    {
+        internal readonly System.Diagnostics.Process Process = process;
+        internal readonly CancellationTokenSource Logs = new();
+        internal readonly TaskCompletionSource<bool> StartCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal EventHandler? ExitHandler;
+        internal AgentChildOwnership.Record? Ownership;
+        internal long Generation;
+        internal int References = 1;
+        internal int ProcessId;
+        internal bool Started;
+        internal bool UserStop;
     }
 }
-
-#if WINDOWS
-/// <summary>
-/// P/Invoke declarations for Windows process control.
-/// </summary>
-internal static partial class NativeMethods
-{
-    internal const uint CTRL_BREAK_EVENT = 1;
-
-    [System.Runtime.InteropServices.LibraryImport("kernel32.dll", SetLastError = true)]
-    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
-    internal static partial bool GenerateConsoleCtrlEvent(uint dwCtrlEvent, uint dwProcessGroupId);
-}
-#endif

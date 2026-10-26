@@ -11,11 +11,11 @@ namespace LabTetherAgent.Settings;
 /// </summary>
 public class AgentSettings
 {
-    private static readonly string SettingsDir =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LabTether");
+    [JsonIgnore] public AppStateLocation Location { get; private set; } = AppStateLocation.Installed;
+    private string SettingsPath => Location.SettingsPath;
 
-    private static readonly string SettingsPath =
-        Path.Combine(SettingsDir, "settings.json");
+    public AgentSettings() { }
+    public AgentSettings(AppStateLocation location) => Location = location ?? throw new ArgumentNullException(nameof(location));
 
     // Connection
     public string HubUrl { get; set; } = "wss://localhost:8443/ws/agent";
@@ -76,7 +76,7 @@ public class AgentSettings
     /// </summary>
     [JsonIgnore]
     public bool HasPersistedAgentToken => HasPrivatePersistedAgentTokenAt(
-        PersistedAgentTokenPathOverride ?? Path.Combine(SettingsDir, "agent-token"));
+        PersistedAgentTokenPathOverride ?? Location.FilePath("agent-token"));
 
     internal static bool MinimumCredentialConfigured(
         string apiToken,
@@ -95,13 +95,14 @@ public class AgentSettings
     /// </summary>
     public bool ClearConsumedEnrollmentTokenPreservingAgentToken(CredentialStore credentialStore)
     {
+        credentialStore.RequireOwner(this);
         if (!HasPersistedAgentToken || string.IsNullOrWhiteSpace(EnrollmentToken))
             return false;
 
         credentialStore.Remove(CredentialStore.EnrollmentTokenResource);
         EnrollmentToken = string.Empty;
-        SecureFile.DeleteIfExists(Path.Combine(SettingsDir, "enrollment-token"));
-        SecureFile.DeleteIfExists(Path.Combine(SettingsDir, "enrollment-token.sha256"));
+        SecureFile.DeleteIfExists(Location.FilePath("enrollment-token"));
+        SecureFile.DeleteIfExists(Location.FilePath("enrollment-token.sha256"));
         return true;
     }
 
@@ -113,7 +114,7 @@ public class AgentSettings
     /// </summary>
     public bool ClearPersistedGroupIntentAfterEnrollment() =>
         ClearPersistedGroupIntentAfterEnrollmentAt(
-            Path.Combine(SettingsDir, "agent-token"),
+            Location.FilePath("agent-token"),
             Save);
 
     internal bool ClearPersistedGroupIntentAfterEnrollmentAt(
@@ -145,7 +146,7 @@ public class AgentSettings
     public void CleanupEphemeralSecrets()
     {
         LocalApiAuthToken = string.Empty;
-        SecureFile.DeleteIfExists(Path.Combine(SettingsDir, "local-api-auth-token"));
+        SecureFile.DeleteIfExists(Location.FilePath("local-api-auth-token"));
     }
 
     public void IncrementVersion() => SettingsVersion++;
@@ -156,7 +157,7 @@ public class AgentSettings
     public void Save()
     {
         NormalizeWrapperManagedUpdatePolicy();
-        Directory.CreateDirectory(SettingsDir);
+        Location.EnsureDirectory();
         var json = JsonSerializer.Serialize(this, new JsonSerializerOptions
         {
             WriteIndented = true,
@@ -169,13 +170,16 @@ public class AgentSettings
     /// <summary>
     /// Load settings from disk. Returns default settings if file doesn't exist.
     /// </summary>
-    public static AgentSettings Load()
+    public static AgentSettings Load(AppStateLocation? location = null)
     {
-        if (!File.Exists(SettingsPath))
-            return new AgentSettings();
+        location ??= AppStateLocation.Installed;
+        var path = location.SettingsPath;
+        if (!File.Exists(path))
+            return new AgentSettings(location);
 
-        var json = File.ReadAllText(SettingsPath);
-        var settings = JsonSerializer.Deserialize<AgentSettings>(json) ?? new AgentSettings();
+        var json = File.ReadAllText(path);
+        var settings = JsonSerializer.Deserialize<AgentSettings>(json) ?? new AgentSettings(location);
+        settings.Location = location;
         settings.NormalizeWrapperManagedUpdatePolicy();
         return settings;
     }
@@ -197,9 +201,9 @@ public class AgentSettings
     /// <summary>
     /// Get the settings directory path.
     /// </summary>
-    public static string GetSettingsDirectory() => SettingsDir;
+    public static string GetSettingsDirectory() => AppStateLocation.Installed.DirectoryPath;
 
-    internal static string GetSettingsPath() => SettingsPath;
+    internal static string GetSettingsPath() => AppStateLocation.Installed.SettingsPath;
 
     /// <summary>
     /// Create an independent setup candidate. Secrets are copied in memory so
@@ -215,6 +219,8 @@ public class AgentSettings
     internal void ApplyCommittedSetup(AgentSettings source)
     {
         ArgumentNullException.ThrowIfNull(source);
+        if (!Location.SameOwner(source.Location))
+            throw new InvalidOperationException("Cannot commit setup from a different state owner.");
 
         HubUrl = source.HubUrl;
         AssetId = source.AssetId;

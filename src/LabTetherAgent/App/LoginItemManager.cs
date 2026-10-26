@@ -21,12 +21,17 @@ public class LoginItemManager : ILoginItemManager
 {
     private const string RegistryRunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string AppName = "LabTetherAgent";
+    private readonly bool _supportsOsIntegration;
+
+    public LoginItemManager(Settings.AppStateLocation? location = null) =>
+        _supportsOsIntegration = (location ?? Settings.AppStateLocation.Installed).SupportsOsIntegration;
 
     /// <summary>
     /// Check if Start at Login is enabled.
     /// </summary>
     public bool IsEnabled()
     {
+        if (!_supportsOsIntegration) return false;
 #if WINDOWS
         // Try MSIX StartupTask first
         if (IsPackaged())
@@ -44,6 +49,7 @@ public class LoginItemManager : ILoginItemManager
     /// </summary>
     public bool SetEnabled(bool enabled)
     {
+        if (!_supportsOsIntegration) return !enabled;
 #if WINDOWS
         if (IsPackaged())
         {

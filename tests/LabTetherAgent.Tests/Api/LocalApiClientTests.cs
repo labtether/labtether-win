@@ -127,6 +127,160 @@ public class LocalApiClientTests
     }
 
     [Fact]
+    public async Task ReconfigureIgnoresTransportFailureFromReplacedChild()
+    {
+        var oldResponse = new TaskCompletionSource<HttpResponseMessage>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var client = new LocalApiClient(new HttpClient(new AsyncHttpHandler(
+            _ => oldResponse.Task)));
+        client.Configure("18091", "old-local-token");
+        var oldPoll = client.PollStatusForTestingAsync();
+
+        client.Configure("18092", "new-local-token");
+        oldResponse.SetException(new HttpRequestException("old child stopped"));
+        await oldPoll;
+
+        Assert.Equal(0, client.FailureCount);
+        Assert.Equal(TimeSpan.FromSeconds(30), client.CurrentPollingInterval);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task RetiredRequestCannotCommitCacheConnectionOrBackoff(bool fails, bool stop)
+    {
+        var atCommit = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseCommit = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var commits = 0;
+        (int? Port, string? Token, string? ETag) retiredRequest = default;
+        var expectedPort = stop ? 18091 : 18092;
+        var expectedToken = stop ? "old-local-token" : "new-local-token";
+        var handler = new QueueHttpHandler(
+            _ => StatusResponse(),
+            request =>
+            {
+                retiredRequest = (request.RequestUri?.Port, request.Headers.Authorization?.Parameter,
+                    request.Headers.IfNoneMatch.FirstOrDefault()?.Tag);
+                if (fails) throw new HttpRequestException("old child failed at commit");
+                return StatusResponse();
+            },
+            request =>
+            {
+                Assert.Equal(expectedPort, request.RequestUri?.Port);
+                Assert.Equal(expectedToken, request.Headers.Authorization?.Parameter);
+                Assert.Empty(request.Headers.IfNoneMatch);
+                return new HttpResponseMessage(HttpStatusCode.NotModified);
+            },
+            _ => StatusResponse());
+        using var client = new LocalApiClient(new HttpClient(handler), async () =>
+        {
+            if (Interlocked.Increment(ref commits) != 2) return;
+            atCommit.TrySetResult();
+            await releaseCommit.Task;
+        });
+        client.OnStatusUpdated += _ =>
+        {
+            // Subscriber code must not run with the client's state gate held.
+            Assert.Equal(0, Task.Run(() => client.FailureCount)
+                .WaitAsync(TimeSpan.FromSeconds(3)).GetAwaiter().GetResult());
+        };
+        client.Configure("18091", "old-local-token");
+        await client.PollStatusForTestingAsync();
+        Assert.True(client.IsConnected);
+        var retired = client.PollStatusForTestingAsync();
+        try
+        {
+            await atCommit.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            Assert.Equal(18091, retiredRequest.Port);
+            Assert.Equal("old-local-token", retiredRequest.Token);
+            Assert.Equal("\"status-1\"", retiredRequest.ETag);
+            await Task.Run(() =>
+            {
+                if (stop) client.StopPolling();
+                else client.Configure("18092", "new-local-token");
+            }).WaitAsync(TimeSpan.FromSeconds(3));
+            Assert.False(client.IsConnected);
+        }
+        finally { releaseCommit.TrySetResult(); }
+        await retired.WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.False(client.IsConnected);
+        Assert.Equal(0, client.FailureCount);
+        Assert.Equal(TimeSpan.FromSeconds(30), client.CurrentPollingInterval);
+
+        // A conditional response cannot revive retired cached connection state.
+        await client.PollStatusForTestingAsync();
+        Assert.False(client.IsConnected);
+        Assert.Equal(0, client.FailureCount);
+        await client.PollStatusForTestingAsync();
+        Assert.True(client.IsConnected);
+    }
+
+    [Fact]
+    public async Task ReconfigureIgnoresInfoFailureFromReplacedChild()
+    {
+        var oldResponse = new TaskCompletionSource<HttpResponseMessage>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var client = new LocalApiClient(new HttpClient(new AsyncHttpHandler(
+            _ => oldResponse.Task)));
+        string? observedError = null;
+        client.OnError += error => observedError = error;
+        client.Configure("18091", "old-local-token");
+        var oldInfo = client.FetchInfoAsync();
+
+        client.Configure("18092", "new-local-token");
+        oldResponse.SetException(new HttpRequestException("old child stopped"));
+
+        Assert.Null(await oldInfo);
+        Assert.Null(observedError);
+    }
+
+    [Fact]
+    public async Task ReconfigureDiscardsCallbacksAlreadyQueuedForOldChild()
+    {
+        var callbackContext = new QueuedSynchronizationContext();
+        var previousContext = SynchronizationContext.Current;
+        LocalApiClient client;
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(callbackContext);
+            client = new LocalApiClient(new HttpClient(new QueueHttpHandler(
+                _ => CurrentGoStatusResponse(connected: true),
+                _ => CurrentGoStatusResponse(connected: true),
+                _ => throw new HttpRequestException("old child failed"),
+                _ => CurrentGoStatusResponse(connected: true))));
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previousContext);
+        }
+
+        using (client)
+        {
+            var delivered = 0;
+            client.OnConnectionStateChanged += _ => delivered++;
+            client.OnStatusUpdated += _ => delivered++;
+            client.OnInfoUpdated += _ => delivered++;
+            client.OnError += _ => delivered++;
+            client.Configure("18091", "old-local-token");
+            await client.PollStatusForTestingAsync();
+            await client.FetchInfoAsync();
+            await client.FetchInfoAsync();
+            Assert.Equal(4, callbackContext.PendingCount);
+
+            client.Configure("18092", "new-local-token");
+            callbackContext.Drain();
+            Assert.Equal(1, delivered); // Only B's explicit disconnected transition.
+            Assert.False(client.IsConnected);
+
+            await client.FetchInfoAsync();
+            callbackContext.Drain();
+            Assert.Equal(2, delivered);
+        }
+    }
+
+    [Fact]
     public async Task FetchInfoUsesCurrentStatusContractForVersionAndFingerprint()
     {
         using var client = new LocalApiClient(new HttpClient(new QueueHttpHandler(
@@ -319,6 +473,20 @@ public class LocalApiClientTests
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken) => response(request);
+    }
+
+    private sealed class QueuedSynchronizationContext : SynchronizationContext
+    {
+        private readonly System.Collections.Concurrent.ConcurrentQueue<Action> _pending = new();
+        public int PendingCount => _pending.Count;
+
+        public override void Post(SendOrPostCallback callback, object? state) =>
+            _pending.Enqueue(() => callback(state));
+
+        public void Drain()
+        {
+            while (_pending.TryDequeue(out var callback)) callback();
+        }
     }
 
     private sealed class TrackingHttpResponseMessage(HttpStatusCode statusCode) : HttpResponseMessage(statusCode)

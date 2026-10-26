@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Markup;
 using Microsoft.UI.Dispatching;
 using Microsoft.Windows.AppLifecycle;
 using LabTetherAgent.Services;
+using LabTetherAgent.Settings;
 using LabTetherAgent.State;
 using LabTetherAgent.Views.TrayIcon;
 
@@ -76,10 +77,11 @@ public partial class App : Application, IXamlMetadataProvider
         }
 
         // Initialize global state
-        _appState = AppState.Initialize();
+        _appState = AppState.Initialize(Program.StateLocation);
 
-        _notifications = new ToastNotificationService();
-        if (_notifications.TryInitialize())
+        if (_appState.Settings.Location.SupportsOsIntegration)
+            _notifications = new ToastNotificationService();
+        if (_notifications?.TryInitialize() == true)
         {
             _updateAvailableHandler = _notifications.NotifyUpdateAvailable;
             _appState.UpdateChecker.OnUpdateAvailable += _updateAvailableHandler;
@@ -114,9 +116,9 @@ public partial class App : Application, IXamlMetadataProvider
     /// Single-instance enforcement. Call this from Program.cs Main() before
     /// starting the Application.
     /// </summary>
-    public static bool EnsureSingleInstance()
+    public static bool EnsureSingleInstance(AppStateLocation? location = null)
     {
-        var instance = AppInstance.FindOrRegisterForKey("LabTetherAgent");
+        var instance = AppInstance.FindOrRegisterForKey((location ?? AppStateLocation.Installed).ActivationKey);
 
         if (!instance.IsCurrent)
         {

@@ -143,6 +143,8 @@ public partial class SettingsViewModel : ObservableObject
         set => SetProperty(ref _saveError, value);
     }
 
+    public bool CanStartAtLogin => _settings.Location.SupportsOsIntegration;
+
     public event Action? OnSaved;
     public event Action? OnRestartRequired;
 
@@ -152,7 +154,7 @@ public partial class SettingsViewModel : ObservableObject
         : this(
             settings,
             credentialStore,
-            new LoginItemManager(),
+            new LoginItemManager(settings.Location),
             static (currentSettings, currentCredentialStore) =>
             {
                 currentSettings.Save();

@@ -23,6 +23,9 @@ public partial class AppState
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(candidate);
+        if (!Settings.Location.SameOwner(candidate.Location))
+            throw new InvalidOperationException("Setup candidate belongs to a different state owner.");
+        Settings.Location.Validate();
         if (_setupTransactionActive)
         {
             return AgentConnectionAttemptResult.Failed(
@@ -33,7 +36,7 @@ public partial class AppState
         var priorWasRunning = AgentProcess.IsRunning;
         var persistenceTouched = false;
         var stagingDirectory = Path.Combine(
-            AgentSettings.GetSettingsDirectory(),
+            Settings.Location.DirectoryPath,
             $".setup-{Guid.NewGuid():N}");
         Dictionary<string, byte[]>? stagedArtifacts = null;
 
@@ -200,7 +203,8 @@ public partial class AppState
         AgentSettings committed,
         IReadOnlyDictionary<string, byte[]> stagedArtifacts)
     {
-        var settingsDirectory = AgentSettings.GetSettingsDirectory();
+        var settingsDirectory = Settings.Location.DirectoryPath;
+        Settings.Location.Validate();
         AgentManagedState.CommitArtifacts(settingsDirectory, stagedArtifacts);
         SecureFile.DeleteIfExists(Path.Combine(settingsDirectory, "enrollment-token"));
         SecureFile.DeleteIfExists(Path.Combine(settingsDirectory, "enrollment-token.sha256"));
@@ -210,10 +214,11 @@ public partial class AppState
         Settings.ApplyCommittedSetup(committed);
     }
 
-    private static void DeleteSetupDirectory(string stagingDirectory)
+    private void DeleteSetupDirectory(string stagingDirectory)
     {
+        Settings.Location.Validate();
         var fullPath = Path.GetFullPath(stagingDirectory);
-        var settingsDirectory = Path.GetFullPath(AgentSettings.GetSettingsDirectory());
+        var settingsDirectory = Path.GetFullPath(Settings.Location.DirectoryPath);
         if (!string.Equals(Path.GetDirectoryName(fullPath), settingsDirectory, StringComparison.OrdinalIgnoreCase) ||
             !Path.GetFileName(fullPath).StartsWith(".setup-", StringComparison.Ordinal))
         {
@@ -261,12 +266,13 @@ public partial class AppState
             AgentSettings settings,
             CredentialStore credentialStore)
         {
-            var directory = AgentSettings.GetSettingsDirectory();
+            var directory = settings.Location.DirectoryPath;
+            settings.Location.Validate();
             var filePaths = AgentManagedState.SnapshotArtifactNames
                 .Select(fileName => Path.Combine(directory, fileName))
                 .Concat(new[]
                 {
-                    AgentSettings.GetSettingsPath(),
+                    settings.Location.SettingsPath,
                     Path.Combine(directory, "enrollment-token"),
                     Path.Combine(directory, "enrollment-token.sha256"),
                     Path.Combine(directory, "local-api-auth-token"),

@@ -26,14 +26,16 @@ public class CredentialStore
     private const string UserName = "LabTetherAgent";
 
     private readonly bool _vaultAvailable;
+    private readonly AppStateLocation? _location;
 
     // Fallback store for when PasswordVault is not available
     private readonly Dictionary<string, string> _fallbackStore = new();
     private readonly string? _fallbackPath;
 
-    public CredentialStore() : this(vaultAvailable: null, fallbackPath: null)
-    {
-    }
+    public CredentialStore() : this(AppStateLocation.Installed) { }
+
+    public CredentialStore(AppStateLocation location)
+        : this(location.IsIsolated ? false : null, location.CredentialsPath) => _location = location;
 
     internal CredentialStore(bool? vaultAvailable, string? fallbackPath)
     {
@@ -114,6 +116,7 @@ public class CredentialStore
     /// </summary>
     public void LoadInto(AgentSettings settings)
     {
+        RequireOwner(settings);
         settings.ApiToken = Retrieve(ApiTokenResource) ?? string.Empty;
         settings.EnrollmentToken = Retrieve(EnrollmentTokenResource) ?? string.Empty;
         // Local API credentials are process-scoped and must never survive an
@@ -128,10 +131,18 @@ public class CredentialStore
     /// </summary>
     public void SaveFrom(AgentSettings settings)
     {
+        RequireOwner(settings);
         Store(ApiTokenResource, settings.ApiToken);
         Store(EnrollmentTokenResource, settings.EnrollmentToken);
         Remove(LocalApiAuthResource);
         Store(WebRtcTurnPassResource, settings.WebRtcTurnPass);
+    }
+
+    internal void RequireOwner(AgentSettings settings)
+    {
+        if (_location != null && !_location.SameOwner(settings.Location))
+            throw new InvalidOperationException("Credentials belong to a different state owner.");
+        _location?.Validate();
     }
 
     // ── PasswordVault operations ────────────────────────────────────────

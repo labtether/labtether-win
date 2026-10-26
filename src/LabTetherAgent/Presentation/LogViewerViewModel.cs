@@ -16,9 +16,10 @@ public partial class LogViewerViewModel : ObservableObject, IDisposable
     private readonly AgentLogReader _logReader;
     private readonly SynchronizationContext? _uiContext;
     private readonly Action<LogLine> _logLineHandler;
+    private readonly object _refreshGate = new();
     private List<LogLine> _allLines = [];
-    private bool _disposed;
-    private int _refreshPending;
+    private volatile bool _disposed;
+    private bool _refreshPending;
 
     private string _filterText = string.Empty;
     private string _selectedLevel = "All";
@@ -79,7 +80,7 @@ public partial class LogViewerViewModel : ObservableObject, IDisposable
     {
         _logReader = logReader;
         _uiContext = SynchronizationContext.Current;
-        _logLineHandler = _ => QueueLogRefresh();
+        _logLineHandler = _ => ScheduleLogRefresh();
         _logReader.OnLogLine += _logLineHandler;
         Refresh();
     }
@@ -112,22 +113,19 @@ public partial class LogViewerViewModel : ObservableObject, IDisposable
             Environment.NewLine,
             LogExportRedactor.RedactLines(FilteredLines, settings));
 
-    private void QueueLogRefresh()
+    private void RefreshFromLogEvents()
     {
-        if (_disposed || Interlocked.Exchange(ref _refreshPending, 1) != 0)
-            return;
-
-        // One pending UI callback covers an entire burst. Read the bounded
-        // source snapshot instead of retaining an unbounded second log history.
-        RunOnUiThread(() =>
+        lock (_refreshGate)
         {
-            Interlocked.Exchange(ref _refreshPending, 0);
-            var previousLast = FilteredLines.LastOrDefault();
-            Refresh();
-            var currentLast = FilteredLines.LastOrDefault();
-            if (currentLast != null && !ReferenceEquals(previousLast, currentLast))
-                OnNewLine?.Invoke();
-        });
+            _refreshPending = false;
+            if (_disposed) return;
+        }
+        var previousTail = FilteredLines.LastOrDefault();
+        // The reader owns retention. Do not keep a second, growing event history.
+        Refresh();
+        var currentTail = FilteredLines.LastOrDefault();
+        if (currentTail != null && !ReferenceEquals(previousTail, currentTail))
+            OnNewLine?.Invoke();
     }
 
     private void ApplyFilter()
@@ -154,27 +152,30 @@ public partial class LogViewerViewModel : ObservableObject, IDisposable
         return true;
     }
 
-    private void RunOnUiThread(Action update)
+    private void ScheduleLogRefresh()
     {
-        if (_disposed)
-            return;
+        lock (_refreshGate)
+        {
+            if (_disposed || _refreshPending) return;
+            _refreshPending = true;
+        }
         if (_uiContext == null || SynchronizationContext.Current == _uiContext)
         {
-            update();
+            RefreshFromLogEvents();
             return;
         }
 
-        _uiContext.Post(_ =>
-        {
-            if (!_disposed)
-                update();
-        }, null);
+        // One callback captures this owner, never one log payload per event.
+        _uiContext.Post(_ => RefreshFromLogEvents(), null);
     }
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
+        lock (_refreshGate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+        }
         _logReader.OnLogLine -= _logLineHandler;
     }
 }

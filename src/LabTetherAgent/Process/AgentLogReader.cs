@@ -37,6 +37,8 @@ public class AgentLogReader
             {
                 await foreach (var line in BoundedLogLineReader.ReadAsync(reader, ct))
                 {
+                    if (ct.IsCancellationRequested) break; // retired child output
+
                     var parsed = LogLine.Parse(line.Text, line.Fragment);
                     Append(parsed);
                     OnLogLine?.Invoke(parsed);
