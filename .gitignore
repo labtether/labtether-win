@@ -91,3 +91,6 @@ core.*
 # Python helper cache
 __pycache__/
 *.py[cod]
+
+# Task scratch folders
+work/

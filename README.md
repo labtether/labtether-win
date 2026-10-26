@@ -234,8 +234,12 @@ the LabTether credentials from Windows Credential Manager.
 - **Linux Agent** -- [github.com/labtether/labtether-agent](https://github.com/labtether/labtether-agent)
 - **macOS Agent** -- [github.com/labtether/labtether-mac](https://github.com/labtether/labtether-mac)
 - **Documentation** -- [labtether.com/docs](https://labtether.com/docs)
+- **Community** -- [GitHub Discussions](https://github.com/labtether/labtether/discussions)
+- **Security** -- report vulnerabilities privately, see [SECURITY.md](SECURITY.md)
 - **Website** -- [labtether.com](https://labtether.com)
 
 ## License
 
-Copyright 2026 LabTether. All rights reserved. See [LICENSE](LICENSE).
+Source-available, all rights reserved. Copyright 2026 LabTether. You may view
+and study this code, but you may not copy, modify, distribute or use it without
+written permission. See [LICENSE](LICENSE).
