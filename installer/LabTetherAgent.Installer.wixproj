@@ -22,6 +22,19 @@
     <PackageReference Include="WixToolset.Util.wixext" Version="5.0.2" />
   </ItemGroup>
 
+  <!--
+    WiX v5 copies PE language lists into File.Language and cannot skip that
+    file info. Make invalid or multi-language values neutral after linking and
+    before ICE validation, so ICE03 still validates the whole package.
+  -->
+  <Target Name="NormalizeHarvestedFileLanguages"
+          DependsOnTargets="CoreCompile"
+          BeforeTargets="WindowsInstallerValidation"
+          Condition="'$(_WixBuildExitCode)' == '0'">
+    <Exec Command="powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)normalize-file-languages.ps1&quot; -MsiPath &quot;%(_WixBuildOutputFile.FullPath)&quot;"
+          StandardOutputImportance="High" />
+  </Target>
+
   <Target Name="RequireLabTetherPayload" BeforeTargets="Build;CoreBuild">
     <Error Condition="'$(PayloadDir)' == '' or !Exists('$(PayloadDir)\LabTetherAgent.exe')"
            Text="PayloadDir must name a published LabTether Agent folder. Use scripts/build-msi.ps1." />

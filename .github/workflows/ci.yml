@@ -86,7 +86,7 @@ jobs:
           ./scripts/release/test-windows-release-policy.ps1
           # Release-lane scripts only run on a release host; catch syntax
           # errors here instead of during a release.
-          foreach ($script in Get-ChildItem -Path scripts -Recurse -File -Filter "*.ps1") {
+          foreach ($script in Get-ChildItem -Path scripts, installer -Recurse -File -Filter "*.ps1") {
             $parseErrors = $null
             [Management.Automation.Language.Parser]::ParseFile($script.FullName, [ref]$null, [ref]$parseErrors) | Out-Null
             if ($parseErrors.Count -ne 0) { throw "PowerShell syntax error in $($script.FullName): $($parseErrors[0])" }
