@@ -3,13 +3,17 @@ param(
     [Parameter(Mandatory)][ValidatePattern('^v[0-9]+\.[0-9]+\.[0-9]+$')][string]$Tag,
     [Parameter(Mandatory)][string]$AgentRepo,
     [Parameter(Mandatory)][string]$AssetsDirectory,
-    [Parameter(Mandatory)][string]$OutputProofPath
+    [Parameter(Mandatory)][string]$OutputProofPath,
+    # ZIP stage only: also build the unsigned per-user MSI from the verified
+    # signed payload, for the Mac MSI signing stage.
+    [string]$UnsignedMsiOutputPath = ""
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 . (Join-Path $PSScriptRoot "windows-release-policy.ps1")
+. (Join-Path $PSScriptRoot "..\msi-tools.ps1")
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $AgentRepo = (Resolve-Path $AgentRepo).Path
@@ -17,6 +21,9 @@ $AssetsDirectory = (Resolve-Path $AssetsDirectory).Path
 $OutputProofPath = [IO.Path]::GetFullPath($OutputProofPath)
 $ArchiveName = "labtether-agent-win-x64.zip"
 $ChecksumName = "labtether-agent-win-x64.zip.sha256"
+$MsiName = "labtether-agent-win-x64.msi"
+$MsiChecksumName = "labtether-agent-win-x64.msi.sha256"
+$UnsignedMsiName = "labtether-agent-win-x64-unsigned.msi"
 $AuthoredPayloads = @(
     "LabTetherAgent.exe",
     "LabTetherAgent.dll",
@@ -69,6 +76,19 @@ function Protect-PrivateDirectory([string]$Path) {
     }
 }
 
+function Assert-ReleaseChecksum([string]$Directory, [string]$AssetName) {
+    $ChecksumText = Get-Content -LiteralPath (Join-Path $Directory "$AssetName.sha256") -Raw
+    $ChecksumMatch = [regex]::Match($ChecksumText, "\A([0-9A-Fa-f]{64})  $([regex]::Escape($AssetName))\r?\n?\z")
+    if (-not $ChecksumMatch.Success) {
+        throw "Release checksum asset for $AssetName has an invalid format"
+    }
+    $AssetHash = (Get-FileHash -LiteralPath (Join-Path $Directory $AssetName) -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($AssetHash -ne $ChecksumMatch.Groups[1].Value.ToLowerInvariant()) {
+        throw "Release checksum mismatch for $AssetName"
+    }
+    return $AssetHash
+}
+
 function Read-ZipJsonEntry([string]$Path, [string]$EntryName, [long]$MaximumBytes) {
     $Archive = [IO.Compression.ZipFile]::OpenRead($Path)
     try {
@@ -98,27 +118,33 @@ Assert-TrackedSourcePolicy $AgentRepo
 Assert-ExternalPath $AssetsDirectory
 Assert-ExternalPath $OutputProofPath
 
+# Two assets: the signed ZIP stage. Four: the publishable set with the MSI.
 $AssetItems = @(Get-ChildItem -LiteralPath $AssetsDirectory -Force)
-if ($AssetItems.Count -ne 2 -or
-    @($AssetItems | Where-Object { $_.Name -eq $ArchiveName -and -not $_.PSIsContainer }).Count -ne 1 -or
-    @($AssetItems | Where-Object { $_.Name -eq $ChecksumName -and -not $_.PSIsContainer }).Count -ne 1) {
-    throw "Release assets directory must contain exactly the two allowed files"
+$HasMsi = $AssetItems.Count -eq 4
+$ExpectedAssetNames = if ($HasMsi) { @($ArchiveName, $ChecksumName, $MsiName, $MsiChecksumName) } else { @($ArchiveName, $ChecksumName) }
+if ($AssetItems.Count -ne $ExpectedAssetNames.Count -or
+    @($ExpectedAssetNames | Where-Object {
+        $AssetName = $_
+        @($AssetItems | Where-Object { $_.Name -ceq $AssetName -and -not $_.PSIsContainer }).Count -ne 1
+    }).Count -ne 0) {
+    throw "Release assets directory must contain exactly the two ZIP assets or all four release assets"
+}
+if (-not [string]::IsNullOrEmpty($UnsignedMsiOutputPath)) {
+    if ($HasMsi) {
+        throw "Build the unsigned MSI from the two-asset ZIP stage only"
+    }
+    $UnsignedMsiOutputPath = [IO.Path]::GetFullPath($UnsignedMsiOutputPath)
+    if ((Split-Path $UnsignedMsiOutputPath -Leaf) -cne $UnsignedMsiName -or (Test-Path -LiteralPath $UnsignedMsiOutputPath)) {
+        throw "Unsigned MSI output must be a new file named $UnsignedMsiName"
+    }
+    Assert-ExternalPath $UnsignedMsiOutputPath
 }
 if (@($AssetItems | Where-Object { ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 }).Count -ne 0) {
     throw "Release assets must not be reparse points"
 }
 
 $ArchivePath = Join-Path $AssetsDirectory $ArchiveName
-$ChecksumPath = Join-Path $AssetsDirectory $ChecksumName
-$ChecksumText = Get-Content -LiteralPath $ChecksumPath -Raw
-$ChecksumMatch = [regex]::Match($ChecksumText, "\A([0-9A-Fa-f]{64})  labtether-agent-win-x64\.zip\r?\n?\z")
-if (-not $ChecksumMatch.Success) {
-    throw "Release checksum asset has an invalid format"
-}
-$ArchiveHash = (Get-FileHash -LiteralPath $ArchivePath -Algorithm SHA256).Hash.ToLowerInvariant()
-if ($ArchiveHash -ne $ChecksumMatch.Groups[1].Value.ToLowerInvariant()) {
-    throw "Release archive checksum mismatch"
-}
+$ArchiveHash = Assert-ReleaseChecksum $AssetsDirectory $ArchiveName
 
 $ProofParent = Split-Path $OutputProofPath -Parent
 Assert-ExternalPath $ProofParent
@@ -305,6 +331,41 @@ try {
         throw "Signed wrapper runtime probe failed"
     }
 
+    $MsiHash = $null
+    if ($HasMsi) {
+        $MsiPath = Join-Path $AssetsDirectory $MsiName
+        $MsiHash = Assert-ReleaseChecksum $AssetsDirectory $MsiName
+        $MsiSignature = Get-AuthenticodeSignature -LiteralPath $MsiPath
+        if ($MsiSignature.Status -ne [Management.Automation.SignatureStatus]::Valid -or
+            $null -eq $MsiSignature.SignerCertificate -or
+            $null -eq $MsiSignature.TimeStamperCertificate -or
+            $MsiSignature.SignerCertificate.Thumbprint -ne $SignerThumbprint) {
+            throw "The MSI lacks a valid timestamped signature from the payload signer"
+        }
+        # Keep default ACLs here: the Windows Installer service writes the
+        # administrative image, and the MSI is a public release asset.
+        $MsiWorkRoot = Join-Path ([IO.Path]::GetTempPath()) "labtether-win-msi-$([Guid]::NewGuid().ToString('N'))"
+        Assert-ExternalPath $MsiWorkRoot
+        [IO.Directory]::CreateDirectory($MsiWorkRoot) | Out-Null
+        try {
+            # Installs nothing: an administrative image proves the MSI holds
+            # exactly the verified signed payload.
+            Assert-MsiMatchesPayload $MsiPath $WorkRoot $MsiWorkRoot
+        }
+        finally {
+            Remove-Item -LiteralPath $MsiWorkRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        if ((Get-FileHash -LiteralPath $MsiPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $MsiHash) {
+            throw "Release MSI changed during verification"
+        }
+    }
+    elseif (-not [string]::IsNullOrEmpty($UnsignedMsiOutputPath)) {
+        & (Join-Path $RepoRoot "scripts\build-msi.ps1") -PayloadDir $WorkRoot -Version $Tag.Substring(1) -OutputPath $UnsignedMsiOutputPath
+        if (-not (Test-Path -LiteralPath $UnsignedMsiOutputPath -PathType Leaf)) {
+            throw "The unsigned MSI was not produced"
+        }
+    }
+
     $Proof = [ordered]@{
         schema_version = 1
         status = "signed-windows-verification-pass"
@@ -315,6 +376,9 @@ try {
         verified_payload_count = 3
         payloads = @($SignedRecords | Sort-Object path)
         verified_at = [DateTimeOffset]::UtcNow.ToString("o")
+    }
+    if ($HasMsi) {
+        $Proof["msi_sha256"] = $MsiHash
     }
     $ProofJson = $Proof | ConvertTo-Json -Depth 6
     $ProofEncoding = [Text.UTF8Encoding]::new($false)
@@ -329,6 +393,12 @@ try {
     }
     "Signed Windows release verification passed."
     "archive_sha256=$ArchiveHash"
+    if ($HasMsi) {
+        "msi_sha256=$MsiHash"
+    }
+    elseif (-not [string]::IsNullOrEmpty($UnsignedMsiOutputPath)) {
+        "Unsigned MSI for the Mac signing stage: $UnsignedMsiOutputPath"
+    }
 }
 finally {
     if (Test-Path -LiteralPath $WorkRoot) {

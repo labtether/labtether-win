@@ -6,6 +6,11 @@ WINDOWS_RELEASE_COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 readonly WINDOWS_RELEASE_COMMON_DIR
 readonly FINAL_ARCHIVE_NAME="labtether-agent-win-x64.zip"
 readonly FINAL_CHECKSUM_NAME="labtether-agent-win-x64.zip.sha256"
+readonly FINAL_MSI_NAME="labtether-agent-win-x64.msi"
+readonly FINAL_MSI_CHECKSUM_NAME="labtether-agent-win-x64.msi.sha256"
+# Built on Windows from the verified signed payload, then signed on the Mac.
+# shellcheck disable=SC2034
+readonly UNSIGNED_MSI_NAME="labtether-agent-win-x64-unsigned.msi"
 # Used by the signing entry point after this file is sourced.
 # shellcheck disable=SC2034
 readonly UNSIGNED_ARCHIVE_NAME="labtether-agent-win-x64-unsigned.zip"
@@ -140,27 +145,38 @@ assert_private_directory() {
   [[ "$mode" == "700" ]] || die "private release directory must have mode 0700"
 }
 
+# Mode "with-msi" is the publishable set: ZIP, MSI and their checksums.
+# Without it the directory holds the signed ZIP stage only.
 assert_final_asset_allowlist() {
   local directory="$1"
+  local mode="${2:-}"
+  local expected=2
   local count
   [[ -f "$directory/$FINAL_ARCHIVE_NAME" && ! -L "$directory/$FINAL_ARCHIVE_NAME" ]] || die "final release archive is missing"
   [[ -f "$directory/$FINAL_CHECKSUM_NAME" && ! -L "$directory/$FINAL_CHECKSUM_NAME" ]] || die "final release checksum is missing"
+  if [[ "$mode" == "with-msi" ]]; then
+    [[ -f "$directory/$FINAL_MSI_NAME" && ! -L "$directory/$FINAL_MSI_NAME" ]] || die "final release MSI is missing"
+    [[ -f "$directory/$FINAL_MSI_CHECKSUM_NAME" && ! -L "$directory/$FINAL_MSI_CHECKSUM_NAME" ]] || die "final release MSI checksum is missing"
+    expected=4
+  fi
   count="$(find "$directory" -mindepth 1 -maxdepth 1 -print | wc -l | tr -d ' ')"
-  [[ "$count" == "2" ]] || die "final release directory must contain exactly the two allowed assets"
+  [[ "$count" == "$expected" ]] || die "final release directory must contain exactly the $expected allowed assets"
 }
 
 validate_checksum_asset() {
   local directory="$1"
-  local checksum_path="$directory/$FINAL_CHECKSUM_NAME"
+  local asset="${2:-$FINAL_ARCHIVE_NAME}"
+  local checksum_path="$directory/$asset.sha256"
   local checksum_line
   local expected
   local actual
+  [[ "$asset" == "$FINAL_ARCHIVE_NAME" || "$asset" == "$FINAL_MSI_NAME" ]] || die "unexpected checksum asset"
   [[ "$(wc -l < "$checksum_path" | tr -d ' ')" == "1" ]] || die "checksum asset must contain exactly one line"
   checksum_line="$(tr -d '\n' < "$checksum_path")"
-  printf '%s\n' "$checksum_line" | grep -Eq '^[0-9A-Fa-f]{64}  labtether-agent-win-x64\.zip$' || die "checksum asset has an invalid format"
+  printf '%s\n' "$checksum_line" | grep -Eq "^[0-9A-Fa-f]{64}  ${asset//./\\.}\$" || die "checksum asset has an invalid format"
   expected="$(printf '%s\n' "$checksum_line" | awk '{print tolower($1)}')"
-  actual="$(sha256_file "$directory/$FINAL_ARCHIVE_NAME")"
-  [[ "$actual" == "$expected" ]] || die "release archive checksum mismatch"
+  actual="$(sha256_file "$directory/$asset")"
+  [[ "$actual" == "$expected" ]] || die "release asset checksum mismatch"
 }
 
 extract_archive_safely() {
@@ -243,19 +259,23 @@ validate_signed_payload_manifest() {
     "$manifest" >/dev/null || die "signed payload manifest is invalid"
 }
 
+# A sixth argument requires the proof to cover that exact signed MSI.
 validate_windows_verification_proof() {
   local proof="$1"
   local tag="$2"
   local wrapper_commit="$3"
   local agent_commit="$4"
   local archive_hash="$5"
+  local msi_hash="${6:-}"
   [[ -f "$proof" && ! -L "$proof" ]] || die "Windows verification proof is unavailable"
   jq -e \
     --arg tag "$tag" \
     --arg wrapper "$wrapper_commit" \
     --arg agent "$agent_commit" \
     --arg archive "$archive_hash" \
+    --arg msi "$msi_hash" \
     '.schema_version == 1 and
+     ($msi == "" or .msi_sha256 == $msi) and
      .status == "signed-windows-verification-pass" and
      .tag == $tag and
      .wrapper_commit == $wrapper and
@@ -279,29 +299,38 @@ compare_windows_proof_payloads() {
     "$proof" >/dev/null || die "Windows proof payload hashes differ from the signed archive manifest"
 }
 
+# JSON array of {name, size, digest} for every publishable asset in a directory.
+expected_release_assets_json() {
+  local directory="$1"
+  local name
+  local entries="[]"
+  for name in "$FINAL_ARCHIVE_NAME" "$FINAL_CHECKSUM_NAME" "$FINAL_MSI_NAME" "$FINAL_MSI_CHECKSUM_NAME"; do
+    entries="$(jq -c \
+      --arg name "$name" \
+      --argjson size "$(stat -f '%z' -- "$directory/$name")" \
+      --arg digest "sha256:$(sha256_file "$directory/$name")" \
+      '. + [{name: $name, size: $size, digest: $digest}]' <<<"$entries")" || die "unable to describe release assets"
+  done
+  printf '%s\n' "$entries"
+}
+
 validate_github_release_asset_readback() {
   local release_json="$1"
   local tag="$2"
   local expected_draft="$3"
-  local archive_hash="$4"
-  local checksum_hash="$5"
-  local archive_size="$6"
-  local checksum_size="$7"
+  local expected_assets="$4"
   jq -e \
     --arg tag "$tag" \
-    --arg archive "$FINAL_ARCHIVE_NAME" \
-    --arg checksum "$FINAL_CHECKSUM_NAME" \
-    --arg archive_digest "sha256:$archive_hash" \
-    --arg checksum_digest "sha256:$checksum_hash" \
     --argjson expected_draft "$expected_draft" \
-    --argjson archive_size "$archive_size" \
-    --argjson checksum_size "$checksum_size" \
-    '.draft == $expected_draft and
-     .tag_name == $tag and
-     (.assets | length) == 2 and
-     ([.assets[].name] | sort) == ([$archive, $checksum] | sort) and
-     any(.assets[]; .name == $archive and .state == "uploaded" and .size == $archive_size and .digest == $archive_digest) and
-     any(.assets[]; .name == $checksum and .state == "uploaded" and .size == $checksum_size and .digest == $checksum_digest)' \
+    --argjson expected "$expected_assets" \
+    '. as $release |
+     ($expected | length) == 4 and
+     $release.draft == $expected_draft and
+     $release.tag_name == $tag and
+     ($release.assets | length) == ($expected | length) and
+     ([$release.assets[].name] | sort) == ([$expected[].name] | sort) and
+     all($expected[]; . as $want | any($release.assets[];
+       .name == $want.name and .state == "uploaded" and .size == $want.size and .digest == $want.digest))' \
     <<<"$release_json" >/dev/null
 }
 
@@ -344,47 +373,70 @@ validate_final_payload_tree() {
   fi
 }
 
+# Prints the signer serial of a file with exactly one valid, timestamped
+# Authenticode signature (PE or MSI); exits non-zero otherwise.
+authenticode_signer_id() {
+  local path="$1"
+  local verify_output
+  local signer_id
+  [[ -f "$path" && ! -L "$path" ]] || die "required signed file is missing"
+  verify_output="$(osslsigncode verify -verbose -in "$path" 2>&1)" || die "Authenticode verification failed"
+  [[ "$(printf '%s\n' "$verify_output" | grep -c '^Signature Index:')" == "1" ]] || die "signed file must contain exactly one Authenticode signature"
+  printf '%s\n' "$verify_output" | grep -q '^Timestamp Server Signature verification: ok$' || die "Authenticode timestamp verification failed"
+  printf '%s\n' "$verify_output" | grep -q '^Signature verification: ok$' || die "Authenticode signature verification failed"
+  printf '%s\n' "$verify_output" | grep -q '^Number of verified signatures: 1$' || die "Authenticode signature count verification failed"
+  signer_id="$(printf '%s\n' "$verify_output" | awk '
+    /^Signer.s certificate:/ { in_signer = 1; next }
+    in_signer && /Serial :/ { sub(/^.*Serial :[[:space:]]*/, ""); print; exit }
+  ')"
+  [[ -n "$signer_id" ]] || die "unable to identify the Authenticode signer"
+  printf '%s\n' "$signer_id"
+}
+
+# Sets VERIFIED_SIGNER_ID to the one signer shared by all authored payloads.
 verify_signed_payloads_with_osslsigncode() {
   local payload_root="$1"
   local relative_path
-  local verify_output
   local signer_id
-  local expected_signer_id=""
-  local signature_count
+  VERIFIED_SIGNER_ID=""
   for relative_path in "$AUTHORED_PAYLOAD_1" "$AUTHORED_PAYLOAD_2" "$AUTHORED_PAYLOAD_3"; do
-    [[ -f "$payload_root/$relative_path" && ! -L "$payload_root/$relative_path" ]] || die "required signed payload is missing"
-    verify_output="$(osslsigncode verify -verbose -in "$payload_root/$relative_path" 2>&1)" || die "Authenticode verification failed"
-    signature_count="$(printf '%s\n' "$verify_output" | grep -c '^Signature Index:')"
-    [[ "$signature_count" == "1" ]] || die "signed payload must contain exactly one Authenticode signature"
-    printf '%s\n' "$verify_output" | grep -q '^Timestamp Server Signature verification: ok$' || die "Authenticode timestamp verification failed"
-    printf '%s\n' "$verify_output" | grep -q '^Signature verification: ok$' || die "Authenticode signature verification failed"
-    printf '%s\n' "$verify_output" | grep -q '^Number of verified signatures: 1$' || die "Authenticode signature count verification failed"
-    signer_id="$(printf '%s\n' "$verify_output" | awk '
-      /^Signer.s certificate:/ { in_signer = 1; next }
-      in_signer && /Serial :/ { sub(/^.*Serial :[[:space:]]*/, ""); print; exit }
-    ')"
-    [[ -n "$signer_id" ]] || die "unable to identify the Authenticode signer"
-    if [[ -z "$expected_signer_id" ]]; then
-      expected_signer_id="$signer_id"
+    signer_id="$(authenticode_signer_id "$payload_root/$relative_path")" || die "Authenticode verification failed"
+    if [[ -z "$VERIFIED_SIGNER_ID" ]]; then
+      VERIFIED_SIGNER_ID="$signer_id"
     else
-      [[ "$signer_id" == "$expected_signer_id" ]] || die "authored payloads do not share one Authenticode signer"
+      [[ "$signer_id" == "$VERIFIED_SIGNER_ID" ]] || die "authored payloads do not share one Authenticode signer"
     fi
   done
 }
 
+verify_signed_msi_with_osslsigncode() {
+  local msi_path="$1"
+  local expected_signer_id="$2"
+  local signer_id
+  [[ -n "$expected_signer_id" ]] || die "MSI signer cannot be compared without verified payloads"
+  signer_id="$(authenticode_signer_id "$msi_path")" || die "MSI Authenticode verification failed"
+  [[ "$signer_id" == "$expected_signer_id" ]] || die "MSI and payloads do not share one Authenticode signer"
+}
+
+# Optional sixth argument "with-msi" also verifies the signed MSI asset.
 verify_final_archive_on_mac() {
   local assets_directory="$1"
   local tag="$2"
   local wrapper_commit="$3"
   local agent_commit="$4"
   local scratch_root="$5"
+  local mode="${6:-}"
   local extract_root="$scratch_root/extracted"
   mkdir -m 700 -- "$extract_root"
-  assert_final_asset_allowlist "$assets_directory"
+  assert_final_asset_allowlist "$assets_directory" "$mode"
   validate_checksum_asset "$assets_directory"
   extract_archive_safely "$assets_directory/$FINAL_ARCHIVE_NAME" "$extract_root"
   validate_provenance "$extract_root" "$tag" "$wrapper_commit" "$agent_commit"
   validate_signed_payload_manifest "$extract_root"
   validate_final_payload_tree "$extract_root"
   verify_signed_payloads_with_osslsigncode "$extract_root"
+  if [[ "$mode" == "with-msi" ]]; then
+    validate_checksum_asset "$assets_directory" "$FINAL_MSI_NAME"
+    verify_signed_msi_with_osslsigncode "$assets_directory/$FINAL_MSI_NAME" "$VERIFIED_SIGNER_ID"
+  fi
 }

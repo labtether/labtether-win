@@ -39,6 +39,12 @@ class NativeContractSelectionTests(unittest.TestCase):
         self.assertTrue(result["packaging"])
         self.assertTrue(result["installed"])
 
+    def test_installer_change_builds_the_msi_in_the_installed_contract(self) -> None:
+        result = classify(["installer/Package.wxs"])
+
+        self.assertTrue(result["packaging"])
+        self.assertTrue(result["installed"])
+
     def test_windows_ui_change_selects_installed_contract(self) -> None:
         result = classify(["src/LabTetherAgent/Views/Settings/SettingsWindow.xaml.cs"])
 

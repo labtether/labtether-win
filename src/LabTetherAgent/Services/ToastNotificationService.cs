@@ -56,6 +56,17 @@ public class ToastNotificationService
         TryShow(builder.BuildNotification());
     }
 
+    public void NotifyAgentError(string message)
+    {
+        if (!ShouldNotify("agent-error")) return;
+
+        var builder = new AppNotificationBuilder()
+            .AddText("LabTether Agent Stopped")
+            .AddText(message);
+
+        TryShow(builder.BuildNotification());
+    }
+
     public void NotifyUpdateAvailable(string version)
     {
         if (!ShouldNotify("update")) return;

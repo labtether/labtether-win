@@ -9,15 +9,20 @@ namespace LabTetherAgent.Process;
 /// </summary>
 public class AgentLogReader
 {
-    private readonly List<LogLine> _buffer = [];
+    private readonly Queue<LogLine> _buffer = new();
     private readonly object _lock = new();
     private readonly int _maxLines;
+    private readonly long _maxRetainedCharacters;
+    private long _retainedCharacters;
 
     public event Action<LogLine>? OnLogLine;
 
-    public AgentLogReader(int maxLines = 5000)
+    public AgentLogReader(int maxLines = 5000, int maxRetainedBytes = 4 * 1024 * 1024)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(maxLines);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxRetainedBytes);
         _maxLines = maxLines;
+        _maxRetainedCharacters = maxRetainedBytes / sizeof(char);
     }
 
     /// <summary>
@@ -30,12 +35,11 @@ public class AgentLogReader
         {
             try
             {
-                while (!ct.IsCancellationRequested)
+                await foreach (var line in BoundedLogLineReader.ReadAsync(reader, ct))
                 {
-                    var line = await reader.ReadLineAsync(ct);
-                    if (line == null) break; // stream closed
+                    if (ct.IsCancellationRequested) break; // retired child output
 
-                    var parsed = LogLine.Parse(line);
+                    var parsed = LogLine.Parse(line.Text, line.Fragment);
                     Append(parsed);
                     OnLogLine?.Invoke(parsed);
                 }
@@ -58,9 +62,12 @@ public class AgentLogReader
     {
         lock (_lock)
         {
-            _buffer.Add(line);
-            if (_buffer.Count > _maxLines)
-                _buffer.RemoveRange(0, _buffer.Count - _maxLines);
+            _buffer.Enqueue(line);
+            _retainedCharacters += line.Raw.Length;
+            // Huge lines evict older history sooner. The event stream still
+            // emits every fragment, including one larger than the history cap.
+            while (_buffer.Count > _maxLines || _retainedCharacters > _maxRetainedCharacters)
+                _retainedCharacters -= _buffer.Dequeue().Raw.Length;
         }
     }
 
@@ -93,6 +100,7 @@ public class AgentLogReader
         lock (_lock)
         {
             _buffer.Clear();
+            _retainedCharacters = 0;
         }
     }
 

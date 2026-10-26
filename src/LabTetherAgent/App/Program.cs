@@ -1,5 +1,6 @@
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using LabTetherAgent.Settings;
 
 namespace LabTetherAgent.App;
 
@@ -13,6 +14,7 @@ public static class Program
     internal const string WinUiRuntimeProbeArgument = "--winui-runtime-probe";
 
     internal static bool IsWinUiRuntimeProbe { get; private set; }
+    internal static AppStateLocation StateLocation { get; private set; } = AppStateLocation.Installed;
 
     [STAThread]
     static void Main(string[] args)
@@ -23,12 +25,14 @@ public static class Program
         // must start from the published application directory; normalize this
         // before AppInstance or any WinUI/COM initialization occurs.
         NormalizeWorkingDirectory();
+        GlobalExceptionHandlers.Install();
 
         IsWinUiRuntimeProbe = HasWinUiRuntimeProbeArgument(args);
+        StateLocation = AppStateLocation.FromArguments(args);
 
         // Single-instance check must happen before any WinUI initialization
         // Use global:: to disambiguate from the LabTetherAgent.App namespace
-        if (!IsWinUiRuntimeProbe && !global::LabTetherAgent.App.App.EnsureSingleInstance())
+        if (!IsWinUiRuntimeProbe && !global::LabTetherAgent.App.App.EnsureSingleInstance(StateLocation))
             return;
 
         WinRT.ComWrappersSupport.InitializeComWrappers();

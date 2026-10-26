@@ -26,6 +26,8 @@ public class TrayIconManager : IDisposable
     private OnboardingWindow? _onboardingWindow;
     private SynchronizationContext? _uiContext;
     private Action<bool>? _connectionStateHandler;
+    private Action<string>? _agentErrorHandler;
+    private Action? _agentStartedHandler;
     private bool _aboutDialogVisible;
     private bool _disposed;
 
@@ -71,6 +73,13 @@ public class TrayIconManager : IDisposable
         // Subscribe to connection state changes
         _connectionStateHandler = connected => RunOnUiThread(() => UpdateIcon(connected));
         _appState.ApiClient.OnConnectionStateChanged += _connectionStateHandler;
+
+        // A failed start or crash restart leaves no child to report status.
+        // Keep that failure visible until the next start or connection change.
+        _agentErrorHandler = _ => RunOnUiThread(() => UpdateIcon(false, agentFailed: true));
+        _agentStartedHandler = () => RunOnUiThread(() => UpdateIcon(_appState.ApiClient.IsConnected));
+        _appState.AgentProcess.OnError += _agentErrorHandler;
+        _appState.AgentProcess.OnStarted += _agentStartedHandler;
     }
 
     public void ShowFlyout()
@@ -105,7 +114,7 @@ public class TrayIconManager : IDisposable
         _onboardingWindow = null;
     }
 
-    private void UpdateIcon(bool connected)
+    private void UpdateIcon(bool connected, bool agentFailed = false)
     {
         if (_taskbarIcon == null) return;
 
@@ -113,17 +122,21 @@ public class TrayIconManager : IDisposable
         // icon is created entirely in code and therefore rendered as an empty,
         // clickable slot on Windows 11. Produce a native HICON instead so the
         // shell always receives visible pixels in unpackaged builds.
-        var visual = ResolveTrayIconVisual(connected);
+        var visual = agentFailed ? AgentFailedVisual : ResolveTrayIconVisual(connected);
         var nextIcon = CreateTrayIcon(visual);
         _taskbarIcon.IconSource = null;
         _taskbarIcon.Icon = nextIcon;
         _trayDrawingIcon?.Dispose();
         _trayDrawingIcon = nextIcon;
 
-        _taskbarIcon.ToolTipText = connected
-            ? "LabTether Agent — Connected"
-            : "LabTether Agent — Disconnected";
+        _taskbarIcon.ToolTipText = agentFailed
+            ? "LabTether Agent — Agent stopped (see View Logs)"
+            : connected
+                ? "LabTether Agent — Connected"
+                : "LabTether Agent — Disconnected";
     }
+
+    internal static readonly TrayIconVisual AgentFailedVisual = new("!", 196, 43, 28);
 
     internal static TrayIconVisual ResolveTrayIconVisual(bool connected) => connected
         ? new TrayIconVisual("L", 46, 160, 67)
@@ -389,6 +402,10 @@ public class TrayIconManager : IDisposable
         _disposed = true;
         if (_connectionStateHandler != null)
             _appState.ApiClient.OnConnectionStateChanged -= _connectionStateHandler;
+        if (_agentErrorHandler != null)
+            _appState.AgentProcess.OnError -= _agentErrorHandler;
+        if (_agentStartedHandler != null)
+            _appState.AgentProcess.OnStarted -= _agentStartedHandler;
         _taskbarIcon?.Dispose();
         _trayDrawingIcon?.Dispose();
         _flyoutWindow?.Close();

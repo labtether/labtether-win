@@ -13,12 +13,12 @@
     <SelfContained>true</SelfContained>
     <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
-    <!-- Keep the checked-in development baseline aligned with the latest
-         released native wrapper. Release builds override all version fields
-         from the tag so the wrapper and its update checker cannot drift. -->
-    <Version>1.4.0</Version>
-    <AssemblyVersion>1.4.0.0</AssemblyVersion>
-    <FileVersion>1.4.0.0</FileVersion>
+    <!-- Checked-in baseline for the release being prepared. Release builds
+         override all version fields from the tag so the wrapper, its MSI and
+         its update checker cannot drift. -->
+    <Version>1.7.0</Version>
+    <AssemblyVersion>1.7.0.0</AssemblyVersion>
+    <FileVersion>1.7.0.0</FileVersion>
     <PublishSingleFile>false</PublishSingleFile>
     <!-- WinUI self-contained payloads rely on their complete framework and
          resource graph. Keep trimming and ReadyToRun disabled explicitly so

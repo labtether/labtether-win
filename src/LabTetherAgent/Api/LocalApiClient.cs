@@ -13,13 +13,14 @@ namespace LabTetherAgent.Api;
 public class LocalApiClient : IDisposable
 {
     private readonly HttpClient _httpClient;
+    private readonly Func<Task>? _beforeStatusCommit;
     private string? _baseUrl;
     private string? _authToken;
     private string? _statusETag;
     private AgentStatusResponse? _cachedStatus;
     private Timer? _pollTimer;
     private readonly SemaphoreSlim _pollGate = new(1, 1);
-    private readonly object _visibilityLock = new();
+    private readonly object _stateGate = new();
     private readonly SynchronizationContext? _callbackContext;
     private bool _manualVisible;
     private bool _isVisible;
@@ -38,13 +39,17 @@ public class LocalApiClient : IDisposable
     public event Action<bool>? OnConnectionStateChanged; // true = connected
     public event Action<string>? OnError;
 
-    public bool IsConnected { get; private set; }
+    private bool _isConnected;
+    public bool IsConnected { get { lock (_stateGate) return _isConnected; } }
 
-    internal int FailureCount => _failureCount;
-    internal TimeSpan CurrentPollingInterval => _currentPollingInterval;
+    internal int FailureCount { get { lock (_stateGate) return _failureCount; } }
+    internal TimeSpan CurrentPollingInterval { get { lock (_stateGate) return _currentPollingInterval; } }
 
-    public LocalApiClient(HttpClient? httpClient = null)
+    public LocalApiClient(HttpClient? httpClient = null) : this(httpClient, null) { }
+
+    internal LocalApiClient(HttpClient? httpClient, Func<Task>? beforeStatusCommit)
     {
+        _beforeStatusCommit = beforeStatusCommit;
         _httpClient = httpClient ?? new HttpClient();
         _httpClient.Timeout = TimeSpan.FromSeconds(5);
         _callbackContext = SynchronizationContext.Current;
@@ -54,41 +59,55 @@ public class LocalApiClient : IDisposable
     /// <summary>
     /// Configure the client with the agent's localhost URL and auth token.
     /// </summary>
-    public void Configure(string port, string authToken)
+    public void Configure(string port, string authToken) => ConfigureState(port, authToken)();
+
+    internal Action ConfigureState(string port, string authToken)
     {
-        // Invalidate any request still completing against the previous child.
-        // Without this, a retry can briefly inherit an auth failure from the
-        // process that setup just replaced.
-        Interlocked.Increment(ref _configurationVersion);
-        _baseUrl = $"http://127.0.0.1:{port}";
-        _authToken = authToken;
-        _statusETag = null;
-        _cachedStatus = null;
+        lock (_stateGate)
+        {
+            if (_disposed) return () => { };
+            var notify = StopPollingState();
+            _baseUrl = $"http://127.0.0.1:{port}";
+            _authToken = authToken;
+            return notify;
+        }
     }
 
     /// <summary>
     /// Start polling the agent status endpoint.
     /// </summary>
-    public void StartPolling()
+    public void StartPolling() => StartPollingState()();
+
+    internal Action StartPollingState()
     {
-        StopPolling();
-        var interval = NormalPollingInterval;
-        _currentPollingInterval = interval;
-        _pollTimer = new Timer(async _ => await PollStatusAsync(), null, TimeSpan.Zero, interval);
+        lock (_stateGate)
+        {
+            var notify = StopPollingState();
+            if (_disposed) return notify;
+            var interval = NormalPollingInterval;
+            _currentPollingInterval = interval;
+            var version = _configurationVersion;
+            _pollTimer = new Timer(async _ => await PollStatusAsync(version), null, TimeSpan.Zero, interval);
+            return notify;
+        }
     }
 
-    /// <summary>
-    /// Stop polling.
-    /// </summary>
-    public void StopPolling()
+    public void StopPolling() => StopPollingState()();
+
+    // State commits are atomic with Configure; the returned notification runs
+    // after both this state gate and AppState's lifecycle gate are released.
+    internal Action StopPollingState()
     {
-        _pollTimer?.Dispose();
-        _pollTimer = null;
-        Interlocked.Increment(ref _configurationVersion);
-        // Stopping the child or its poll loop invalidates the last hub state.
-        // Leaving IsConnected true keeps the tray green for the entire crash
-        // backoff even though no local child is running.
-        SetConnected(false);
+        lock (_stateGate)
+        {
+            _pollTimer?.Dispose();
+            _pollTimer = null;
+            _configurationVersion++;
+            _statusETag = null;
+            _cachedStatus = null;
+            ResetFailureBackoff();
+            return SetConnectedState(false, _configurationVersion);
+        }
     }
 
     /// <summary>
@@ -96,7 +115,7 @@ public class LocalApiClient : IDisposable
     /// </summary>
     public void SetVisible(bool visible)
     {
-        lock (_visibilityLock)
+        lock (_stateGate)
         {
             _manualVisible = visible;
             ApplyVisibilityStateLocked();
@@ -109,7 +128,7 @@ public class LocalApiClient : IDisposable
     /// </summary>
     public IDisposable EnterVisibleScope()
     {
-        lock (_visibilityLock)
+        lock (_stateGate)
         {
             _visibleScopeCount++;
             ApplyVisibilityStateLocked();
@@ -119,7 +138,7 @@ public class LocalApiClient : IDisposable
 
     private void ExitVisibleScope()
     {
-        lock (_visibilityLock)
+        lock (_stateGate)
         {
             if (_visibleScopeCount > 0)
                 _visibleScopeCount--;
@@ -144,7 +163,13 @@ public class LocalApiClient : IDisposable
     /// </summary>
     public void PollNow()
     {
-        _ = PollStatusAsync();
+        long version;
+        lock (_stateGate)
+        {
+            if (_disposed || _pollTimer == null) return;
+            version = _configurationVersion;
+        }
+        _ = PollStatusAsync(version);
     }
 
     /// <summary>
@@ -152,10 +177,15 @@ public class LocalApiClient : IDisposable
     /// </summary>
     public async Task<AgentInfoResponse?> FetchInfoAsync()
     {
-        var configurationVersion = Volatile.Read(ref _configurationVersion);
-        var baseUrl = _baseUrl;
-        var authToken = _authToken;
-        if (baseUrl == null) return null;
+        long configurationVersion;
+        string? baseUrl, authToken;
+        lock (_stateGate)
+        {
+            configurationVersion = _configurationVersion;
+            baseUrl = _baseUrl;
+            authToken = _authToken;
+            if (baseUrl == null || _disposed) return null;
+        }
 
         try
         {
@@ -167,8 +197,6 @@ public class LocalApiClient : IDisposable
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            if (configurationVersion != Volatile.Read(ref _configurationVersion))
-                return null;
             var status = JsonSerializer.Deserialize<AgentStatusResponse>(json);
             var info = status == null
                 ? null
@@ -179,76 +207,92 @@ public class LocalApiClient : IDisposable
                     UpdateAvailable = status.UpdateAvailable,
                     UpdateVersion = status.LatestVersion,
                 };
+            lock (_stateGate)
+            {
+                if (_disposed || configurationVersion != _configurationVersion) return null;
+            }
             if (info != null)
-                RaiseOnCallbackContext(() => OnInfoUpdated?.Invoke(info));
+                RaiseOnCallbackContext(() => OnInfoUpdated?.Invoke(info), configurationVersion);
             return info;
         }
         catch (Exception ex)
         {
-            RaiseOnCallbackContext(() => OnError?.Invoke($"Failed to fetch agent info: {ex.Message}"));
+            lock (_stateGate)
+            {
+                if (_disposed || configurationVersion != _configurationVersion) return null;
+            }
+            RaiseOnCallbackContext(
+                () => OnError?.Invoke($"Failed to fetch agent info: {ex.Message}"), configurationVersion);
             return null;
         }
     }
 
-    private async Task PollStatusAsync()
+    private async Task PollStatusAsync(long? expectedVersion = null)
     {
-        var configurationVersion = Volatile.Read(ref _configurationVersion);
-        var baseUrl = _baseUrl;
-        var authToken = _authToken;
-        if (baseUrl == null || _disposed) return;
         if (!await _pollGate.WaitAsync(0)) return;
-
         try
         {
-            using var request = CreateRequest(HttpMethod.Get, "/agent/status", baseUrl, authToken);
-
-            // ETag conditional request
-            if (_statusETag != null)
-                request.Headers.IfNoneMatch.Add(new EntityTagHeaderValue(_statusETag));
-
-            using var response = await _httpClient.SendAsync(request);
-
-            if (configurationVersion != Volatile.Read(ref _configurationVersion))
-                return;
-
-            if (response.StatusCode == HttpStatusCode.NotModified)
+            long configurationVersion;
+            string? baseUrl, authToken, etag;
+            lock (_stateGate)
             {
-                // Cache is still valid — update connection state but skip parsing
-                SetConnected(_cachedStatus?.IsHubConnected ?? false);
-                ResetFailureBackoff();
-                return;
+                configurationVersion = _configurationVersion;
+                baseUrl = _baseUrl;
+                authToken = _authToken;
+                etag = _statusETag;
+                if (baseUrl == null || _disposed ||
+                    (expectedVersion.HasValue && expectedVersion != _configurationVersion)) return;
             }
-
-            response.EnsureSuccessStatusCode();
-
-            // Save ETag for next request
-            _statusETag = response.Headers.ETag?.Tag;
-
-            var json = await response.Content.ReadAsStringAsync();
-            _cachedStatus = JsonSerializer.Deserialize<AgentStatusResponse>(json);
-
-            if (_cachedStatus != null)
+            AgentStatusResponse? decoded = null;
+            AgentStatus? status = null;
+            string? responseETag = null;
+            bool notModified = false, failed = false;
+            try
             {
-                var status = MapToAgentStatus(_cachedStatus);
-                SetConnected(status.IsConnected);
-                ResetFailureBackoff();
-                RaiseOnCallbackContext(() => OnStatusUpdated?.Invoke(status));
+                using var request = CreateRequest(HttpMethod.Get, "/agent/status", baseUrl, authToken);
+                if (etag != null) request.Headers.IfNoneMatch.Add(new EntityTagHeaderValue(etag));
+                using var response = await _httpClient.SendAsync(request);
+                notModified = response.StatusCode == HttpStatusCode.NotModified;
+                if (!notModified)
+                {
+                    response.EnsureSuccessStatusCode();
+                    var json = await response.Content.ReadAsStringAsync();
+                    decoded = JsonSerializer.Deserialize<AgentStatusResponse>(json);
+                    if (decoded != null) status = MapToAgentStatus(decoded);
+                    responseETag = response.Headers.ETag?.Tag;
+                }
             }
-        }
-        catch (Exception)
-        {
-            _failureCount++;
-            SetConnected(false);
+            catch (Exception) { failed = true; }
 
-            // Apply exponential backoff on failure
-            var backoff = TimeSpan.FromSeconds(
-                Math.Min(5 * Math.Pow(2, _failureCount - 1), MaxBackoff.TotalSeconds));
-            ChangePollingInterval(backoff, backoff);
+            // A test can hold an actual completed request at the commit boundary.
+            if (_beforeStatusCommit != null) await _beforeStatusCommit();
+            Action notify;
+            lock (_stateGate)
+            {
+                if (_disposed || configurationVersion != _configurationVersion) return;
+                if (failed)
+                {
+                    _failureCount++;
+                    notify = SetConnectedState(false, configurationVersion);
+                    var backoff = TimeSpan.FromSeconds(Math.Min(5 * Math.Pow(2, _failureCount - 1), MaxBackoff.TotalSeconds));
+                    ChangePollingInterval(backoff, backoff);
+                }
+                else
+                {
+                    if (!notModified)
+                    {
+                        _cachedStatus = decoded;
+                        _statusETag = responseETag;
+                    }
+                    notify = SetConnectedState(_cachedStatus?.IsHubConnected ?? false, configurationVersion);
+                    ResetFailureBackoff();
+                }
+            }
+            notify();
+            if (!failed && status != null)
+                RaiseOnCallbackContext(() => OnStatusUpdated?.Invoke(status), configurationVersion);
         }
-        finally
-        {
-            _pollGate.Release();
-        }
+        finally { _pollGate.Release(); }
     }
 
     internal Task PollStatusForTestingAsync()
@@ -275,22 +319,32 @@ public class LocalApiClient : IDisposable
         _pollTimer?.Change(dueTime, period);
     }
 
-    private void SetConnected(bool connected)
+    // Caller holds _stateGate. Never invoke subscribers during a state commit.
+    private Action SetConnectedState(bool connected, long version)
     {
-        if (IsConnected == connected) return;
-        IsConnected = connected;
-        RaiseOnCallbackContext(() => OnConnectionStateChanged?.Invoke(connected));
+        var changed = _isConnected != connected;
+        _isConnected = connected;
+        return () =>
+        {
+            if (changed) RaiseOnCallbackContext(() => OnConnectionStateChanged?.Invoke(connected), version);
+        };
     }
 
-    private void RaiseOnCallbackContext(Action callback)
+    private void RaiseOnCallbackContext(Action callback, long configurationVersion)
     {
+        void InvokeIfCurrent()
+        {
+            lock (_stateGate) { if (_disposed || configurationVersion != _configurationVersion) return; }
+            callback();
+        }
+
         if (_callbackContext == null || SynchronizationContext.Current == _callbackContext)
         {
-            callback();
+            InvokeIfCurrent();
             return;
         }
 
-        _callbackContext.Post(_ => callback(), null);
+        _callbackContext.Post(_ => InvokeIfCurrent(), null);
     }
 
     private static AgentStatus MapToAgentStatus(AgentStatusResponse response)
@@ -337,9 +391,14 @@ public class LocalApiClient : IDisposable
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
-        StopPolling();
+        Action notify;
+        lock (_stateGate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            notify = StopPollingState();
+        }
+        notify();
         _httpClient.Dispose();
     }
 

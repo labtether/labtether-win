@@ -73,6 +73,8 @@ def classify(paths: list[str]) -> dict[str, object]:
                 "scripts/build-",
                 "scripts/download-agent",
                 "scripts/release/",
+                "scripts/msi-tools",
+                "installer/",
                 "src/LabTetherAgent/Assets/",
             ),
             (

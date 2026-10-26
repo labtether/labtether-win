@@ -16,8 +16,10 @@ public partial class LogViewerViewModel : ObservableObject, IDisposable
     private readonly AgentLogReader _logReader;
     private readonly SynchronizationContext? _uiContext;
     private readonly Action<LogLine> _logLineHandler;
+    private readonly object _refreshGate = new();
     private List<LogLine> _allLines = [];
-    private bool _disposed;
+    private volatile bool _disposed;
+    private bool _refreshPending;
 
     private string _filterText = string.Empty;
     private string _selectedLevel = "All";
@@ -78,7 +80,7 @@ public partial class LogViewerViewModel : ObservableObject, IDisposable
     {
         _logReader = logReader;
         _uiContext = SynchronizationContext.Current;
-        _logLineHandler = line => RunOnUiThread(() => OnLogLineReceived(line));
+        _logLineHandler = _ => ScheduleLogRefresh();
         _logReader.OnLogLine += _logLineHandler;
         Refresh();
     }
@@ -109,28 +111,28 @@ public partial class LogViewerViewModel : ObservableObject, IDisposable
     public string BuildExportContent(AgentSettings settings) =>
         string.Join(
             Environment.NewLine,
-            FilteredLines.Select(line => DiagnosticsCollector.RedactLogLine(line.Raw, settings)));
+            LogExportRedactor.RedactLines(FilteredLines, settings));
 
-    private void OnLogLineReceived(LogLine line)
+    private void RefreshFromLogEvents()
     {
-        if (_disposed)
-            return;
-
-        _allLines.Add(line);
-        TotalCount = _allLines.Count;
-
-        if (MatchesFilter(line))
+        lock (_refreshGate)
         {
-            var updated = new List<LogLine>(FilteredLines) { line };
-            FilteredLines = updated;
-            FilteredCount = updated.Count;
-            OnNewLine?.Invoke();
+            _refreshPending = false;
+            if (_disposed) return;
         }
+        var previousTail = FilteredLines.LastOrDefault();
+        // The reader owns retention. Do not keep a second, growing event history.
+        Refresh();
+        var currentTail = FilteredLines.LastOrDefault();
+        if (currentTail != null && !ReferenceEquals(previousTail, currentTail))
+            OnNewLine?.Invoke();
     }
 
     private void ApplyFilter()
     {
         var filtered = _allLines.Where(MatchesFilter).ToList();
+        if (FilteredLines.SequenceEqual(filtered))
+            return;
         FilteredLines = filtered;
         FilteredCount = filtered.Count;
     }
@@ -150,27 +152,30 @@ public partial class LogViewerViewModel : ObservableObject, IDisposable
         return true;
     }
 
-    private void RunOnUiThread(Action update)
+    private void ScheduleLogRefresh()
     {
-        if (_disposed)
-            return;
+        lock (_refreshGate)
+        {
+            if (_disposed || _refreshPending) return;
+            _refreshPending = true;
+        }
         if (_uiContext == null || SynchronizationContext.Current == _uiContext)
         {
-            update();
+            RefreshFromLogEvents();
             return;
         }
 
-        _uiContext.Post(_ =>
-        {
-            if (!_disposed)
-                update();
-        }, null);
+        // One callback captures this owner, never one log payload per event.
+        _uiContext.Post(_ => RefreshFromLogEvents(), null);
     }
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
+        lock (_refreshGate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+        }
         _logReader.OnLogLine -= _logLineHandler;
     }
 }
