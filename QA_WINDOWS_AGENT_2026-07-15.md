@@ -22,9 +22,9 @@ service configuration, credential, or retained QA state was replaced.
 
 ## Exact final r19-win candidate
 
-- Windows host: `WinDevelopment`, Windows 11 Pro build 26200, user `micha`
+- Windows host: `WinBuildServer`, Windows 11 Pro build 26200, user `micha`
 - QA payload:
-  `C:\Users\micha\LabTetherWinAgentQA\candidate-r19-custom-asset\win-x64`
+  `C:\Users\demo\LabTetherWinAgentQA\candidate-r19-custom-asset\win-x64`
 - Payload: 536 files, 234,643,155 bytes, zero sync-conflict copies
 - Native app host: 278,528 bytes, SHA-256
   `A3835AB52F612481A728A204DEA6E2A05A4EC0FD87DB98C2090604FF35C8A41F`
@@ -53,7 +53,7 @@ The r19-win child remains unchanged and online while a bounded native-wrapper
 repair is awaiting an interactive desktop. The replacement candidate is:
 
 - QA payload:
-  `C:\Users\micha\LabTetherWinAgentQA\candidate-r22-native-group-intent\win-x64`
+  `C:\Users\demo\LabTetherWinAgentQA\candidate-r22-native-group-intent\win-x64`
 - Payload: 536 files, 234,644,799 bytes, zero sync-conflict copies
 - Native app host: 278,528 bytes, SHA-256
   `A3835AB52F612481A728A204DEA6E2A05A4EC0FD87DB98C2090604FF35C8A41F`
@@ -67,7 +67,7 @@ repair is awaiting an interactive desktop. The replacement candidate is:
 - Source parity for every file in this bounded repair was verified between the
   local working tree and the isolated native Windows build source
 
-The app host remains intentionally unsigned because `WinDevelopment` has no
+The app host remains intentionally unsigned because `WinBuildServer` has no
 code-signing certificate with a private key and no usable signing tool on its
 PATH. This candidate is suitable for local QA only; a public release still
 requires an Authenticode-signed artifact from the release workflow.
@@ -153,7 +153,7 @@ requires an Authenticode-signed artifact from the release workflow.
 21. **A user-entered Asset ID was ignored during first enrollment.** The native
     wrapper correctly exported `AGENT_ASSET_ID`, but the Go enrollment request
     always preferred `os.Hostname()` when it was available. Live QA requested
-    `windows-r18-user-qa` and the Hub instead received `WinDevelopment`. First
+    `windows-r18-user-qa` and the Hub instead received `WinBuildServer`. First
     enrollment now prefers a validated configured Asset ID, falls back to a
     valid system hostname, then to a safe fixed identity. Focused regression
     coverage proves the configured, invalid-override, hostname, and safe-default
@@ -225,7 +225,7 @@ requires an Authenticode-signed artifact from the release workflow.
 - A first live enrollment with the deliberately nonexistent group `qa` exposed
   a Hub foreign-key 500. The token remained unconsumed. Retrying the same token
   with the wrapper-equivalent empty group enrolled r18 as canonical asset
-  `windevelopment`, removed the one-time file, and wrote a 44-byte durable
+  `winbuildserver`, removed the one-time file, and wrote a 44-byte durable
   credential. Its DACL had inheritance disabled and only current user, SYSTEM,
   and local Administrators FullControl rules. Neither one-time nor durable
   secret appeared in any child log.
@@ -283,7 +283,7 @@ requires an Authenticode-signed artifact from the release workflow.
   CPU, memory, disk, RX, and TX through 15:39:45Z. The post-restart audit saw
   661 requests, zero HTTP errors, and no lease, drain, closed-pool, or fatal
   signature.
-- The obsolete `windevelopment` QA asset and credential were removed/revoked
+- The obsolete `winbuildserver` QA asset and credential were removed/revoked
   through the Hub, and its local r18 state was deleted. The final r19 state is
   intentionally still held online pending campaign-level cleanup direction.
 - Overnight connection churn did not restart or crash the Windows child. Parent
@@ -339,7 +339,7 @@ availability of an active Windows desktop session:
    desktop and require exit 0 with no new WER/AppCrash record.
 3. Create a disposable one-use Hub enrollment token. Launch exact r22 and use
    the real onboarding wizard with strict TLS, custom CA
-   `C:\Users\micha\LabTetherWinAgentQA\r19-material\r21-ca.crt`, a unique
+   `C:\Users\demo\LabTetherWinAgentQA\r19-material\r21-ca.crt`, a unique
    disposable Asset ID, and deliberately stale group `qa`.
 4. Prove the full enrollment lifecycle: connected UI, protected durable token,
    consumed one-use token removed, persisted `GroupId` cleared, exactly one
@@ -364,7 +364,7 @@ availability of an active Windows desktop session:
 This section supersedes the earlier statement that no interactive Windows
 desktop was available. A live RDP Session 2 was available and the exact r27
 candidate was launched from
-`C:\Users\micha\LabTetherWinAgentQA\candidate-r27\win-x64` with no working
+`C:\Users\demo\LabTetherWinAgentQA\candidate-r27\win-x64` with no working
 directory supplied, exercising the repaired startup-path normalization.
 
 ### Exact artifact and source evidence
@@ -401,8 +401,8 @@ r8 service (PID 3844), held r19 child (PID 4068), and holder (PID 7216) were not
 stopped or altered.
 
 The visible r27 wizard accepted strict Hub URL
-`https://192.168.0.118:28443` and custom CA
-`C:\Users\micha\LabTetherWinAgentQA\r19-material\r21-ca.crt`, with TLS skip
+`https://192.168.8.118:28443` and custom CA
+`C:\Users\demo\LabTetherWinAgentQA\r19-material\r21-ca.crt`, with TLS skip
 disabled. A deliberately invalid enrollment token was submitted for asset
 `windows-r27-desktop-qa-20260717` and blank initial group. The wizard remained
 open and showed the specific actionable message that the enrollment token was
@@ -447,9 +447,9 @@ down**.
 The checkpoint was run at `2026-07-21T15:53:18Z`. The local installed Hub
 runtime was unavailable before any current Windows asset check could be made:
 the selected Docker context was `colima`, `docker ps` failed because
-`/Users/michael/.colima/default/docker.sock` was absent, the default Docker
+`/Users/demo/.colima/default/docker.sock` was absent, the default Docker
 context also had no `/var/run/docker.sock`, and `colima status` reported
-`colima is not running`. `https://192.168.0.118:28443/version` and `/healthz`
+`colima is not running`. `https://192.168.8.118:28443/version` and `/healthz`
 both timed out, and `http://localhost:3000` refused connection.
 
 The Colima host-agent log shows the VM entered `VirtualMachineStateError` at
@@ -474,10 +474,10 @@ down**.
 This follow-up checkpoint was run at `2026-07-22T02:21:48Z`. The current Docker
 context was `default`, but `/var/run/docker.sock` was absent and `docker ps`
 could not connect. The Colima Docker socket
-`/Users/michael/.colima/default/docker.sock` was also absent, `colima status`
+`/Users/demo/.colima/default/docker.sock` was also absent, `colima status`
 reported `colima is not running`, and no `Docker`, `colima`, `lima`, `qemu`, or
 `vz` process was visible to `pgrep` at the checkpoint. Strict probes to
-`https://192.168.0.118:28443/version` and `/healthz` timed out with HTTP `000`,
+`https://192.168.8.118:28443/version` and `/healthz` timed out with HTTP `000`,
 and `http://localhost:3000` refused connection.
 
 The Colima logs show the VM had been started and stopped earlier on
