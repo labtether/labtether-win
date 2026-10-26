@@ -48,8 +48,8 @@ public class DiagnosticsCollector
         var logEntry = archive.CreateEntry("agent-logs.txt");
         await using (var writer = new StreamWriter(logEntry.Open()))
         {
-            foreach (var line in logs)
-                await writer.WriteLineAsync(RedactLogLine(line.Raw, _settings));
+            foreach (var line in LogExportRedactor.RedactLines(logs, _settings))
+                await writer.WriteLineAsync(line);
         }
 
         // Settings (secrets redacted)

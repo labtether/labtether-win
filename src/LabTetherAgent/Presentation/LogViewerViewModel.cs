@@ -18,6 +18,7 @@ public partial class LogViewerViewModel : ObservableObject, IDisposable
     private readonly Action<LogLine> _logLineHandler;
     private List<LogLine> _allLines = [];
     private bool _disposed;
+    private int _refreshPending;
 
     private string _filterText = string.Empty;
     private string _selectedLevel = "All";
@@ -78,7 +79,7 @@ public partial class LogViewerViewModel : ObservableObject, IDisposable
     {
         _logReader = logReader;
         _uiContext = SynchronizationContext.Current;
-        _logLineHandler = line => RunOnUiThread(() => OnLogLineReceived(line));
+        _logLineHandler = _ => QueueLogRefresh();
         _logReader.OnLogLine += _logLineHandler;
         Refresh();
     }
@@ -109,28 +110,31 @@ public partial class LogViewerViewModel : ObservableObject, IDisposable
     public string BuildExportContent(AgentSettings settings) =>
         string.Join(
             Environment.NewLine,
-            FilteredLines.Select(line => DiagnosticsCollector.RedactLogLine(line.Raw, settings)));
+            LogExportRedactor.RedactLines(FilteredLines, settings));
 
-    private void OnLogLineReceived(LogLine line)
+    private void QueueLogRefresh()
     {
-        if (_disposed)
+        if (_disposed || Interlocked.Exchange(ref _refreshPending, 1) != 0)
             return;
 
-        _allLines.Add(line);
-        TotalCount = _allLines.Count;
-
-        if (MatchesFilter(line))
+        // One pending UI callback covers an entire burst. Read the bounded
+        // source snapshot instead of retaining an unbounded second log history.
+        RunOnUiThread(() =>
         {
-            var updated = new List<LogLine>(FilteredLines) { line };
-            FilteredLines = updated;
-            FilteredCount = updated.Count;
-            OnNewLine?.Invoke();
-        }
+            Interlocked.Exchange(ref _refreshPending, 0);
+            var previousLast = FilteredLines.LastOrDefault();
+            Refresh();
+            var currentLast = FilteredLines.LastOrDefault();
+            if (currentLast != null && !ReferenceEquals(previousLast, currentLast))
+                OnNewLine?.Invoke();
+        });
     }
 
     private void ApplyFilter()
     {
         var filtered = _allLines.Where(MatchesFilter).ToList();
+        if (FilteredLines.SequenceEqual(filtered))
+            return;
         FilteredLines = filtered;
         FilteredCount = filtered.Count;
     }
