@@ -24,6 +24,7 @@ public partial class App : Application, IXamlMetadataProvider
     private Action<string>? _updateAvailableHandler;
     private Action<bool>? _notificationConnectionHandler;
     private Action<AgentStatus>? _notificationStatusHandler;
+    private Action<string>? _notificationAgentErrorHandler;
     private bool? _lastNotifiedConnectionState;
     private IXamlMetadataProvider? _xamlMetadataProvider;
     private Action? _redirectedActivationHandler;
@@ -56,6 +57,7 @@ public partial class App : Application, IXamlMetadataProvider
     public App()
     {
         this.InitializeComponent();
+        UnhandledException += (_, args) => GlobalExceptionHandlers.HandleXamlException(args);
     }
 
     public IXamlType GetXamlType(Type type) => XamlMetadataProvider.GetXamlType(type);
@@ -87,8 +89,10 @@ public partial class App : Application, IXamlMetadataProvider
             _appState.UpdateChecker.OnUpdateAvailable += _updateAvailableHandler;
             _notificationConnectionHandler = OnNotificationConnectionStateChanged;
             _notificationStatusHandler = OnNotificationStatusUpdated;
+            _notificationAgentErrorHandler = _notifications.NotifyAgentError;
             _appState.ApiClient.OnConnectionStateChanged += _notificationConnectionHandler;
             _appState.ApiClient.OnStatusUpdated += _notificationStatusHandler;
+            _appState.AgentProcess.OnError += _notificationAgentErrorHandler;
             _ = _appState.UpdateChecker.CheckIfDueAsync();
         }
 
@@ -151,6 +155,8 @@ public partial class App : Application, IXamlMetadataProvider
             _appState.ApiClient.OnConnectionStateChanged -= _notificationConnectionHandler;
         if (_appState != null && _notificationStatusHandler != null)
             _appState.ApiClient.OnStatusUpdated -= _notificationStatusHandler;
+        if (_appState != null && _notificationAgentErrorHandler != null)
+            _appState.AgentProcess.OnError -= _notificationAgentErrorHandler;
         _notifications?.Cleanup();
 
         if (_appState != null)

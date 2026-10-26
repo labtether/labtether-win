@@ -18,6 +18,7 @@ public partial class AppState : IDisposable
     private static readonly TimeSpan SetupReadinessPollInterval = TimeSpan.FromMilliseconds(200);
     private static AppState? _instance;
     public static AppState Shared => _instance ?? throw new InvalidOperationException("AppState not initialized.");
+    internal static AppState? Current => _instance;
 
     // Core services
     public AgentSettings Settings { get; }
@@ -94,6 +95,15 @@ public partial class AppState : IDisposable
     public void StartAgent() => StartAgent(null);
 
     private void StartAgent(long? expectedGeneration)
+    {
+        // Launch, settings restart, crash restart and setup commit all treat
+        // a failed launch as a stopped agent. Report it to the user instead
+        // of faulting a background restart or the WinUI launch callback.
+        try { StartAgentCore(expectedGeneration); }
+        catch (Exception ex) { ReportUnexpectedFailure("The LabTether agent could not be started", ex); }
+    }
+
+    private void StartAgentCore(long? expectedGeneration)
     {
         lock (LifecycleGate)
         {
@@ -419,21 +429,27 @@ public partial class AppState : IDisposable
 
     private void OnAgentExited(AgentProcessExit exited)
     {
-        Action notify;
-        CancellationTokenSource? restartCts = null;
-        TimeSpan delay = default;
-        lock (LifecycleGate)
+        // Raised from the child's exit callback on a thread-pool thread, where
+        // an escaping exception would terminate the whole tray app.
+        try
         {
-            if (_disposed || exited.Generation != _activeLaunchGeneration) return;
-            notify = ApiClient.StopPollingState();
-            if (!_setupTransactionActive && exited.ExitCode != 0 && !exited.UserInitiated)
+            Action notify;
+            CancellationTokenSource? restartCts = null;
+            TimeSpan delay = default;
+            lock (LifecycleGate)
             {
-                delay = AgentProcess.CrashCoordinator.NextDelay();
-                restartCts = _crashRestartCancellation.Begin();
+                if (_disposed || exited.Generation != _activeLaunchGeneration) return;
+                notify = ApiClient.StopPollingState();
+                if (!_setupTransactionActive && exited.ExitCode != 0 && !exited.UserInitiated)
+                {
+                    delay = AgentProcess.CrashCoordinator.NextDelay();
+                    restartCts = _crashRestartCancellation.Begin();
+                }
             }
+            notify();
+            if (restartCts != null) _ = RestartAfterExitAsync(exited.Generation, delay, restartCts);
         }
-        notify();
-        if (restartCts != null) _ = RestartAfterExitAsync(exited.Generation, delay, restartCts);
+        catch (Exception ex) { ReportUnexpectedFailure("The LabTether agent stopped and could not be restarted", ex); }
     }
 
     private async Task RestartAfterExitAsync(long generation, TimeSpan delay, CancellationTokenSource restartCts)
@@ -452,10 +468,25 @@ public partial class AppState : IDisposable
             StartAgent(generation);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception ex) { ReportUnexpectedFailure("The LabTether agent stopped and could not be restarted", ex); }
         finally
         {
             _crashRestartCancellation.ClearIfCurrent(restartCts);
             restartCts.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Records a failure that has no awaiting caller in the agent log and
+    /// raises <c>AgentProcess.OnError</c> so the tray can show it.
+    /// </summary>
+    internal void ReportUnexpectedFailure(string summary, Exception ex)
+    {
+        if (_disposed) return;
+        try { AgentProcess.ReportError($"{summary}: {ex.Message}"); }
+        catch (Exception reportFailure)
+        {
+            System.Diagnostics.Trace.TraceError($"{summary}: {ex}. Reporting also failed: {reportFailure}");
         }
     }
 

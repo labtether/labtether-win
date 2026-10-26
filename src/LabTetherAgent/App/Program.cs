@@ -25,6 +25,7 @@ public static class Program
         // must start from the published application directory; normalize this
         // before AppInstance or any WinUI/COM initialization occurs.
         NormalizeWorkingDirectory();
+        GlobalExceptionHandlers.Install();
 
         IsWinUiRuntimeProbe = HasWinUiRuntimeProbeArgument(args);
         StateLocation = AppStateLocation.FromArguments(args);
