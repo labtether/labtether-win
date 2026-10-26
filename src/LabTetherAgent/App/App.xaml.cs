@@ -103,6 +103,7 @@ public partial class App : Application, IXamlMetadataProvider
         _redirectedActivationHandler = () =>
             dispatcher.TryEnqueue(() => _trayIconManager?.ShowFlyout());
         RedirectedActivation += _redirectedActivationHandler;
+        GlobalExceptionHandlers.MarkTrayReady();
 
         // If enrolled, start the agent automatically
         if (!_appState.ShouldShowOnboarding)
