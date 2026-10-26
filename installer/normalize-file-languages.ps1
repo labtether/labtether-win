@@ -3,36 +3,23 @@ param([Parameter(Mandatory)][string]$MsiPath)
 
 # WiX copies each versioned file's language list from its PE version
 # resource into File.Language, and WiX v5 has no switch to skip that file
-# info. Some .NET and Windows App SDK payload files list several languages or
-# ids Windows Installer rejects (ICE03: Invalid Language Id, String overflow).
-# Record only those files as language neutral (0) before ICE validation runs,
-# so ICE03 still checks every table. File.Language only breaks version ties
-# against an existing file at the same path; this per-user package owns its
-# folder and MajorUpgrade removes the previous version first.
+# info. ICE03 checks those values against its own fixed language table:
+# multi-language lists overflow the column, and even single ids that Windows
+# itself supports (newer locales) are rejected as Invalid Language Id.
+# Keep a file's language only when it is neutral (0) or the package language
+# (1033, Package/@Language in Package.wxs); record every other payload file
+# as neutral before ICE validation runs, so ICE03 still checks every table.
+# File.Language only breaks version ties against an existing file at the same
+# path; this per-user package owns its folder and MajorUpgrade removes the
+# previous version first.
 # Runs in Windows PowerShell; the Windows Installer COM object needs late
 # binding there.
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+$KeptLanguages = @("0", "1033")
 
 function Invoke-Msi($Target, [string]$Member, [object[]]$Arguments = @(), [string]$Kind = "InvokeMethod") {
     return $Target.GetType().InvokeMember($Member, [Reflection.BindingFlags]$Kind, $null, $Target, $Arguments)
-}
-
-# A single specific Windows language id, or 0 for language neutral.
-function Test-SpecificLanguageId([string]$Value) {
-    if ($Value -notmatch '^[0-9]{1,5}$') { return $false }
-    $id = [int]$Value
-    if ($id -eq 0) { return $true }
-    if ($id -gt 65535) { return $false }
-    try {
-        $culture = [Globalization.CultureInfo]::GetCultureInfo($id)
-        # Rejects user/system defaults (another LCID), invariant (no name)
-        # and neutral primary languages.
-        return ($culture.LCID -eq $id -and $culture.Name -ne "" -and -not $culture.IsNeutralCulture)
-    }
-    catch [Globalization.CultureNotFoundException] {
-        return $false
-    }
 }
 
 $installer = New-Object -ComObject WindowsInstaller.Installer
@@ -42,7 +29,7 @@ Invoke-Msi $view "Execute" | Out-Null
 $changes = @()
 while ($null -ne ($record = Invoke-Msi $view "Fetch")) {
     $language = Invoke-Msi $record "StringData" @(3) "GetProperty"
-    if ([string]::IsNullOrEmpty($language) -or (Test-SpecificLanguageId $language)) { continue }
+    if ([string]::IsNullOrEmpty($language) -or $KeptLanguages -ccontains $language) { continue }
     $changes += [pscustomobject]@{
         Key = Invoke-Msi $record "StringData" @(1) "GetProperty"
         Name = Invoke-Msi $record "StringData" @(2) "GetProperty"

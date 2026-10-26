@@ -24,8 +24,9 @@
 
   <!--
     WiX v5 copies PE language lists into File.Language and cannot skip that
-    file info. Make invalid or multi-language values neutral after linking and
-    before ICE validation, so ICE03 still validates the whole package.
+    file info. After linking and before ICE validation, keep only neutral or
+    1033 values and make the rest neutral, so ICE03 still validates the whole
+    package.
   -->
   <Target Name="NormalizeHarvestedFileLanguages"
           DependsOnTargets="CoreCompile"
