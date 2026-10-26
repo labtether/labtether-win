@@ -71,7 +71,7 @@ function Set-RepositoryMSBuildSdkPath([string]$SourceRoot) {
 }
 
 function Assert-PatchedRuntimePack([string]$PublishDirectory) {
-    $minimumRuntimeVersion = [version]"10.0.12"
+    $minimumRuntimeVersion = [version]"10.0.14"
     $depsPath = Join-Path $PublishDirectory "LabTetherAgent.deps.json"
     if (-not (Test-Path -LiteralPath $depsPath -PathType Leaf)) {
         throw "Published payload is missing runtime metadata: $depsPath"

@@ -122,7 +122,7 @@ function Set-RepositoryMSBuildSdkPath([string]$SourceRoot) {
 }
 
 function Assert-PatchedRuntimePack([string]$PublishDirectory) {
-    $MinimumRuntimeVersion = [version]"10.0.12"
+    $MinimumRuntimeVersion = [version]"10.0.14"
     $DepsPath = Join-Path $PublishDirectory "LabTetherAgent.deps.json"
     if (-not (Test-Path -LiteralPath $DepsPath -PathType Leaf)) {
         throw "Published payload is missing runtime metadata"
@@ -175,8 +175,8 @@ $Versions = Resolve-WindowsVersions $Tag
 Assert-ExternalPath $OutputDirectory
 $GoBuilderVersion = @(& go version)
 Assert-ExitCode "Read Go builder version"
-if ($GoBuilderVersion.Count -ne 1 -or $GoBuilderVersion[0] -notmatch '^go version go1\.27\.2 ') {
-    throw "Local Go release builder must be go1.27.2"
+if ($GoBuilderVersion.Count -ne 1 -or $GoBuilderVersion[0] -notmatch '^go version go1\.27\.3 ') {
+    throw "Local Go release builder must be go1.27.3"
 }
 
 if (Test-Path -LiteralPath $OutputDirectory) {
