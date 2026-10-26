@@ -118,9 +118,12 @@ remote_agent_commit="$(remote_tag_commit "$AGENT_REPO" "$TAG")"
 [[ "$remote_agent_commit" == "$agent_commit" ]] || die "remote agent tag differs from verified local source"
 
 expected_assets="$(expected_release_assets_json "$ASSETS_DIRECTORY")"
+release_repository="labtether/labtether-win"
 
 if [[ "$RELEASE_ACTION" == "draft" ]]; then
-  if gh api "repos/labtether/labtether-win/releases/tags/$TAG" >/dev/null 2>&1; then
+  existing_releases="$(github_releases_with_tag "$release_repository" "$TAG")" \
+    || die "unable to list GitHub releases to check for an existing release or draft"
+  if [[ "$(jq -r 'length' <<<"$existing_releases")" != "0" ]]; then
     die "GitHub release already exists; refusing to overwrite it"
   fi
 
@@ -129,13 +132,14 @@ if [[ "$RELEASE_ACTION" == "draft" ]]; then
     "$ASSETS_DIRECTORY/$FINAL_CHECKSUM_NAME" \
     "$ASSETS_DIRECTORY/$FINAL_MSI_NAME" \
     "$ASSETS_DIRECTORY/$FINAL_MSI_CHECKSUM_NAME" \
-    --repo labtether/labtether-win \
+    --repo "$release_repository" \
     --verify-tag \
     --draft \
     --title "LabTether Windows Agent ${TAG#v}" \
     --generate-notes
 
-  draft_json="$(gh api "repos/labtether/labtether-win/releases/tags/$TAG")"
+  draft_json="$(github_release_by_tag "$release_repository" "$TAG")" \
+    || die "draft release inspection failed; release remains a draft"
   if ! validate_github_release_asset_readback "$draft_json" "$TAG" true "$expected_assets"; then
     die "draft release inspection failed; release remains a draft"
   fi
@@ -143,12 +147,12 @@ if [[ "$RELEASE_ACTION" == "draft" ]]; then
   exit 0
 fi
 
-draft_json="$(gh api "repos/labtether/labtether-win/releases/tags/$TAG")" || die "draft release is unavailable"
+draft_json="$(github_release_by_tag "$release_repository" "$TAG")" || die "draft release is unavailable"
 if ! validate_github_release_asset_readback "$draft_json" "$TAG" true "$expected_assets"; then
   die "fresh draft inspection failed; release remains a draft"
 fi
-gh release edit "$TAG" --repo labtether/labtether-win --draft=false >/dev/null
-published_json="$(gh api "repos/labtether/labtether-win/releases/tags/$TAG")"
+gh release edit "$TAG" --repo "$release_repository" --draft=false >/dev/null
+published_json="$(github_release_by_tag "$release_repository" "$TAG")" || die "published release readback failed"
 validate_github_release_asset_readback "$published_json" "$TAG" false "$expected_assets" || die "published release readback failed"
 
 printf 'Published exactly four verified Windows release assets for %s after a separate fresh draft inspection.\n' "$TAG"

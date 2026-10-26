@@ -14,6 +14,7 @@ $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 . (Join-Path $PSScriptRoot "windows-release-policy.ps1")
 . (Join-Path $PSScriptRoot "..\msi-tools.ps1")
+. (Join-Path $PSScriptRoot "..\runtime-probe.ps1")
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $AgentRepo = (Resolve-Path $AgentRepo).Path
@@ -321,15 +322,7 @@ try {
         throw "Signed bundled child failed its version smoke test"
     }
     $Wrapper = Join-Path $WorkRoot "LabTetherAgent.exe"
-    $Probe = Start-Process -FilePath $Wrapper -ArgumentList "--winui-runtime-probe" -WorkingDirectory $WorkRoot -PassThru
-    if (-not $Probe.WaitForExit(30000)) {
-        Stop-Process -Id $Probe.Id -Force -ErrorAction SilentlyContinue
-        throw "Signed wrapper runtime probe timed out"
-    }
-    $Probe.Refresh()
-    if ($Probe.ExitCode -ne 0) {
-        throw "Signed wrapper runtime probe failed"
-    }
+    Invoke-RuntimeProbe -FilePath $Wrapper -WorkingDirectory $WorkRoot -Description "Signed wrapper runtime probe"
 
     $MsiHash = $null
     if ($HasMsi) {

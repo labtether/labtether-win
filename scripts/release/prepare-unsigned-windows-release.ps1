@@ -9,6 +9,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 . (Join-Path $PSScriptRoot "windows-release-policy.ps1")
+. (Join-Path $PSScriptRoot "..\runtime-probe.ps1")
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $AgentRepo = (Resolve-Path $AgentRepo).Path
@@ -295,15 +296,7 @@ try {
     if ($LASTEXITCODE -ne 0 -or $Help.Count -eq 0 -or $Help[0].Trim() -ne "labtether-agent $Tag") {
         throw "Published child failed its version smoke test"
     }
-    $Probe = Start-Process -FilePath (Join-Path $PublishRoot "LabTetherAgent.exe") -ArgumentList "--winui-runtime-probe" -WorkingDirectory $PublishRoot -PassThru
-    if (-not $Probe.WaitForExit(30000)) {
-        Stop-Process -Id $Probe.Id -Force -ErrorAction SilentlyContinue
-        throw "Published wrapper runtime probe timed out"
-    }
-    $Probe.Refresh()
-    if ($Probe.ExitCode -ne 0) {
-        throw "Published wrapper runtime probe failed"
-    }
+    Invoke-RuntimeProbe -FilePath (Join-Path $PublishRoot "LabTetherAgent.exe") -WorkingDirectory $PublishRoot -Description "Published wrapper runtime probe"
 
     $PublishPrefix = [IO.Path]::GetFullPath($PublishRoot).TrimEnd('\') + '\'
     $PublishedFileRecords = @()
