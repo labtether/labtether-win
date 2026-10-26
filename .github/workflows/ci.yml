@@ -97,15 +97,15 @@ jobs:
           repository: labtether/labtether-agent
           # Coordinated release contract: this exact SHA must match the Go
           # agent source accepted by the root-cause release gate.
-          ref: 638cdcc4f7364d06d730b4d0fd05b5781e0a3be4
+          ref: 1a7f59596a0a5e05c7a19ac290b617f19fc28dbf
           path: agent-core
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.27.2'
+          go-version: '1.27.3'
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: '10.0.401'
+          dotnet-version: '10.0.403'
       # WinUI/MSIX projects use MSBuild tasks that ship with Visual Studio,
       # not the bare dotnet SDK. setup-msbuild puts the VS MSBuild on PATH
       # so the PRI/AppxPackage tasks resolve during restore and build.
@@ -157,15 +157,15 @@ jobs:
           repository: labtether/labtether-agent
           # Keep the installed-payload child identical to build-and-test and
           # to the exact Go agent accepted by the root release gate.
-          ref: 638cdcc4f7364d06d730b4d0fd05b5781e0a3be4
+          ref: 1a7f59596a0a5e05c7a19ac290b617f19fc28dbf
           path: agent-core
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.27.2'
+          go-version: '1.27.3'
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: '10.0.401'
+          dotnet-version: '10.0.403'
       - uses: microsoft/setup-msbuild@30375c66a4eea26614e0d39710365f22f8b0af57 # v3.0.0
       - name: Build bundled Go agent core
         shell: bash

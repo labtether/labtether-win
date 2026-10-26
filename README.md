@@ -92,7 +92,7 @@ For detailed setup, see the [Windows agent setup guide](https://labtether.com/do
 ## Build From Source
 
 Requires Visual Studio 2026 with the .NET 10 SDK selected by `global.json`
-and Windows App SDK build tools, plus Go 1.27.2 and a sibling
+and Windows App SDK build tools, plus Go 1.27.3 and a sibling
 `labtether-agent` checkout. Release builds fail closed if
 the matching Go child or its version marker is missing.
 

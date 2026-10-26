@@ -29,7 +29,8 @@ Changes since the last public release, v1.4.0.
 - Agent logs use bounded memory. Very long log lines are split, and exports
   never contain a secret that was split across lines.
 - Numeric settings such as ports and intervals are checked before they are used.
-- The app requires the patched .NET 10 runtime it ships with.
+- The app ships with and requires the patched .NET 10.0.14 runtime.
+- The bundled agent core is built with Go 1.27.3.
 
 ### Fixed
 - A plain `http://` or `ws://` Hub now connects instead of failing a TLS
