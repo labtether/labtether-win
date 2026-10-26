@@ -6,6 +6,7 @@ $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 . (Join-Path $PSScriptRoot "windows-release-policy.ps1")
+. (Join-Path $PSScriptRoot "..\runtime-probe.ps1")
 
 function Expect-Rejection([string]$Label, [scriptblock]$Action) {
     try {
@@ -135,6 +136,13 @@ try {
         @{ name = "root.txt"; content = "root"; external_attributes = $RegularMode }
     )
     Assert-SafeZipArchive $GoodArchive $Destination @("Assets/agent.exe", "root.txt")
+
+    # A probe that exits at once must still report its real exit code; the old
+    # Start-Process -PassThru read returned $null for a passing probe over SSH.
+    Invoke-RuntimeProbe -FilePath $env:ComSpec -Arguments "/d /c exit 0" -WorkingDirectory $Root -Description "Immediate-exit probe fixture"
+    Expect-Rejection "non-zero runtime probe exit code" {
+        Invoke-RuntimeProbe -FilePath $env:ComSpec -Arguments "/d /c exit 7" -WorkingDirectory $Root -Description "Failing probe fixture"
+    }
 
     & (Join-Path $PSScriptRoot "test-guide-link-policy.ps1")
 

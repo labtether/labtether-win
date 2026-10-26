@@ -10,6 +10,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "runtime-probe.ps1")
 
 function Resolve-MSBuild {
     $command = Get-Command msbuild.exe -ErrorAction SilentlyContinue
@@ -243,19 +244,7 @@ if ((Get-FileHash -LiteralPath $publishedChild -Algorithm SHA256).Hash -ne
 }
 
 if ($RequireWinUiRuntimeProbe) {
-    $probeProcess = Start-Process `
-        -FilePath $publishedApp `
-        -ArgumentList "--winui-runtime-probe" `
-        -WorkingDirectory $publishDir `
-        -PassThru
-    if (-not $probeProcess.WaitForExit(30000)) {
-        Stop-Process -Id $probeProcess.Id -Force -ErrorAction SilentlyContinue
-        throw "Published application did not complete its WinUI runtime probe within 30 seconds."
-    }
-    $probeProcess.Refresh()
-    if ($probeProcess.ExitCode -ne 0) {
-        throw "Published application failed its WinUI runtime probe with exit code $($probeProcess.ExitCode)."
-    }
+    Invoke-RuntimeProbe -FilePath $publishedApp -WorkingDirectory $publishDir -Description "Published application WinUI runtime probe"
 }
 else {
     Write-Host "WinUI runtime probe skipped. Re-run with -RequireWinUiRuntimeProbe in an interactive desktop session to validate GUI startup."

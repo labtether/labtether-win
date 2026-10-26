@@ -80,7 +80,37 @@ if validate_github_release_asset_readback "$missing_msi_json" "$tag" true "$expe
   die "GitHub readback fixture accepted a release without the MSI"
 fi
 
+# GitHub's releases/tags endpoint omits drafts, so publication must look the
+# release up from the full paginated list and accept exactly one match.
+gh() {
+  [[ "$*" == "api --paginate --slurp repos/labtether/labtether-win/releases?per_page=100" ]] || return 97
+  printf '%s\n' "$GH_RELEASE_PAGES"
+}
+other_json="$(jq '.tag_name = "v1.2.2" | .draft = false' <<<"$release_json")"
+GH_RELEASE_PAGES="$(jq -cn --argjson other "$other_json" --argjson draft "$release_json" '[[$other], [$other, $draft]]')"
+found_json="$(github_release_by_tag labtether/labtether-win "$tag")" || die "release lookup missed a draft on a later page"
+validate_github_release_asset_readback "$found_json" "$tag" true "$expected_assets" \
+  || die "release lookup did not return the draft release object"
+[[ "$(github_releases_with_tag labtether/labtether-win "$tag" | jq -r 'length')" == "1" ]] \
+  || die "release listing did not count the draft"
+GH_RELEASE_PAGES="$(jq -cn --argjson other "$other_json" '[[$other], []]')"
+if github_release_by_tag labtether/labtether-win "$tag" >/dev/null 2>&1; then
+  die "release lookup accepted a tag without a release"
+fi
+GH_RELEASE_PAGES="$(jq -cn --argjson draft "$release_json" --argjson published "$published_json" '[[$draft], [$published]]')"
+if github_release_by_tag labtether/labtether-win "$tag" >/dev/null 2>&1; then
+  die "release lookup accepted more than one release for a tag"
+fi
+GH_RELEASE_PAGES='{"message":"Not Found"}'
+if github_releases_with_tag labtether/labtether-win "$tag" >/dev/null 2>&1; then
+  die "release listing accepted an unexpected GitHub response"
+fi
+unset -f gh
+
 publisher="$SCRIPT_DIR/publish-windows-release.sh"
+if grep -Fq 'releases/tags/' "$publisher"; then
+  die "publisher must not read releases through the published-only tags endpoint"
+fi
 signer="$SCRIPT_DIR/sign-windows-release.sh"
 unsigned_preparer="$SCRIPT_DIR/prepare-unsigned-windows-release.ps1"
 grep -Fq '$PublishedFileRecords += [pscustomobject][ordered]@{' "$unsigned_preparer" \

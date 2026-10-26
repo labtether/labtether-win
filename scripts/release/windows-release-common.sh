@@ -314,6 +314,37 @@ expected_release_assets_json() {
   printf '%s\n' "$entries"
 }
 
+# GitHub's releases/tags/{tag} endpoint returns only published releases, so a
+# draft can only be found by listing every release (drafts are listed for
+# users with push access). Prints a JSON array of releases with the exact tag.
+github_releases_with_tag() {
+  local repository="$1"
+  local tag="$2"
+  local pages
+  pages="$(gh api --paginate --slurp "repos/$repository/releases?per_page=100")" || return 1
+  jq -c --arg tag "$tag" \
+    'if type == "array" and all(.[]; type == "array")
+     then [.[][] | select(.tag_name == $tag)]
+     else error("unexpected GitHub release list response") end' \
+    <<<"$pages"
+}
+
+# Prints the one release object for the tag, draft or published. Fails when
+# the tag has no release or more than one (for example a duplicate draft).
+github_release_by_tag() {
+  local repository="$1"
+  local tag="$2"
+  local matches
+  local match_count
+  matches="$(github_releases_with_tag "$repository" "$tag")" || return 1
+  match_count="$(jq -r 'length' <<<"$matches")" || return 1
+  if [[ "$match_count" != "1" ]]; then
+    printf 'expected exactly one GitHub release for %s, found %s\n' "$tag" "$match_count" >&2
+    return 1
+  fi
+  jq -c '.[0]' <<<"$matches"
+}
+
 validate_github_release_asset_readback() {
   local release_json="$1"
   local tag="$2"
