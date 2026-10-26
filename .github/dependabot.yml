@@ -1,6 +1,7 @@
 version: 2
 updates:
   - package-ecosystem: nuget
+    open-pull-requests-limit: 0
     directory: /
     schedule:
       interval: weekly
@@ -11,6 +12,7 @@ updates:
         update-types: [minor, patch]
 
   - package-ecosystem: github-actions
+    open-pull-requests-limit: 0
     directory: /
     schedule:
       interval: weekly
