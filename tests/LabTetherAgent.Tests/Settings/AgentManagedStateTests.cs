@@ -1,4 +1,5 @@
 using System.Security.AccessControl;
+using System.Security.Principal;
 using LabTetherAgent.Settings;
 
 namespace LabTetherAgent.Tests.Settings;
@@ -130,6 +131,44 @@ public class AgentManagedStateTests
                     Path.Combine(destination, AgentManagedState.DeviceKeyFileName))
                     .GetAccessControl()
                     .AreAccessRulesProtected);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void LegacyMigrationRefusesAnIdentityOtherUsersCouldReplace()
+    {
+        // Risk: any user can create files in ProgramData\LabTether, so a
+        // planted device key would become this app's identity.
+        var root = NewTestDirectory();
+        var destination = Path.Combine(root, "destination");
+        var legacy = Path.Combine(root, "legacy");
+        try
+        {
+            Directory.CreateDirectory(destination);
+            Directory.CreateDirectory(legacy);
+            SecureFile.WriteAllText(
+                Path.Combine(destination, AgentManagedState.AgentTokenFileName),
+                "issued-agent-token\n");
+            SecureFile.WriteAllText(
+                Path.Combine(destination, AgentManagedState.EnrollmentStateFileName),
+                """{"version":1,"asset_id":"existing-native-agent"}""");
+            var legacyKey = new FileInfo(Path.Combine(legacy, AgentManagedState.DeviceKeyFileName));
+            File.WriteAllText(legacyKey.FullName, "planted-device-key\n");
+            var security = legacyKey.GetAccessControl();
+            security.AddAccessRule(new FileSystemAccessRule(
+                new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null),
+                FileSystemRights.Write,
+                AccessControlType.Allow));
+            legacyKey.SetAccessControl(security);
+
+            Assert.False(
+                AgentManagedState.MigrateLegacyDeviceIdentityIfNeeded(destination, legacy));
+            Assert.False(
+                File.Exists(Path.Combine(destination, AgentManagedState.DeviceKeyFileName)));
         }
         finally
         {

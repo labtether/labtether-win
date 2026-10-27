@@ -127,6 +127,10 @@ internal static class AgentManagedState
                 var source = Path.Combine(legacyDirectory, fileName);
                 if (!File.Exists(source))
                     continue;
+                // Any user may create files in ProgramData\LabTether. Never
+                // adopt an identity that another user could have planted.
+                if (!SecureFile.IsChangeableOnlyByTrustedUsers(source))
+                    return false;
                 migrated[fileName] = ReadBoundedRegularFile(source, MaximumBytes(fileName));
             }
 

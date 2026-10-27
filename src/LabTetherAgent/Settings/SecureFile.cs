@@ -156,6 +156,64 @@ internal static class SecureFile
         }
     }
 
+    // Rights that let a principal replace a file's contents, delete it or
+    // take it over, including the generic write and all bits.
+    private const FileSystemRights ChangeRights =
+        FileSystemRights.WriteData | FileSystemRights.AppendData |
+        FileSystemRights.WriteExtendedAttributes | FileSystemRights.WriteAttributes |
+        FileSystemRights.Delete | FileSystemRights.ChangePermissions |
+        FileSystemRights.TakeOwnership | (FileSystemRights)0x40000000 | (FileSystemRights)0x10000000;
+
+    /// <summary>
+    /// Return true for a regular, non-redirected file that only the current
+    /// user, SYSTEM or Administrators own or can change. Other users may read
+    /// it. Use this for files outside the app's own state, such as the
+    /// machine-wide ProgramData folder, where any user may create files.
+    /// </summary>
+    public static bool IsChangeableOnlyByTrustedUsers(string path)
+    {
+        try
+        {
+            var info = new FileInfo(path);
+            if (!info.Exists ||
+                (info.Attributes & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != 0)
+            {
+                return false;
+            }
+
+            var security = info.GetAccessControl(AccessControlSections.Access | AccessControlSections.Owner);
+            var currentUser = WindowsIdentity.GetCurrent().User;
+            if (currentUser == null)
+                return false;
+            var trusted = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                currentUser.Value,
+                new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null).Value,
+                new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null).Value,
+            };
+            if (security.GetOwner(typeof(SecurityIdentifier)) is not SecurityIdentifier owner
+                || !trusted.Contains(owner.Value))
+            {
+                return false;
+            }
+
+            foreach (FileSystemAccessRule rule in security.GetAccessRules(true, true, typeof(SecurityIdentifier)))
+            {
+                if (rule.AccessControlType == AccessControlType.Allow
+                    && (rule.FileSystemRights & ChangeRights) != 0
+                    && (rule.IdentityReference is not SecurityIdentifier identity || !trusted.Contains(identity.Value)))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+        {
+            return false;
+        }
+    }
+
     private static void AddFullControl(FileSecurity security, SecurityIdentifier identity)
     {
         security.AddAccessRule(new FileSystemAccessRule(
