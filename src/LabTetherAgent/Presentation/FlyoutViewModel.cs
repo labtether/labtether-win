@@ -28,10 +28,6 @@ public partial class FlyoutViewModel : ObservableObject, IDisposable
     private string _uptime = "--";
     private List<AlertSnapshot> _firingAlerts = [];
     private bool _hasAlerts;
-    private HyperVStatus? _hyperVStatus;
-    private WindowsUpdateStatus? _windowsUpdateStatus;
-    private bool _hasHyperV;
-    private bool _hasWindowsUpdates;
 
     public bool IsConnected
     {
@@ -87,30 +83,6 @@ public partial class FlyoutViewModel : ObservableObject, IDisposable
         set => SetProperty(ref _hasAlerts, value);
     }
 
-    public HyperVStatus? HyperVStatus
-    {
-        get => _hyperVStatus;
-        set => SetProperty(ref _hyperVStatus, value);
-    }
-
-    public WindowsUpdateStatus? WindowsUpdateStatus
-    {
-        get => _windowsUpdateStatus;
-        set => SetProperty(ref _windowsUpdateStatus, value);
-    }
-
-    public bool HasHyperV
-    {
-        get => _hasHyperV;
-        set => SetProperty(ref _hasHyperV, value);
-    }
-
-    public bool HasWindowsUpdates
-    {
-        get => _hasWindowsUpdates;
-        set => SetProperty(ref _hasWindowsUpdates, value);
-    }
-
     public FlyoutViewModel(LocalApiClient apiClient)
     {
         _apiClient = apiClient;
@@ -143,12 +115,6 @@ public partial class FlyoutViewModel : ObservableObject, IDisposable
         Uptime = status.Uptime ?? "--";
         FiringAlerts = status.FiringAlerts;
         HasAlerts = status.FiringAlerts.Count > 0;
-
-        // Windows-exclusive cards
-        HyperVStatus = status.HyperV;
-        HasHyperV = status.HyperV != null;
-        WindowsUpdateStatus = status.WindowsUpdate;
-        HasWindowsUpdates = status.WindowsUpdate != null;
     }
 
     private void RunOnUiThread(Action update)

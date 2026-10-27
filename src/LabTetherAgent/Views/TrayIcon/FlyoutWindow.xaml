@@ -11,8 +11,6 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -80,42 +78,6 @@
                 <Button Content="Console" Command="{x:Bind ViewModel.OpenConsoleCommand}" Style="{ThemeResource AccentButtonStyle}" />
                 <Button Content="Logs" Click="OnOpenLogs" />
                 <Button Content="Pop Out" Click="OnPopOut" />
-            </StackPanel>
-        </Grid>
-
-        <!-- Hyper-V Section (hidden when not available) -->
-        <Grid Grid.Row="4" Padding="12" CornerRadius="8"
-              Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-              Visibility="{x:Bind ViewModel.HasHyperV, Mode=OneWay}">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <FontIcon Glyph="&#xE7F7;" FontSize="16" />
-                <TextBlock FontSize="12" VerticalAlignment="Center">
-                    <Run Text="Hyper-V:" FontWeight="SemiBold" />
-                    <Run Text="{x:Bind ViewModel.HyperVStatus.VmCount, Mode=OneWay}" />
-                    <Run Text="VMs (" />
-                    <Run Text="{x:Bind ViewModel.HyperVStatus.RunningCount, Mode=OneWay}" />
-                    <Run Text="running)" />
-                </TextBlock>
-            </StackPanel>
-        </Grid>
-
-        <!-- Windows Update Section (hidden when not available) -->
-        <Grid Grid.Row="5" Padding="12" CornerRadius="8"
-              Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-              Visibility="{x:Bind ViewModel.HasWindowsUpdates, Mode=OneWay}">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <FontIcon Glyph="&#xE895;" FontSize="16" />
-                <TextBlock FontSize="12" VerticalAlignment="Center">
-                    <Run Text="Updates:" FontWeight="SemiBold" />
-                    <Run Text="{x:Bind ViewModel.WindowsUpdateStatus.PendingCount, Mode=OneWay}" />
-                    <Run Text="pending" />
-                </TextBlock>
-                <InfoBadge Visibility="{x:Bind ViewModel.WindowsUpdateStatus.RebootRequired, Mode=OneWay}"
-                           Value="-1" Style="{ThemeResource CriticalIconInfoBadgeStyle}" />
-                <TextBlock Text="Reboot required" FontSize="10"
-                           Foreground="{ThemeResource SystemFillColorCriticalBrush}"
-                           Visibility="{x:Bind ViewModel.WindowsUpdateStatus.RebootRequired, Mode=OneWay}"
-                           VerticalAlignment="Center" />
             </StackPanel>
         </Grid>
     </Grid>
