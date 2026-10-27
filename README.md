@@ -194,7 +194,9 @@ LabTetherAgent.exe --state-directory 'D:\LabTetherState\my-instance'
 
 The directory owns settings, current-user DPAPI credentials, setup transactions,
 child identity and tokens. It must be outside the installed state directory and
-cannot use junctions or symbolic links. Do not share a directory between users.
+cannot use junctions or symbolic links. If it does not exist, the app creates it
+so that only you, SYSTEM and Administrators can open it. The app refuses an
+existing directory that another user owns or can open.
 Each directory has its own activation key and exact child recovery record.
 Start at Login and toast registration are unavailable for separate state; the
 installed app's registrations and saved credentials are not changed. The normal
@@ -205,9 +207,9 @@ because it runs the same executable.
 
 ## How It Works
 
-The Windows agent runs as a system tray application with an optional Windows Service for unattended operation. On launch, it establishes a persistent WebSocket connection to your hub and begins reporting system telemetry. The hub can then issue commands back -- opening terminal sessions, managing services, querying Hyper-V status, or triggering Windows Update scans -- all through the encrypted channel.
+The Windows agent runs as a system tray application for the signed-in user. It does not install a Windows service. On launch, it starts the bundled agent core, which keeps a WebSocket connection to your hub and reports system telemetry. The hub can then send commands back, such as opening terminal sessions, managing services, querying Hyper-V status or running Windows Update scans, over the encrypted connection.
 
-The agent handles enrollment, credential storage (Windows Credential Manager), and automatic reconnection. It can be installed as a Windows Service for headless servers.
+The app handles enrollment, credential storage (Windows Credential Manager) and reconnection. The agent token belongs to the Hub that issued it, so moving to a different Hub goes through **Setup / Re-enroll** with an enrollment token from that Hub. For a headless server, use the standalone LabTether agent, which runs as a Windows service.
 
 ---
 
@@ -229,7 +231,7 @@ the LabTether credentials from Windows Credential Manager.
 
 - **System tray icon not appearing** -- Check that the app is running and not hidden in the overflow area.
 - **Connection issues** -- Verify the hub URL is reachable and that your enrollment token is valid.
-- **Service mode** -- If running as a Windows Service, check Event Viewer for agent logs.
+- **Agent logs** -- Choose **View Logs** from the tray menu.
 
 ---
 
