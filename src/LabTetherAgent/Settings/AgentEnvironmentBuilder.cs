@@ -76,8 +76,13 @@ public static class AgentEnvironmentBuilder
         // the Go core's machine-wide ProgramData defaults here makes a native
         // install silently reuse the standalone Windows service's identity and
         // configuration, which causes Hub enrollment to reject the new app.
-        env["LABTETHER_AGENT_SETTINGS_FILE"] =
-            Path.Combine(secretDirectory, AgentManagedState.AgentConfigFileName);
+        // The child saves Hub-pushed settings in this file and prefers them
+        // over the values below. With Allow Remote Overrides off they must not
+        // keep replacing the local settings.
+        var agentConfigPath = Path.Combine(secretDirectory, AgentManagedState.AgentConfigFileName);
+        if (!settings.AllowRemoteOverrides)
+            SecureFile.DeleteIfExists(agentConfigPath);
+        env["LABTETHER_AGENT_SETTINGS_FILE"] = agentConfigPath;
         env["LABTETHER_DEVICE_KEY_FILE"] =
             Path.Combine(secretDirectory, AgentManagedState.DeviceKeyFileName);
         env["LABTETHER_DEVICE_PUBLIC_KEY_FILE"] =
