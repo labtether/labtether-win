@@ -205,12 +205,15 @@ try {
     [IO.Directory]::CreateDirectory($AgentSource) | Out-Null
     [IO.Directory]::CreateDirectory($PublishRoot) | Out-Null
 
-    & git -C $RepoRoot archive --format=zip "--output=$WrapperArchive" $Tag
+    # Assert-TrackedSourcePolicy has already proven CLAUDE.md is the canonical
+    # link to AGENTS.md. Keep that link out of the source archives: a zip stores
+    # it as a symlink entry, which the archive safety check correctly rejects.
+    & git -C $RepoRoot archive --format=zip "--output=$WrapperArchive" $Tag -- . ':(exclude)CLAUDE.md'
     Assert-ExitCode "Archive wrapper source"
-    & git -C $AgentRepo archive --format=zip "--output=$AgentArchive" $Tag
+    & git -C $AgentRepo archive --format=zip "--output=$AgentArchive" $Tag -- . ':(exclude)CLAUDE.md'
     Assert-ExitCode "Archive agent source"
-    $ExpectedWrapperFiles = @(Invoke-GitNulList $RepoRoot "ls-files -z")
-    $ExpectedAgentFiles = @(Invoke-GitNulList $AgentRepo "ls-files -z")
+    $ExpectedWrapperFiles = @(Invoke-GitNulList $RepoRoot "ls-files -z" | Where-Object { $_ -cne "CLAUDE.md" })
+    $ExpectedAgentFiles = @(Invoke-GitNulList $AgentRepo "ls-files -z" | Where-Object { $_ -cne "CLAUDE.md" })
     $WrapperArchiveHash = (Get-FileHash -LiteralPath $WrapperArchive -Algorithm SHA256).Hash
     $AgentArchiveHash = (Get-FileHash -LiteralPath $AgentArchive -Algorithm SHA256).Hash
     Assert-SafeZipArchive $WrapperArchive $WrapperSource $ExpectedWrapperFiles
