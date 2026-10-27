@@ -5,7 +5,8 @@
   Installs the unpackaged app to %LocalAppData%\Programs\LabTether without
   elevation, adds a Start menu shortcut and an Apps & features entry, and
   upgrades in place: keep UpgradeCode stable for every release.
-  User state in %LocalAppData%\LabTether is never touched.
+  User state in %LocalAppData%\LabTether is kept. A real uninstall only asks
+  the bundled agent to remove the Hub SSH key line it recorded there.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="LabTether Agent"
@@ -62,8 +63,29 @@
                   Execute="deferred"
                   Impersonate="yes"
                   Return="ignore" />
+    <!--
+      The agent may have added the Hub's SSH key to the user's
+      authorized_keys. On a real uninstall, while its files still exist, run
+      the bundled agent's "ssh-key remove", which deletes exactly the line it
+      recorded beside this token file. The 1.7.0 agent has no such command;
+      that and any other failure are ignored so the uninstall always finishes.
+    -->
+    <SetProperty Id="RemoveHubSshKey"
+                 Value="&quot;[System64Folder]cmd.exe&quot; /d /s /c &quot;set &quot;LABTETHER_TOKEN_FILE=[LocalAppDataFolder]LabTether\agent-token&quot; &amp;&amp; &quot;[INSTALLFOLDER]Assets\labtether-agent.exe&quot; ssh-key remove&quot;"
+                 Before="RemoveHubSshKey"
+                 Sequence="execute"
+                 Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+    <CustomAction Id="RemoveHubSshKey"
+                  BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)"
+                  DllEntry="WixQuietExec"
+                  Execute="deferred"
+                  Impersonate="yes"
+                  Return="ignore" />
     <InstallExecuteSequence>
       <Custom Action="RemoveStartAtLogin"
+              Before="RemoveFiles"
+              Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+      <Custom Action="RemoveHubSshKey"
               Before="RemoveFiles"
               Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
     </InstallExecuteSequence>

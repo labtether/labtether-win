@@ -17,6 +17,10 @@ follow [Semantic Versioning](https://semver.org/).
   Move a refused instance to a new folder.
 - An identity left in `C:\ProgramData\LabTether` by an older version is moved
   into the app only when no other user could have replaced it.
+- Uninstalling the MSI removes the Hub's SSH key line that the agent added to
+  `authorized_keys`, and Setup keeps the agent's record of that line. This
+  needs an agent core newer than 1.7.0; with 1.7.0 the step does nothing and
+  the uninstall finishes as before.
 
 ### Fixed
 - With Allow Remote Overrides off, settings pushed earlier by the Hub are

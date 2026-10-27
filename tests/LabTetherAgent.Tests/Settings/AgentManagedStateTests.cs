@@ -176,6 +176,55 @@ public class AgentManagedStateTests
         }
     }
 
+    [Fact]
+    public void CommitKeepsTheHubSshKeyRecordForUninstall()
+    {
+        // Risk: setup runs the agent in a staging folder, so the record of the
+        // Hub key it added would be lost and uninstall could not remove it.
+        var root = NewTestDirectory();
+        var staging = Path.Combine(root, "staging");
+        var destination = Path.Combine(root, "destination");
+        try
+        {
+            Directory.CreateDirectory(staging);
+            Directory.CreateDirectory(destination);
+            SecureFile.WriteAllText(
+                Path.Combine(staging, AgentManagedState.AgentTokenFileName), "issued-agent-token\n");
+            SecureFile.WriteAllText(
+                Path.Combine(staging, AgentManagedState.DeviceKeyFileName), "device-private-key\n");
+            var stagedRecord = Path.Combine(staging, AgentManagedState.HubSshKeyRecordFileName);
+            var record = """{"authorized_keys_path":"C:/Users/demo/.ssh/authorized_keys","key_line":"ssh-ed25519 AAAAhub hub"}""";
+            SecureFile.WriteAllText(stagedRecord, record);
+            var committedRecord = Path.Combine(destination, AgentManagedState.HubSshKeyRecordFileName);
+
+            Commit(staging, destination);
+            Assert.Equal(record, File.ReadAllText(committedRecord));
+
+            // Re-enrolling with the same Hub finds its key already present, so
+            // the staged agent records nothing; the existing record must stay.
+            File.Delete(stagedRecord);
+            Commit(staging, destination);
+            Assert.Equal(record, File.ReadAllText(committedRecord));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static void Commit(string staging, string destination)
+    {
+        var captured = AgentManagedState.CaptureSetupArtifacts(staging);
+        try
+        {
+            AgentManagedState.CommitArtifacts(destination, captured);
+        }
+        finally
+        {
+            AgentManagedState.ZeroArtifacts(captured);
+        }
+    }
+
     private static string NewTestDirectory()
     {
         var path = Path.Combine(

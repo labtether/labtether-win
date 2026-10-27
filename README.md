@@ -217,9 +217,18 @@ The app handles enrollment, credential storage (Windows Credential Manager) and 
 
 1. Exit the tray app.
 2. If you used the installer, uninstall **LabTether Agent** from
-   **Settings > Apps**; it also removes the Start at Login entry. For the ZIP,
-   disable **Start at login** in LabTether Agent settings first, then delete
-   the directory where you extracted it.
+   **Settings > Apps**. It also removes the Start at Login entry and the
+   Hub's SSH key line the agent added to `%USERPROFILE%\.ssh\authorized_keys`.
+   For the ZIP, disable **Start at login** in LabTether Agent settings, remove
+   the Hub's SSH key from the extracted folder, then delete the folder:
+
+   ```powershell
+   $env:LABTETHER_TOKEN_FILE = "$env:LOCALAPPDATA\LabTether\agent-token"
+   .\Assets\labtether-agent.exe ssh-key remove
+   ```
+
+   The agent core in 1.7.0 cannot remove the key line; check
+   `authorized_keys` and delete the Hub's key by hand.
 3. Remove the agent from your hub's asset list via the console.
 
 For complete local-data removal, also delete `%LOCALAPPDATA%\LabTether` and
