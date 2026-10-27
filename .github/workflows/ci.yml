@@ -43,6 +43,8 @@ jobs:
           persist-credentials: false
       - name: Test native QA contract selection
         run: python -B -m unittest discover -s scripts/qa -p 'test_*.py'
+      - name: Test paid signature limits without signing
+        run: python -B scripts/release/test_windows_signing_budget.py
       - name: Select required native QA contracts
         id: contracts
         env:

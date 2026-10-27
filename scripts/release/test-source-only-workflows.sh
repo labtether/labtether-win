@@ -27,7 +27,7 @@ for workflow in "${workflows[@]}"; do
   grep -Eq '^permissions:[[:space:]]*$' "$workflow" || fail "workflow lacks an explicit permissions block"
   grep -Eq '^[[:space:]]+contents:[[:space:]]+read([[:space:]]|$)' "$workflow" || fail "workflow lacks read-only contents permission"
   if grep -Eiq \
-    '(secrets(\.|\[)|contents:[[:space:]]*write|id-token:[[:space:]]*write|attestations:[[:space:]]*write|artifact-metadata:[[:space:]]*write|packages:[[:space:]]*write|actions/upload-(artifact|release-asset)|actions/attest|softprops/action-gh-release|gh[[:space:]]+release|signtool|osslsigncode|Import-PfxCertificate|scripts/release/(sign|publish|prepare|verify)-windows-release)' \
+    '(secrets(\.|\[)|contents:[[:space:]]*write|id-token:[[:space:]]*write|attestations:[[:space:]]*write|artifact-metadata:[[:space:]]*write|packages:[[:space:]]*write|actions/upload-(artifact|release-asset)|actions/attest|softprops/action-gh-release|gh[[:space:]]+release|signtool|osslsigncode|Import-PfxCertificate|scripts/release/((sign|publish|prepare|verify)-windows-release|sign_windows_esigner|windows-esigner-host))' \
     "$workflow"; then
     fail "hosted workflow contains a signing, secret, attestation, artifact-upload, or release-publication capability"
   fi
