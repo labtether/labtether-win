@@ -119,6 +119,11 @@ For most users, download the pre-built signed installer from [Releases](https://
 
 ### Maintainer release lane
 
+For a locally configured SSL.com eSigner CKA certificate, use the
+[manual Windows signing flow](scripts/release/README-esigner.md). It prepares
+the same assets with four paid signatures at most per exact source candidate.
+The PFX flow below remains available. Neither flow runs from CI.
+
 The tag-triggered GitHub workflow verifies clean matching wrapper and agent
 tags, tests, publishes, builds and checks the MSI, and validates the payload.
 It intentionally has read-only permissions: it does not receive signing
