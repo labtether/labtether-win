@@ -1,6 +1,6 @@
 # AGENTS.md — LabTether Windows Agent
 
-Native .NET and WinUI tray app and service that wraps the Go agent.
+Native .NET and WinUI tray app that wraps the Go agent. It ships no Windows service.
 
 ## Read first
 
@@ -79,7 +79,7 @@ line here.
 - Build the bundled Go child with `scripts/build-bundled-agent.sh`, run CI's
   restore and build steps, then a focused test, for example:
   `dotnet test --no-build --no-restore tests/LabTetherAgent.Tests/LabTetherAgent.Tests.csproj -p:Platform=x64 -c Debug --filter 'FullyQualifiedName~ConnectionTesterTests'`.
-- Keep service and tray lifetime, enrollment, TLS trust, diagnostics export and
+- Keep tray lifetime, enrollment, TLS trust, diagnostics export and
   wrapper-owned child updates working. A release package must bundle the exact
   matching Go agent tag. Read `scripts/release/` before signing or publishing.
 - A Windows checkout must keep `CLAUDE.md` as a real symlink: enable the OS

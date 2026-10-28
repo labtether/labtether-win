@@ -3,6 +3,33 @@
 All notable changes to the LabTether Windows Agent are listed here. Versions
 follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Security
+- Settings no longer saves a different Hub URL while a token for the current
+  Hub is saved, because the agent would send that token to the new address.
+  Use Setup / Re-enroll with an enrollment token from the new Hub. A Hub URL
+  written another way for the same Hub, such as `https://` instead of `wss://`,
+  still saves.
+- A folder passed with `--state-directory` is created so that only you,
+  SYSTEM and Administrators can open it. An existing folder that another user
+  owns or can open is refused, because that user could change its settings.
+  Move a refused instance to a new folder.
+- An identity left in `C:\ProgramData\LabTether` by an older version is moved
+  into the app only when no other user could have replaced it.
+- Uninstalling the MSI removes the Hub's SSH key line that the agent added to
+  `authorized_keys`, and Setup keeps the agent's record of that line. This
+  needs an agent core newer than 1.7.0; with 1.7.0 the step does nothing and
+  the uninstall finishes as before.
+
+### Fixed
+- With Allow Remote Overrides off, settings pushed earlier by the Hub are
+  removed on the next start, so the agent runs the values shown in Settings.
+- The tray flyout no longer has Hyper-V and Windows Update cards. The agent
+  core never reported their data, so they could not show anything.
+- The README no longer describes a Windows service mode that the app does not
+  have.
+
 ## [1.7.0] - unreleased
 
 Changes since the last public release, v1.4.0.

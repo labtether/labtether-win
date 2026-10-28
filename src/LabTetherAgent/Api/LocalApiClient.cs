@@ -373,7 +373,6 @@ public class LocalApiClient : IDisposable
                     a.Message ?? a.Summary)).ToList() ?? [],
         };
 
-        status.ExtractWindowsStatus();
         return status;
     }
 

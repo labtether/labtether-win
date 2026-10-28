@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using LabTetherAgent.Api;
 using LabTetherAgent.App;
 using LabTetherAgent.Process;
@@ -64,6 +66,37 @@ public class AppStateLocationTests
             Assert.False(startup.SetEnabled(true));
             Assert.Throws<ArgumentException>(() => AppStateLocation.ForDirectory(AppStateLocation.Installed.DirectoryPath));
             Assert.Throws<ArgumentException>(() => AppStateLocation.FromArguments(["--state-directory="]));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void StateDirectoryOtherUsersCanWriteIsRefused()
+    {
+        // Risk: another user pre-creates the folder and plants settings.json
+        // with their own Hub URL, or files the agent core trusts.
+        var root = Path.Combine(Path.GetTempPath(), "LabTetherAgentTests", Guid.NewGuid().ToString("N"));
+        var shared = Path.Combine(root, "shared");
+        try
+        {
+            var info = Directory.CreateDirectory(shared);
+            var security = info.GetAccessControl();
+            security.AddAccessRule(new FileSystemAccessRule(
+                new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null),
+                FileSystemRights.Modify,
+                InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+                PropagationFlags.None,
+                AccessControlType.Allow));
+            info.SetAccessControl(security);
+            Assert.Throws<IOException>(() => AppStateLocation.ForDirectory(shared));
+
+            // A folder the app creates for itself passes the same check.
+            var created = AppStateLocation.ForDirectory(Path.Combine(root, "created"));
+            Assert.True(Directory.Exists(created.DirectoryPath));
+            created.Validate();
         }
         finally
         {

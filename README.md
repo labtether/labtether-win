@@ -28,8 +28,6 @@ to edit.
 - **Windows services.** See and manage them from the hub.
 - **Hyper-V.** VM status and management on Hyper-V hosts.
 - **Windows Update.** See pending updates and start installs from the hub.
-- **Runs headless.** Install it as a Windows service for servers without a
-  signed-in user.
 
 ## Install
 
@@ -50,9 +48,21 @@ download's checksum and signature first, see
 ## Uninstall
 
 1. Exit the tray app.
-2. Installer: uninstall **LabTether Agent** in **Settings > Apps**. ZIP: turn
-   off **Start at login** in the app's settings, then delete the folder.
+2. Installer: uninstall **LabTether Agent** in **Settings > Apps**. It also
+   removes the hub's SSH key line the agent added to
+   `%USERPROFILE%\.ssh\authorized_keys`. ZIP: turn off **Start at login** in
+   the app's settings, remove the SSH key line from the extracted folder, then
+   delete the folder:
+
+   ```powershell
+   $env:LABTETHER_TOKEN_FILE = "$env:LOCALAPPDATA\LabTether\agent-token"
+   .\Assets\labtether-agent.exe ssh-key remove
+   ```
+
 3. Remove the device in the hub.
+
+The agent core in 1.7.0 cannot remove that SSH key line. With 1.7.0, delete
+the hub's key from `authorized_keys` by hand.
 
 To remove all local data too, delete `%LOCALAPPDATA%\LabTether` and the
 LabTether entries in Windows Credential Manager.
@@ -62,13 +72,21 @@ LabTether entries in Windows Credential Manager.
 - **No tray icon.** Check that the app is running and look in the tray overflow.
 - **Can't connect.** Check that the hub URL opens from this machine and that
   the enrollment token is still valid.
-- **Running as a service.** Agent logs are in Event Viewer.
+- **Moving to another hub.** A token works only with the hub that issued it,
+  so Settings keeps the current hub. Choose **Setup / Re-enroll** in the tray
+  menu and use an enrollment token from the new hub.
+- **Agent logs.** Choose **View Logs** in the tray menu.
 
 ## How it works
 
 The app wraps the same Go agent core used on Linux in a native .NET tray app.
 It keeps one encrypted WebSocket connection open to your hub, stores its
 credentials in Windows Credential Manager, and reconnects on its own.
+
+The app runs for the signed-in user and does not install a Windows service.
+For a server without a signed-in user, use the standalone
+[LabTether agent](https://github.com/labtether/labtether-agent), which runs as
+a service.
 
 To run a second copy with its own settings and credentials, see
 [docs/separate-state.md](docs/separate-state.md).
