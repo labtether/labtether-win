@@ -354,6 +354,7 @@ public class LocalApiClient : IDisposable
             IsConnected = response.IsHubConnected,
             HubConnectionState = response.EffectiveConnectionState,
             LastError = response.LastError,
+            LastErrorReason = response.LastErrorReason ?? string.Empty,
             Uptime = response.Uptime,
             CpuPercent = response.Metrics?.CpuPercent ?? response.CpuPercent,
             MemoryPercent = response.Metrics?.MemoryPercent ?? response.MemoryPercent,

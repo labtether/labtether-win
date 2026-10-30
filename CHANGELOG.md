@@ -15,6 +15,9 @@ released.
   upgrades in place. The portable ZIP is still published.
 - When the agent stops and cannot be restarted, the tray icon turns red, its
   tooltip says so, and a notification appears. The reason is in View Logs.
+- When the agent cannot connect to the Hub, the tray window and pop-out say
+  why, for example "Can't reach the Hub" or "The Hub's certificate isn't
+  trusted", instead of "Connecting".
 - Launching with `--state-directory PATH` keeps that copy's settings,
   credentials and agent identity apart from the installed app.
 - Hub URLs on a loopback address work, so a local tunnel to the Hub can be used.
