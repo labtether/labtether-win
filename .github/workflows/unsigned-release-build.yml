@@ -1,0 +1,175 @@
+name: Unsigned Windows release build
+
+# Builds the unsigned Windows release ZIP from exact tags with the tagged
+# scripts/release/prepare-unsigned-windows-release.ps1, including every release
+# test it runs. Hosted Windows runners have a real user profile, so the tests
+# that need Windows data protection pass here. Started by hand only.
+#
+# It does not sign anything, create or change a GitHub release, or upload to
+# one. The ZIP, its .sha256 and a build record are kept as a run artifact for
+# one day, for a maintainer to download and publish by hand.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "labtether-win tag to build, for example v1.7.1"
+        required: true
+        type: string
+      agent_tag:
+        description: "labtether-agent tag to bundle; must equal tag"
+        required: true
+        type: string
+      confirm:
+        description: "Type the tag again to confirm"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unsigned-windows-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 50
+    env:
+      TAG: ${{ inputs.tag }}
+      AGENT_TAG: ${{ inputs.agent_tag }}
+      CONFIRM: ${{ inputs.confirm }}
+      ASSET: labtether-agent-win-x64.zip
+    steps:
+      - name: Check the inputs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::tag must look like v1.2.3"; exit 1; }
+          # The prepare script builds the wrapper and the bundled agent from the same tag.
+          [[ "$AGENT_TAG" == "$TAG" ]] || { echo "::error::agent_tag must equal tag"; exit 1; }
+          [[ "$CONFIRM" == "$TAG" ]] || { echo "::error::confirm must repeat the tag"; exit 1; }
+
+      - name: Check out the labtether-win tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          path: wrapper
+          persist-credentials: false
+
+      - name: Check out the labtether-agent tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: labtether/labtether-agent
+          ref: refs/tags/${{ inputs.agent_tag }}
+          path: agent
+          persist-credentials: false
+
+      - name: Verify both tags resolve to the checked-out commits
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for pair in "wrapper labtether/labtether-win $TAG" "agent labtether/labtether-agent $AGENT_TAG"; do
+            read -r dir repo tag <<<"$pair"
+            head="$(git -C "$dir" rev-parse HEAD)"
+            local_tag="$(git -C "$dir" rev-list -n 1 "$tag")"
+            # A fresh read of the tag on GitHub, peeled when it is annotated.
+            remote="$(git ls-remote "https://github.com/$repo.git" "refs/tags/$tag" "refs/tags/$tag^{}" | awk '{c=$1} END {print c}')"
+            [[ -n "$remote" && "$head" == "$local_tag" && "$head" == "$remote" ]] || {
+              echo "::error::$repo $tag: checkout $head, local tag $local_tag, GitHub tag $remote"; exit 1; }
+            [[ -z "$(git -C "$dir" status --porcelain=v1 --untracked-files=all)" ]] || { echo "::error::$repo checkout is not clean"; exit 1; }
+            echo "$repo $tag = $head"
+            echo "${dir}_commit=$head" >> "$GITHUB_ENV"
+          done
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.3"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: "10.0.403"
+
+      - name: Add msbuild to PATH
+        uses: microsoft/setup-msbuild@30375c66a4eea26614e0d39710365f22f8b0af57 # v3.0.0
+
+      - name: Run the tagged prepare-unsigned-windows-release.ps1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $env:UseSharedCompilation = "false"; $env:MSBUILDDISABLENODEREUSE = "1"; $env:DOTNET_CLI_TELEMETRY_OPTOUT = "1"
+          $log = Join-Path $env:RUNNER_TEMP "prepare.log"
+          & "$env:GITHUB_WORKSPACE\wrapper\scripts\release\prepare-unsigned-windows-release.ps1" `
+            -Tag $env:TAG -AgentRepo "$env:GITHUB_WORKSPACE\agent" -OutputDirectory "$env:RUNNER_TEMP\win-unsigned" *>&1 |
+            Tee-Object -FilePath $log
+          if (-not (Select-String -LiteralPath $log -SimpleMatch "Unsigned Windows release preparation passed." -Quiet)) {
+            throw "The prepare script did not report success."
+          }
+
+      - name: Read back versions, build record and signatures
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $zip = "$env:RUNNER_TEMP\win-unsigned\labtether-agent-win-x64-unsigned.zip"
+          $x = Join-Path $env:RUNNER_TEMP "readback"
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [IO.Compression.ZipFile]::ExtractToDirectory($zip, $x)
+          $version = $env:TAG.Substring(1)
+          $app = [Diagnostics.FileVersionInfo]::GetVersionInfo("$x\LabTetherAgent.exe")
+          $agentHelp = @(& "$x\Assets\labtether-agent.exe" help)[0].Trim()
+          $agentVersionFile = (Get-Content "$x\AGENT_VERSION" -Raw).Trim()
+          $p = Get-Content "$x\release-provenance.json" -Raw | ConvertFrom-Json
+          $signatures = @("LabTetherAgent.exe", "LabTetherAgent.dll", "Assets\labtether-agent.exe" |
+            ForEach-Object { "$_=$((Get-AuthenticodeSignature -LiteralPath "$x\$_").Status)" })
+          "app product version $($app.ProductVersion), file version $($app.FileVersion)"
+          "bundled agent: $agentHelp (AGENT_VERSION $agentVersionFile)"
+          "build record: tag $($p.tag), wrapper $($p.wrapper_commit), agent $($p.agent_commit), $($p.published_file_count) files"
+          "signatures: $($signatures -join ', ')"
+          if ($app.ProductVersion -ne $version) { throw "app reports $($app.ProductVersion), expected $version" }
+          if ($agentHelp -ne "labtether-agent $env:TAG" -or $agentVersionFile -ne $env:TAG) { throw "bundled agent does not report $env:TAG" }
+          if ($p.tag -ne $env:TAG -or $p.wrapper_commit -ne $env:wrapper_commit -or $p.agent_commit -ne $env:agent_commit) {
+            throw "build record does not match the checked-out tags"
+          }
+          if (@($signatures | Where-Object { $_ -notmatch '=NotSigned$' }).Count -ne 0) { throw "an authored file is signed" }
+          $out = Join-Path $env:RUNNER_TEMP "release-assets"
+          New-Item -ItemType Directory -Path $out | Out-Null
+          [ordered]@{
+            tag = $env:TAG; wrapper_commit = $env:wrapper_commit; agent_commit = $env:agent_commit
+            app_product_version = $app.ProductVersion; app_file_version = $app.FileVersion
+            bundled_agent = $agentHelp; signed = $false
+            unsigned_archive = "labtether-agent-win-x64-unsigned.zip"
+            unsigned_archive_sha256 = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+            go = (& go version); dotnet_sdk = (& dotnet --version); runner_image = "$env:ImageOS $env:ImageVersion"
+            run = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+          } | ConvertTo-Json | Set-Content -LiteralPath "$out\build-record.json" -Encoding ASCII
+
+      - name: Name the asset and write its checksum
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          src="$RUNNER_TEMP/win-unsigned/labtether-agent-win-x64-unsigned.zip"
+          out="$RUNNER_TEMP/release-assets"
+          cp -- "$src" "$out/$ASSET"
+          cmp -- "$src" "$out/$ASSET"
+          hash="$(sha256sum "$out/$ASSET" | awk '{print $1}')"
+          printf '%s  %s\n' "$hash" "$ASSET" > "$out/$ASSET.sha256"
+          # The same parsing as read_single_checksum in the Hub's
+          # scripts/release/generate-agent-manifest.sh, which reads this file.
+          [[ "$(awk 'NF { count++ } END { print count + 0 }' "$out/$ASSET.sha256")" == 1 ]] || { echo "::error::checksum file must hold one entry"; exit 1; }
+          read -r digest filename extra < <(awk 'NF { print; exit }' "$out/$ASSET.sha256")
+          filename="${filename#\*}"
+          digest="$(printf '%s' "$digest" | tr '[:upper:]' '[:lower:]')"
+          [[ -z "${extra:-}" && "$filename" == "$ASSET" && "$digest" =~ ^[0-9a-f]{64}$ && "$digest" == "$hash" ]] || {
+            echo "::error::checksum entry is not in the form the Hub manifest generator reads"; exit 1; }
+          [[ "$(tr -cd '\r' < "$out/$ASSET.sha256" | wc -c)" -eq 0 ]] || { echo "::error::checksum file has a CR"; exit 1; }
+          ls -l "$out"
+          cat "$out/$ASSET.sha256"
+
+      - name: Keep the unsigned ZIP, checksum and build record for one day
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: labtether-agent-win-x64-${{ inputs.tag }}-unsigned
+          path: ${{ runner.temp }}/release-assets/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
