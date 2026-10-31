@@ -169,7 +169,9 @@ jobs:
           out="$RUNNER_TEMP/release-assets"
           cp -- "$src" "$out/$ASSET"
           cmp -- "$src" "$out/$ASSET"
-          hash="$(sha256sum "$out/$ASSET" | awk '{print $1}')"
+          # Hash stdin: given a path with backslashes, GNU sha256sum starts its
+          # line with a backslash, which would end up in the hash field.
+          hash="$(sha256sum < "$out/$ASSET" | awk '{print $1}')"
           printf '%s  %s\n' "$hash" "$ASSET" > "$out/$ASSET.sha256"
           # The same parsing as read_single_checksum in the Hub's
           # scripts/release/generate-agent-manifest.sh, which reads this file.
