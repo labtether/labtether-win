@@ -98,9 +98,27 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $env:UseSharedCompilation = "false"; $env:MSBUILDDISABLENODEREUSE = "1"; $env:DOTNET_CLI_TELEMETRY_OPTOUT = "1"
+          # The runner's console uses UTF-8 with a byte-order mark. Windows
+          # PowerShell then puts that mark in front of the text the release
+          # source policy pipes to git (the CLAUDE.md link target), so its
+          # hash no longer matches the index and the policy refuses the link.
+          [Console]::InputEncoding = New-Object Text.UTF8Encoding $false
+          # The script builds under the temp folder; the default one is too deep
+          # for the 260-character path limit of the release test build. Use a
+          # short temp folder, private to this user, SYSTEM and Administrators
+          # as the release tests expect of the folders they create there.
+          $short = Join-Path $env:RUNNER_TEMP "t"
+          New-Item -ItemType Directory -Path $short | Out-Null
+          $me = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+          icacls.exe $short /inheritance:r /grant:r "*${me}:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "Could not make the short temp folder private." }
+          $env:TEMP = $short; $env:TMP = $short
+          # Log only the success stream. Redirecting the error stream as well
+          # makes Windows PowerShell turn stderr progress from go into a
+          # stopping error.
           $log = Join-Path $env:RUNNER_TEMP "prepare.log"
           & "$env:GITHUB_WORKSPACE\wrapper\scripts\release\prepare-unsigned-windows-release.ps1" `
-            -Tag $env:TAG -AgentRepo "$env:GITHUB_WORKSPACE\agent" -OutputDirectory "$env:RUNNER_TEMP\win-unsigned" *>&1 |
+            -Tag $env:TAG -AgentRepo "$env:GITHUB_WORKSPACE\agent" -OutputDirectory "$env:RUNNER_TEMP\win-unsigned" |
             Tee-Object -FilePath $log
           if (-not (Select-String -LiteralPath $log -SimpleMatch "Unsigned Windows release preparation passed." -Quiet)) {
             throw "The prepare script did not report success."
