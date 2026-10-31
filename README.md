@@ -31,35 +31,37 @@ to edit.
 
 ## Install
 
-1. Download `labtether-agent-win-x64.msi` from
+1. Download `labtether-agent-win-x64.zip` from
    [Releases](https://github.com/labtether/labtether-win/releases/latest).
-2. Run it. It installs for your user only and needs no administrator rights.
-3. Open **LabTether Agent** from the Start menu. The tray icon walks you
-   through connecting to your hub.
+2. Extract it into a folder of its own that you will keep, for example
+   `%LOCALAPPDATA%\Programs\LabTether`. No administrator rights are needed.
+3. Run `LabTetherAgent.exe` from that folder. The tray icon walks you through
+   connecting to your hub. To start it with Windows, turn on
+   **Start at Login** in Settings.
 
 You need Windows 10 or newer (x64), a running hub, and an enrollment token from
-the hub (**Add Device**). To upgrade, quit the tray app and run the newer MSI;
-your settings and enrollment stay.
+the hub (**Add Device**). The .NET runtime is included.
 
-Prefer no installer? Each release also has a portable ZIP. To check either
-download's checksum and signature first, see
+v1.7.1 is not code-signed, so Windows may show "Windows protected your PC".
+Choose **More info**, then **Run anyway**. To check the download first, see
 [docs/verify-download.md](docs/verify-download.md).
+
+To upgrade, quit the tray app, empty the folder and extract the newer ZIP into
+it. Your settings and enrollment are stored outside the folder, so they stay.
 
 ## Uninstall
 
-1. Exit the tray app.
-2. Installer: uninstall **LabTether Agent** in **Settings > Apps**. It also
-   removes the hub's SSH key line the agent added to
-   `%USERPROFILE%\.ssh\authorized_keys`. ZIP: turn off **Start at login** in
-   the app's settings, remove the SSH key line from the extracted folder, then
-   delete the folder:
+1. Turn off **Start at Login** in Settings, then exit the tray app.
+2. Remove the hub's SSH key line that the agent added to
+   `%USERPROFILE%\.ssh\authorized_keys`. In PowerShell, from the app's folder:
 
    ```powershell
    $env:LABTETHER_TOKEN_FILE = "$env:LOCALAPPDATA\LabTether\agent-token"
    .\Assets\labtether-agent.exe ssh-key remove
    ```
 
-3. Remove the device in the hub.
+3. Delete the app's folder.
+4. Remove the device in the hub.
 
 To remove all local data too, delete `%LOCALAPPDATA%\LabTether` and the
 LabTether entries in Windows Credential Manager.
@@ -100,7 +102,7 @@ msbuild src\LabTetherAgent\LabTetherAgent.csproj -t:Build -p:Configuration=Relea
 .\scripts\build-unpackaged.ps1 -Arch x64 -OutputDir build
 ```
 
-Building the MSI and other details: [docs/building.md](docs/building.md).
+More build details: [docs/building.md](docs/building.md).
 
 ## Contributing
 

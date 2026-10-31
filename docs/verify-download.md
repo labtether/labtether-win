@@ -1,27 +1,26 @@
-# Check a download before you install it
+# Check a download before you run it
 
-## Installer (MSI)
-
-To check the download first, compare it with
-`labtether-agent-win-x64.msi.sha256` and its signature:
-
-```powershell
-$expected = ((Get-Content .\labtether-agent-win-x64.msi.sha256 -Raw).Trim() -split '\s+')[0]
-if ((Get-FileHash .\labtether-agent-win-x64.msi -Algorithm SHA256).Hash -ne $expected) { throw "Checksum mismatch" }
-(Get-AuthenticodeSignature .\labtether-agent-win-x64.msi).Status   # Valid
-```
-
-## Portable ZIP
+## Checksum
 
 Download `labtether-agent-win-x64.zip` and its `.sha256` file from
-[Releases](https://github.com/labtether/labtether-win/releases/latest). Verify
-the checksum, extract the app, and verify all three LabTether-authored PE
-signatures:
+[Releases](https://github.com/labtether/labtether-win/releases/latest). In
+PowerShell, in the download folder:
 
 ```powershell
 $expected = ((Get-Content .\labtether-agent-win-x64.zip.sha256 -Raw).Trim() -split '\s+')[0]
 $actual = (Get-FileHash .\labtether-agent-win-x64.zip -Algorithm SHA256).Hash
 if ($actual -ne $expected) { throw "Checksum mismatch" }
+```
+
+## Signatures
+
+v1.7.1 is not code-signed, so it has no signatures to check. The release notes
+say whether a release is signed.
+
+For a signed release, extract the app and check that all three LabTether
+programs carry the same valid, timestamped signature:
+
+```powershell
 Expand-Archive .\labtether-agent-win-x64.zip .\LabTetherAgent
 $payloads = @(
   ".\LabTetherAgent\LabTetherAgent.exe",
@@ -39,4 +38,4 @@ foreach ($payload in $payloads) {
 }
 ```
 
-If the checks pass, run the MSI, or `LabTetherAgent.exe` from the extracted folder.
+If the checks pass, run `LabTetherAgent.exe` from the extracted folder.
