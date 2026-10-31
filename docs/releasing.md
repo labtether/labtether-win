@@ -62,3 +62,21 @@ or Windows verification proof belongs in Git, GitHub Actions, build artifacts,
 caches, or release uploads. Only the public signer information inherently
 embedded in the verified signed PE and MSI files leaves the local signing
 lane.
+
+## Unsigned release build
+
+When a release ships unsigned, a maintainer can build the ZIP on a hosted
+Windows runner instead of steps 1 to 5. Start
+`.github/workflows/unsigned-release-build.yml` by hand with `tag`,
+`agent_tag` (the same tag) and `confirm` (the tag again). It checks out both
+tags, checks that they match the tags on GitHub, and runs
+`scripts/release/prepare-unsigned-windows-release.ps1` with all of its release
+tests. It then copies the unsigned archive unchanged to
+`labtether-agent-win-x64.zip`, writes `labtether-agent-win-x64.zip.sha256` in
+the one-line form the Hub's agent manifest reads, and keeps both with
+`build-record.json` as a run artifact for one day.
+
+The workflow signs nothing and never creates or uploads a GitHub release;
+publishing stays a maintainer step. It builds no MSI.
+`scripts/release/test-source-only-workflows.sh` allows this one workflow and
+refuses any wider version of it.
