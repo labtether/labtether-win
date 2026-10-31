@@ -24,6 +24,34 @@ public class AgentStatusTests
         Assert.Equal(expected, status.ConnectionDisplayText);
     }
 
+    // The tray and pop-out must say why the Hub connect failed, keep the state
+    // text for older agents and unknown codes, and drop the reason once connected.
+    [Theory]
+    [InlineData(false, "connecting", "name_lookup_failed", "Can't find the Hub's address")]
+    [InlineData(false, "connecting", "connection_refused", "Can't reach the Hub")]
+    [InlineData(false, "connecting", "host_unreachable", "Can't reach the Hub")]
+    [InlineData(false, "connecting", "timed_out", "Can't reach the Hub")]
+    [InlineData(false, "connecting", "certificate_untrusted", "The Hub's certificate isn't trusted")]
+    [InlineData(false, "auth_failed", "token_rejected", "The Hub refused this device. Enroll it again.")]
+    [InlineData(false, "connecting", "", "Connecting")]
+    [InlineData(false, "connecting", "a_future_reason", "Connecting")]
+    [InlineData(true, "connected", "timed_out", "Connected")]
+    public void ConnectionDisplayTextShowsWhyTheHubConnectFailed(
+        bool connected,
+        string state,
+        string reason,
+        string expected)
+    {
+        var status = new AgentStatus
+        {
+            IsConnected = connected,
+            HubConnectionState = state,
+            LastErrorReason = reason,
+        };
+
+        Assert.Equal(expected, status.ConnectionDisplayText);
+    }
+
     [Fact]
     public void FiringAlerts_FiltersCorrectly()
     {

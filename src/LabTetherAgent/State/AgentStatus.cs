@@ -8,6 +8,7 @@ public class AgentStatus
     public bool IsConnected { get; set; }
     public string HubConnectionState { get; set; } = "disconnected";
     public string LastError { get; set; } = string.Empty;
+    public string LastErrorReason { get; set; } = string.Empty;
     public string? Uptime { get; set; }
 
     // Metrics
@@ -39,6 +40,10 @@ public class AgentStatus
             if (IsConnected)
                 return "Connected";
 
+            var reason = ConnectReasonText(LastErrorReason);
+            if (reason != null)
+                return reason;
+
             return (HubConnectionState ?? string.Empty).Trim().ToLowerInvariant() switch
             {
                 "connecting" => "Connecting",
@@ -48,6 +53,18 @@ public class AgentStatus
             };
         }
     }
+
+    // Plain text for the agent's last_error_reason code. An empty or unknown
+    // code gives null, so the generic state text stays.
+    private static string? ConnectReasonText(string? code) =>
+        (code ?? string.Empty).Trim() switch
+        {
+            "name_lookup_failed" => "Can't find the Hub's address",
+            "connection_refused" or "host_unreachable" or "timed_out" => "Can't reach the Hub",
+            "certificate_untrusted" => "The Hub's certificate isn't trusted",
+            "token_rejected" => "The Hub refused this device. Enroll it again.",
+            _ => null,
+        };
 }
 
 public record AlertSnapshot(string Name, string State, string Severity, string? Message);

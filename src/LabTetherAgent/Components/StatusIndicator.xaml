@@ -7,6 +7,7 @@
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                 CornerRadius="12" Padding="8,4">
         <Ellipse x:Name="StatusDot" Width="8" Height="8" />
-        <TextBlock x:Name="StatusLabel" FontSize="11" VerticalAlignment="Center" />
+        <TextBlock x:Name="StatusLabel" FontSize="11" VerticalAlignment="Center"
+                   MaxWidth="150" TextWrapping="Wrap" />
     </StackPanel>
 </UserControl>

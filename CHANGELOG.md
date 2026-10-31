@@ -3,36 +3,10 @@
 All notable changes to the LabTether Windows Agent are listed here. Versions
 follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.7.1] - unreleased
 
-### Security
-- Settings no longer saves a different Hub URL while a token for the current
-  Hub is saved, because the agent would send that token to the new address.
-  Use Setup / Re-enroll with an enrollment token from the new Hub. A Hub URL
-  written another way for the same Hub, such as `https://` instead of `wss://`,
-  still saves.
-- A folder passed with `--state-directory` is created so that only you,
-  SYSTEM and Administrators can open it. An existing folder that another user
-  owns or can open is refused, because that user could change its settings.
-  Move a refused instance to a new folder.
-- An identity left in `C:\ProgramData\LabTether` by an older version is moved
-  into the app only when no other user could have replaced it.
-- Uninstalling the MSI removes the Hub's SSH key line that the agent added to
-  `authorized_keys`, and Setup keeps the agent's record of that line. This
-  needs an agent core newer than 1.7.0; with 1.7.0 the step does nothing and
-  the uninstall finishes as before.
-
-### Fixed
-- With Allow Remote Overrides off, settings pushed earlier by the Hub are
-  removed on the next start, so the agent runs the values shown in Settings.
-- The tray flyout no longer has Hyper-V and Windows Update cards. The agent
-  core never reported their data, so they could not show anything.
-- The README no longer describes a Windows service mode that the app does not
-  have.
-
-## [1.7.0] - unreleased
-
-Changes since the last public release, v1.4.0.
+Changes since the last public release, v1.4.0. v1.7.0 was tagged but never
+released.
 
 ### Added
 - A per-user installer, `labtether-agent-win-x64.msi`. It needs no
@@ -41,6 +15,9 @@ Changes since the last public release, v1.4.0.
   upgrades in place. The portable ZIP is still published.
 - When the agent stops and cannot be restarted, the tray icon turns red, its
   tooltip says so, and a notification appears. The reason is in View Logs.
+- When the agent cannot connect to the Hub, the tray window and pop-out say
+  why, for example "Can't reach the Hub" or "The Hub's certificate isn't
+  trusted", instead of "Connecting".
 - Launching with `--state-directory PATH` keeps that copy's settings,
   credentials and agent identity apart from the installed app.
 - Hub URLs on a loopback address work, so a local tunnel to the Hub can be used.
@@ -70,18 +47,37 @@ Changes since the last public release, v1.4.0.
 - Status polling keeps working when several windows are open.
 - The update check reads the right release feed.
 - Hub URLs are validated more strictly, and console links are built safely.
-- `scripts/download-agent.ps1` fetches an agent release that exists (v1.7.0 by
+- `scripts/download-agent.ps1` fetches an agent release that exists (v1.7.1 by
   default) and writes the version marker the build checks.
+- With Allow Remote Overrides off, settings pushed earlier by the Hub are
+  removed on the next start, so the agent runs the values shown in Settings.
+- The tray flyout no longer has Hyper-V and Windows Update cards. The agent
+  core never reported their data, so they could not show anything.
+- The README no longer describes a Windows service mode that the app does not
+  have.
 
 ### Security
 - Releases are signed on the maintainer's machine. Hosted CI only checks the
   tagged sources and never holds signing credentials.
 - Release archives carry source provenance, and the MSI is checked to hold
   exactly the signed release payload.
+- Settings no longer saves a different Hub URL while a token for the current
+  Hub is saved, because the agent would send that token to the new address.
+  Use Setup / Re-enroll with an enrollment token from the new Hub. A Hub URL
+  written another way for the same Hub, such as `https://` instead of `wss://`,
+  still saves.
+- A folder passed with `--state-directory` is created so that only you,
+  SYSTEM and Administrators can open it. An existing folder that another user
+  owns or can open is refused, because that user could change its settings.
+  Move a refused instance to a new folder.
+- An identity left in `C:\ProgramData\LabTether` by an older version is moved
+  into the app only when no other user could have replaced it.
+- Uninstalling the MSI removes the Hub's SSH key line that the agent added to
+  `authorized_keys`, and Setup keeps the agent's record of that line.
 
 ## Early development
 
-Historical scaffold notes. Releases ship as a ZIP and, from 1.7.0, a per-user
+Historical scaffold notes. Releases ship as a ZIP and, from 1.7.1, a per-user
 MSI; the MSIX and `.appinstaller` items below never shipped.
 
 ### Security

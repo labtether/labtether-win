@@ -61,9 +61,6 @@ download's checksum and signature first, see
 
 3. Remove the device in the hub.
 
-The agent core in 1.7.0 cannot remove that SSH key line. With 1.7.0, delete
-the hub's key from `authorized_keys` by hand.
-
 To remove all local data too, delete `%LOCALAPPDATA%\LabTether` and the
 LabTether entries in Windows Credential Manager.
 
