@@ -83,13 +83,18 @@ expect_refused() {
   local case_name="$1" target="$2" mode="$3"
   rm -rf -- "${fixture:?}/w"
   mkdir -p -- "$fixture/w"
-  cp -- "$REPO_ROOT"/.github/workflows/*.yml "$fixture/w/"
+  local copy
+  # A Windows checkout can have CRLF line endings; the edits work on LF copies.
+  for copy in "$REPO_ROOT"/.github/workflows/*.yml; do
+    perl -pe 's/\r$//' "$copy" > "$fixture/w/$(basename "$copy")"
+  done
+  cp -- "$fixture/w/$target" "$fixture/before"
   case "$mode" in
     append) LINE="$4" perl -0pe 's/\z/\n$ENV{LINE}\n/' "$fixture/w/$target" > "$fixture/w/edited" ;;
     sub) FROM="$4" TO="$5" perl -0pe 's/$ENV{FROM}/$ENV{TO}/m' "$fixture/w/$target" > "$fixture/w/edited" ;;
   esac
   mv -- "$fixture/w/edited" "$fixture/w/$target"
-  if cmp -s -- "$REPO_ROOT/.github/workflows/$target" "$fixture/w/$target"; then
+  if cmp -s -- "$fixture/before" "$fixture/w/$target"; then
     fail "self-test case $case_name did not change $target"
   fi
   if (check_workflows "$fixture/w") 2>/dev/null; then
