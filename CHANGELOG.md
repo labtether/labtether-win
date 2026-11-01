@@ -3,16 +3,17 @@
 All notable changes to the LabTether Windows Agent are listed here. Versions
 follow [Semantic Versioning](https://semver.org/).
 
-## [1.7.1] - unreleased
+## [1.7.1] - 2026-10-31
 
 Changes since the last public release, v1.4.0. v1.7.0 was tagged but never
 released.
 
 ### Added
-- A per-user installer, `labtether-agent-win-x64.msi`. It needs no
+- Source for a per-user installer, `labtether-agent-win-x64.msi`. It needs no
   administrator rights, installs to `%LOCALAPPDATA%\Programs\LabTether`, adds
   a Start menu shortcut and an uninstall entry in Settings > Apps, and
-  upgrades in place. The portable ZIP is still published.
+  upgrades in place. The MSI is built only for signed releases, so the
+  unsigned 1.7.1 release ships only the ZIP.
 - When the agent stops and cannot be restarted, the tray icon turns red, its
   tooltip says so, and a notification appears. The reason is in View Logs.
 - When the agent cannot connect to the Hub, the tray window and pop-out say
@@ -57,10 +58,11 @@ released.
   have.
 
 ### Security
-- Releases are signed on the maintainer's machine. Hosted CI only checks the
-  tagged sources and never holds signing credentials.
-- Release archives carry source provenance, and the MSI is checked to hold
-  exactly the signed release payload.
+- Signing happens only on the maintainer's machine. Hosted CI never holds
+  signing credentials. The 1.7.1 ZIP was built by a hand-started hosted
+  workflow and is not code-signed.
+- Release ZIPs record the exact source tags they were built from, and the MSI
+  build checks that the installer holds exactly the release files.
 - Settings no longer saves a different Hub URL while a token for the current
   Hub is saved, because the agent would send that token to the new address.
   Use Setup / Re-enroll with an enrollment token from the new Hub. A Hub URL
@@ -77,8 +79,8 @@ released.
 
 ## Early development
 
-Historical scaffold notes. Releases ship as a ZIP and, from 1.7.1, a per-user
-MSI; the MSIX and `.appinstaller` items below never shipped.
+Historical scaffold notes. Releases ship as a ZIP; the MSIX and
+`.appinstaller` items below never shipped.
 
 ### Security
 - Onboarding connection test now honors the explicit "Trust self-signed certificate" opt-in instead of silently accepting every TLS certificate. Self-signed homelab deployments must tick the new checkbox on Step 1 to complete onboarding; the flag is persisted to `AgentSettings.TlsSkipVerify`.

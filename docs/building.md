@@ -24,4 +24,4 @@ produce an MSIX.
 `scripts/download-agent.ps1` for local builds. Official releases always bundle
 the `labtether-agent` build from the tag that matches the wrapper tag.
 
-For most users, download the pre-built signed installer from [Releases](https://github.com/labtether/labtether-win/releases/latest) instead.
+For most users, download the release ZIP from [Releases](https://github.com/labtether/labtether-win/releases/latest) instead.
