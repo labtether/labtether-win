@@ -231,6 +231,13 @@ public partial class SettingsViewModel : ObservableObject
             SaveError = "Enter a valid hub URL using https://, wss://, http://, or ws://.";
             return;
         }
+        // The Hub accepts the agent token alone, so it must never reach another
+        // Hub. Setup / Re-enroll saves a new Hub only after enrolling with it.
+        if (!SettingsValidator.IsSameHub(_settings.HubUrl, HubUrl) && HasSavedCredential())
+        {
+            SaveError = "This device's token works only with its current Hub. To use a different Hub, choose Setup / Re-enroll from the tray menu.";
+            return;
+        }
         if (!SettingsValidator.IsValidLogLevel(LogLevel))
         {
             SaveError = "Select a valid log level.";
@@ -280,6 +287,11 @@ public partial class SettingsViewModel : ObservableObject
         OnSaved?.Invoke();
         OnRestartRequired?.Invoke();
     }
+
+    private bool HasSavedCredential() =>
+        SettingsValidator.IsValidToken(_settings.ApiToken) ||
+        SettingsValidator.IsValidToken(_settings.EnrollmentToken) ||
+        _settings.HasPersistedAgentToken;
 
     [RelayCommand]
     private void Cancel()

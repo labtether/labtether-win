@@ -78,6 +78,24 @@ public static class SettingsValidator
     }
 
     /// <summary>
+    /// Transport, host and port of a Hub URL. An agent token is valid only for
+    /// the Hub that issued it; the path does not matter.
+    /// </summary>
+    public static string? HubCredentialScope(string? url)
+    {
+        var normalized = NormalizeHubWebSocketUrl(url);
+        if (normalized == null || !Uri.TryCreate(normalized, UriKind.Absolute, out var uri))
+            return null;
+        return $"{uri.Scheme.ToLowerInvariant()}://{uri.Host.ToLowerInvariant()}:{uri.Port.ToString(CultureInfo.InvariantCulture)}";
+    }
+
+    public static bool IsSameHub(string? first, string? second)
+    {
+        var scope = HubCredentialScope(first);
+        return scope != null && string.Equals(scope, HubCredentialScope(second), StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Derive HTTP API base URL from a WebSocket URL.
     /// wss://host:8443/ws/agent -> https://host:8443
     /// </summary>

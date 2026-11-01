@@ -24,120 +24,32 @@ public class AgentStatusTests
         Assert.Equal(expected, status.ConnectionDisplayText);
     }
 
-    [Fact]
-    public void ExtractWindowsStatus_HyperVEnabled()
+    // The tray and pop-out must say why the Hub connect failed, keep the state
+    // text for older agents and unknown codes, and drop the reason once connected.
+    [Theory]
+    [InlineData(false, "connecting", "name_lookup_failed", "Can't find the Hub's address")]
+    [InlineData(false, "connecting", "connection_refused", "Can't reach the Hub")]
+    [InlineData(false, "connecting", "host_unreachable", "Can't reach the Hub")]
+    [InlineData(false, "connecting", "timed_out", "Can't reach the Hub")]
+    [InlineData(false, "connecting", "certificate_untrusted", "The Hub's certificate isn't trusted")]
+    [InlineData(false, "auth_failed", "token_rejected", "The Hub refused this device. Enroll it again.")]
+    [InlineData(false, "connecting", "", "Connecting")]
+    [InlineData(false, "connecting", "a_future_reason", "Connecting")]
+    [InlineData(true, "connected", "timed_out", "Connected")]
+    public void ConnectionDisplayTextShowsWhyTheHubConnectFailed(
+        bool connected,
+        string state,
+        string reason,
+        string expected)
     {
         var status = new AgentStatus
         {
-            Metadata = new Dictionary<string, string>
-            {
-                ["hyperv_enabled"] = "true",
-                ["hyperv_vm_count"] = "4",
-                ["hyperv_running_count"] = "2",
-            }
+            IsConnected = connected,
+            HubConnectionState = state,
+            LastErrorReason = reason,
         };
 
-        status.ExtractWindowsStatus();
-
-        Assert.NotNull(status.HyperV);
-        Assert.True(status.HyperV.Enabled);
-        Assert.Equal(4, status.HyperV.VmCount);
-        Assert.Equal(2, status.HyperV.RunningCount);
-    }
-
-    [Fact]
-    public void ExtractWindowsStatus_RejectsMalformedCounts()
-    {
-        var status = new AgentStatus
-        {
-            Metadata = new Dictionary<string, string>
-            {
-                ["hyperv_enabled"] = "true",
-                ["hyperv_vm_count"] = "4vms",
-                ["hyperv_running_count"] = "-2",
-                ["windows_update_pending"] = "3pending",
-            }
-        };
-
-        status.ExtractWindowsStatus();
-
-        Assert.NotNull(status.HyperV);
-        Assert.Equal(0, status.HyperV.VmCount);
-        Assert.Equal(0, status.HyperV.RunningCount);
-        Assert.Null(status.WindowsUpdate);
-    }
-
-    [Fact]
-    public void ExtractWindowsStatus_HyperVDisabled()
-    {
-        var status = new AgentStatus
-        {
-            Metadata = new Dictionary<string, string>
-            {
-                ["hyperv_enabled"] = "false",
-            }
-        };
-
-        status.ExtractWindowsStatus();
-
-        Assert.Null(status.HyperV);
-    }
-
-    [Fact]
-    public void ExtractWindowsStatus_HyperVMissing()
-    {
-        var status = new AgentStatus { Metadata = [] };
-
-        status.ExtractWindowsStatus();
-
-        Assert.Null(status.HyperV);
-    }
-
-    [Fact]
-    public void ExtractWindowsStatus_WindowsUpdatePending()
-    {
-        var status = new AgentStatus
-        {
-            Metadata = new Dictionary<string, string>
-            {
-                ["windows_update_pending"] = "3",
-                ["windows_update_reboot_required"] = "true",
-            }
-        };
-
-        status.ExtractWindowsStatus();
-
-        Assert.NotNull(status.WindowsUpdate);
-        Assert.Equal(3, status.WindowsUpdate.PendingCount);
-        Assert.True(status.WindowsUpdate.RebootRequired);
-    }
-
-    [Fact]
-    public void ExtractWindowsStatus_NoUpdates()
-    {
-        var status = new AgentStatus { Metadata = [] };
-
-        status.ExtractWindowsStatus();
-
-        Assert.Null(status.WindowsUpdate);
-    }
-
-    [Fact]
-    public void ExtractWindowsStatus_RebootOnlyNoCount()
-    {
-        var status = new AgentStatus
-        {
-            Metadata = new Dictionary<string, string>
-            {
-                ["windows_update_reboot_required"] = "true",
-            }
-        };
-
-        status.ExtractWindowsStatus();
-
-        Assert.NotNull(status.WindowsUpdate);
-        Assert.Equal(0, status.WindowsUpdate.PendingCount);
-        Assert.True(status.WindowsUpdate.RebootRequired);
+        Assert.Equal(expected, status.ConnectionDisplayText);
     }
 
     [Fact]

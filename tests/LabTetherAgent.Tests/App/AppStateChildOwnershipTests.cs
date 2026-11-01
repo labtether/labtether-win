@@ -18,6 +18,7 @@ public class AppStateChildOwnershipTests
         await fixture.ExitQueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         fixture.Start();
         await fixture.Api.PollStatusForTestingAsync();
+        await fixture.WaitForReplacementPollingAsync();
         Assert.True(fixture.Api.IsConnected);
         var replacementToken = fixture.Settings.LocalApiAuthToken;
 
@@ -38,6 +39,7 @@ public class AppStateChildOwnershipTests
         await fixture.StopPaused.Task.WaitAsync(TimeSpan.FromSeconds(10));
         fixture.Start();
         await fixture.Api.PollStatusForTestingAsync();
+        await fixture.WaitForReplacementPollingAsync();
         var replacementToken = fixture.Settings.LocalApiAuthToken;
         var replacementFile = File.ReadAllText(fixture.AuthPath);
         Assert.False(string.IsNullOrWhiteSpace(replacementToken));
@@ -60,6 +62,7 @@ public class AppStateChildOwnershipTests
         private readonly List<System.Diagnostics.Process> _children = [];
         private readonly List<System.Diagnostics.Process> _ownedHandles = [];
         private readonly TaskCompletionSource _replacementOutput = NewSignal();
+        private readonly ConnectedHandler _handler = new();
         private int _waitCount;
         public readonly TaskCompletionSource ExitQueued = NewSignal();
         public readonly TaskCompletionSource StopPaused = NewSignal();
@@ -115,7 +118,7 @@ public class AppStateChildOwnershipTests
             {
                 if (line.Message == "replacement-alive") _replacementOutput.TrySetResult();
             };
-            Api = new LocalApiClient(new HttpClient(new ConnectedHandler()));
+            Api = new LocalApiClient(new HttpClient(_handler));
             Owner = new AppState(Settings, new CredentialStore(false, Path.Combine(_root, "credentials")),
                 process, Api, () => binary,
                 // The fixture owns only its two children. Never enumerate or
@@ -140,6 +143,20 @@ public class AppStateChildOwnershipTests
             }
             catch (InvalidOperationException) { } // The intentional exit-7 child.
             catch (ArgumentException) { }
+        }
+
+        /// <summary>
+        /// About a second after launch the replacement starts its own polling,
+        /// which first resets the connection state. Wait until that poll has
+        /// reconnected, so a later disconnect can only come from the code
+        /// under test rather than from this scheduled reset.
+        /// </summary>
+        public async Task WaitForReplacementPollingAsync()
+        {
+            var token = Settings.LocalApiAuthToken;
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            while (_handler.RequestsWith(token) < 2 || !Api.IsConnected)
+                await Task.Delay(20, timeout.Token);
         }
 
         public void DeliverExitNotifications()
@@ -182,10 +199,17 @@ public class AppStateChildOwnershipTests
 
     private sealed class ConnectedHandler : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        private readonly ConcurrentQueue<string?> _tokens = new();
+
+        public int RequestsWith(string token) => _tokens.Count(sent => sent == token);
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            _tokens.Enqueue(request.Headers.Authorization?.Parameter);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent("{\"connected\":true,\"connection_state\":\"connected\",\"metrics\":{}}")
             });
+        }
     }
 }

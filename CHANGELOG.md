@@ -3,17 +3,22 @@
 All notable changes to the LabTether Windows Agent are listed here. Versions
 follow [Semantic Versioning](https://semver.org/).
 
-## [1.7.0] - unreleased
+## [1.7.1] - 2026-10-31
 
-Changes since the last public release, v1.4.0.
+Changes since the last public release, v1.4.0. v1.7.0 was tagged but never
+released.
 
 ### Added
-- A per-user installer, `labtether-agent-win-x64.msi`. It needs no
+- Source for a per-user installer, `labtether-agent-win-x64.msi`. It needs no
   administrator rights, installs to `%LOCALAPPDATA%\Programs\LabTether`, adds
   a Start menu shortcut and an uninstall entry in Settings > Apps, and
-  upgrades in place. The portable ZIP is still published.
+  upgrades in place. The MSI is built only for signed releases, so the
+  unsigned 1.7.1 release ships only the ZIP.
 - When the agent stops and cannot be restarted, the tray icon turns red, its
   tooltip says so, and a notification appears. The reason is in View Logs.
+- When the agent cannot connect to the Hub, the tray window and pop-out say
+  why, for example "Can't reach the Hub" or "The Hub's certificate isn't
+  trusted", instead of "Connecting".
 - Launching with `--state-directory PATH` keeps that copy's settings,
   credentials and agent identity apart from the installed app.
 - Hub URLs on a loopback address work, so a local tunnel to the Hub can be used.
@@ -43,19 +48,39 @@ Changes since the last public release, v1.4.0.
 - Status polling keeps working when several windows are open.
 - The update check reads the right release feed.
 - Hub URLs are validated more strictly, and console links are built safely.
-- `scripts/download-agent.ps1` fetches an agent release that exists (v1.7.0 by
+- `scripts/download-agent.ps1` fetches an agent release that exists (v1.7.1 by
   default) and writes the version marker the build checks.
+- With Allow Remote Overrides off, settings pushed earlier by the Hub are
+  removed on the next start, so the agent runs the values shown in Settings.
+- The tray flyout no longer has Hyper-V and Windows Update cards. The agent
+  core never reported their data, so they could not show anything.
+- The README no longer describes a Windows service mode that the app does not
+  have.
 
 ### Security
-- Releases are signed on the maintainer's machine. Hosted CI only checks the
-  tagged sources and never holds signing credentials.
-- Release archives carry source provenance, and the MSI is checked to hold
-  exactly the signed release payload.
+- Signing happens only on the maintainer's machine. Hosted CI never holds
+  signing credentials. The 1.7.1 ZIP was built by a hand-started hosted
+  workflow and is not code-signed.
+- Release ZIPs record the exact source tags they were built from, and the MSI
+  build checks that the installer holds exactly the release files.
+- Settings no longer saves a different Hub URL while a token for the current
+  Hub is saved, because the agent would send that token to the new address.
+  Use Setup / Re-enroll with an enrollment token from the new Hub. A Hub URL
+  written another way for the same Hub, such as `https://` instead of `wss://`,
+  still saves.
+- A folder passed with `--state-directory` is created so that only you,
+  SYSTEM and Administrators can open it. An existing folder that another user
+  owns or can open is refused, because that user could change its settings.
+  Move a refused instance to a new folder.
+- An identity left in `C:\ProgramData\LabTether` by an older version is moved
+  into the app only when no other user could have replaced it.
+- Uninstalling the MSI removes the Hub's SSH key line that the agent added to
+  `authorized_keys`, and Setup keeps the agent's record of that line.
 
 ## Early development
 
-Historical scaffold notes. Releases ship as a ZIP and, from 1.7.0, a per-user
-MSI; the MSIX and `.appinstaller` items below never shipped.
+Historical scaffold notes. Releases ship as a ZIP; the MSIX and
+`.appinstaller` items below never shipped.
 
 ### Security
 - Onboarding connection test now honors the explicit "Trust self-signed certificate" opt-in instead of silently accepting every TLS certificate. Self-signed homelab deployments must tick the new checkbox on Step 1 to complete onboarding; the flag is persisted to `AgentSettings.TlsSkipVerify`.

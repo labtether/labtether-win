@@ -15,6 +15,9 @@ internal static class AgentManagedState
     internal const string DevicePublicKeyFileName = "device-key.pub";
     internal const string DeviceFingerprintFileName = "device-fingerprint";
     internal const string CaCertificateFileName = "ca.crt";
+    // Agent cores after 1.7.0 record the Hub SSH key line they added, so the
+    // installer's uninstall step can remove exactly that line.
+    internal const string HubSshKeyRecordFileName = "hub-ssh-key.json";
 
     private static readonly string[] ManagedArtifactNames =
     {
@@ -25,6 +28,7 @@ internal static class AgentManagedState
         DevicePublicKeyFileName,
         DeviceFingerprintFileName,
         CaCertificateFileName,
+        HubSshKeyRecordFileName,
     };
 
     internal static IReadOnlyList<string> SnapshotArtifactNames => ManagedArtifactNames;
@@ -78,8 +82,14 @@ internal static class AgentManagedState
             throw new InvalidOperationException("Setup state contained an unknown managed artifact.");
 
         Directory.CreateDirectory(destinationDirectory);
+        // Keep an existing SSH key record when the staged agent found the
+        // Hub's key already present and so recorded nothing; the line it
+        // names is still the one to remove on uninstall.
         foreach (var fileName in ManagedArtifactNames)
-            SecureFile.DeleteIfExists(Path.Combine(destinationDirectory, fileName));
+        {
+            if (fileName != HubSshKeyRecordFileName || artifacts.ContainsKey(fileName))
+                SecureFile.DeleteIfExists(Path.Combine(destinationDirectory, fileName));
+        }
 
         foreach (var (fileName, contents) in artifacts)
         {
@@ -127,6 +137,10 @@ internal static class AgentManagedState
                 var source = Path.Combine(legacyDirectory, fileName);
                 if (!File.Exists(source))
                     continue;
+                // Any user may create files in ProgramData\LabTether. Never
+                // adopt an identity that another user could have planted.
+                if (!SecureFile.IsChangeableOnlyByTrustedUsers(source))
+                    return false;
                 migrated[fileName] = ReadBoundedRegularFile(source, MaximumBytes(fileName));
             }
 
@@ -182,6 +196,7 @@ internal static class AgentManagedState
     private static int MaximumBytes(string fileName) => fileName switch
     {
         CaCertificateFileName => 1024 * 1024,
+        HubSshKeyRecordFileName => 16 * 1024,
         AgentTokenFileName or EnrollmentStateFileName or AgentConfigFileName => 64 * 1024,
         DeviceKeyFileName or DevicePublicKeyFileName or DeviceFingerprintFileName => 4 * 1024,
         _ => throw new InvalidOperationException("Unknown managed artifact."),

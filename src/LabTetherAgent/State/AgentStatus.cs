@@ -1,5 +1,3 @@
-using System.Globalization;
-
 namespace LabTetherAgent.State;
 
 /// <summary>
@@ -10,6 +8,7 @@ public class AgentStatus
     public bool IsConnected { get; set; }
     public string HubConnectionState { get; set; } = "disconnected";
     public string LastError { get; set; } = string.Empty;
+    public string LastErrorReason { get; set; } = string.Empty;
     public string? Uptime { get; set; }
 
     // Metrics
@@ -29,10 +28,6 @@ public class AgentStatus
     // Capabilities metadata
     public Dictionary<string, string> Metadata { get; set; } = [];
 
-    // Windows-exclusive status
-    public HyperVStatus? HyperV { get; set; }
-    public WindowsUpdateStatus? WindowsUpdate { get; set; }
-
     public string MemoryDisplayText =>
         MemoryTotalBytes > 0
             ? $"{MemoryUsedBytes / (1024.0 * 1024 * 1024):F1} GB"
@@ -45,6 +40,10 @@ public class AgentStatus
             if (IsConnected)
                 return "Connected";
 
+            var reason = ConnectReasonText(LastErrorReason);
+            if (reason != null)
+                return reason;
+
             return (HubConnectionState ?? string.Empty).Trim().ToLowerInvariant() switch
             {
                 "connecting" => "Connecting",
@@ -55,59 +54,17 @@ public class AgentStatus
         }
     }
 
-    /// <summary>
-    /// Extract Windows-specific status from capabilities metadata.
-    /// </summary>
-    public void ExtractWindowsStatus()
-    {
-        // Hyper-V
-        if (Metadata.TryGetValue("hyperv_enabled", out var hvEnabled) &&
-            string.Equals(hvEnabled, "true", StringComparison.OrdinalIgnoreCase))
+    // Plain text for the agent's last_error_reason code. An empty or unknown
+    // code gives null, so the generic state text stays.
+    private static string? ConnectReasonText(string? code) =>
+        (code ?? string.Empty).Trim() switch
         {
-            var vmCount = 0;
-            var runningCount = 0;
-            if (Metadata.TryGetValue("hyperv_vm_count", out var vmCountStr))
-                vmCount = ParseNonNegativeCount(vmCountStr);
-            if (Metadata.TryGetValue("hyperv_running_count", out var runningStr))
-                runningCount = ParseNonNegativeCount(runningStr);
-            HyperV = new HyperVStatus(true, vmCount, runningCount);
-        }
-        else
-        {
-            HyperV = null;
-        }
-
-        // Windows Update
-        var pendingCount = 0;
-        var rebootRequired = false;
-        if (Metadata.TryGetValue("windows_update_pending", out var pendingStr))
-            pendingCount = ParseNonNegativeCount(pendingStr);
-        if (Metadata.TryGetValue("windows_update_reboot_required", out var rebootStr))
-            rebootRequired = string.Equals(rebootStr, "true", StringComparison.OrdinalIgnoreCase);
-        if (pendingCount > 0 || rebootRequired)
-            WindowsUpdate = new WindowsUpdateStatus(pendingCount, rebootRequired);
-        else
-            WindowsUpdate = null;
-    }
-
-    private static int ParseNonNegativeCount(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return 0;
-
-        var trimmed = value.Trim();
-        foreach (var c in trimmed)
-        {
-            if (c is < '0' or > '9')
-                return 0;
-        }
-
-        return int.TryParse(trimmed, NumberStyles.None, CultureInfo.InvariantCulture, out var count)
-            ? count
-            : 0;
-    }
+            "name_lookup_failed" => "Can't find the Hub's address",
+            "connection_refused" or "host_unreachable" or "timed_out" => "Can't reach the Hub",
+            "certificate_untrusted" => "The Hub's certificate isn't trusted",
+            "token_rejected" => "The Hub refused this device. Enroll it again.",
+            _ => null,
+        };
 }
 
 public record AlertSnapshot(string Name, string State, string Severity, string? Message);
-public record HyperVStatus(bool Enabled, int VmCount, int RunningCount);
-public record WindowsUpdateStatus(int PendingCount, bool RebootRequired);

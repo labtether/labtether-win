@@ -17,6 +17,10 @@ public class AgentStatusResponse
     [JsonPropertyName("last_error")]
     public string LastError { get; set; } = string.Empty;
 
+    // Fixed code for why the last Hub connect failed; older agents omit it.
+    [JsonPropertyName("last_error_reason")]
+    public string? LastErrorReason { get; set; }
+
     [JsonPropertyName("metrics")]
     public AgentMetricsResponse? Metrics { get; set; }
 

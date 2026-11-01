@@ -16,9 +16,9 @@
     <!-- Checked-in baseline for the release being prepared. Release builds
          override all version fields from the tag so the wrapper, its MSI and
          its update checker cannot drift. -->
-    <Version>1.7.0</Version>
-    <AssemblyVersion>1.7.0.0</AssemblyVersion>
-    <FileVersion>1.7.0.0</FileVersion>
+    <Version>1.7.1</Version>
+    <AssemblyVersion>1.7.1.0</AssemblyVersion>
+    <FileVersion>1.7.1.0</FileVersion>
     <PublishSingleFile>false</PublishSingleFile>
     <!-- WinUI self-contained payloads rely on their complete framework and
          resource graph. Keep trimming and ReadyToRun disabled explicitly so

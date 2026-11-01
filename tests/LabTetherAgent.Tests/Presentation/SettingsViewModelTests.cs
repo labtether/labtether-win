@@ -139,6 +139,32 @@ public class SettingsViewModelTests
         }
     }
 
+    [Fact]
+    public void HubChangeIsRefusedWhileATokenForTheCurrentHubIsSaved()
+    {
+        // Risk: saving another Hub's URL sends this Hub's agent token there,
+        // and that Hub can replay it to act as this device.
+        var settings = new AgentSettings
+        {
+            HubUrl = "wss://nas01.example.com:8443/ws/agent",
+            ApiToken = "nas01-agent-token",
+        };
+        var loginItems = new FakeLoginItemManager { Enabled = false };
+        var viewModel = Create(settings, loginItems, out var persisted);
+
+        viewModel.HubUrl = "https://NAS01.example.com:8443";
+        viewModel.SaveCommand.Execute(null);
+        Assert.Null(viewModel.SaveError);
+        Assert.Single(persisted);
+
+        viewModel.HubUrl = "wss://192.0.2.10:8443/ws/agent";
+        viewModel.SaveCommand.Execute(null);
+        Assert.Equal("https://NAS01.example.com:8443", settings.HubUrl);
+        Assert.Single(persisted);
+        Assert.True(viewModel.IsDirty);
+        Assert.Contains("Setup / Re-enroll", viewModel.SaveError);
+    }
+
     private static SettingsViewModel Create(
         AgentSettings settings,
         FakeLoginItemManager loginItems,
