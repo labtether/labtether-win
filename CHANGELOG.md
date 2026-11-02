@@ -24,6 +24,10 @@ Changes since v1.7.1. This release matches LabTether 2.0.
   PowerShell 5.1. It failed before downloading because it read
   `AGENT_VERSION` with a `Join-Path` form that needs PowerShell 7.
 - The README describes the ZIP that releases ship and how to upgrade it.
+- Open Console in the tray menu and the flyout opens the web console. With
+  the Hub URL that Add device shows (the Hub API port) it opened a page of
+  Hub API JSON. The app now asks the Hub for its console address and opens
+  that.
 
 ## [1.7.1] - 2026-10-31
 

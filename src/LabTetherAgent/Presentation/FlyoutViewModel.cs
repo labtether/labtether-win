@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LabTetherAgent.Api;
+using LabTetherAgent.Services;
 using LabTetherAgent.Settings;
 using LabTetherAgent.State;
 
@@ -64,6 +65,9 @@ public partial class FlyoutViewModel : ObservableObject, IDisposable
         get => _hubUrl;
         set => SetProperty(ref _hubUrl, value);
     }
+
+    /// <summary>Saved Hub address and TLS trust, used by Open Console.</summary>
+    public AgentSettings? HubSettings { get; set; }
 
     public string Uptime
     {
@@ -140,49 +144,16 @@ public partial class FlyoutViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private void OpenConsole()
+    private async Task OpenConsoleAsync()
     {
-        if (!string.IsNullOrEmpty(HubUrl) && HubUrl != "--")
-        {
-            var consoleUrl = SettingsValidator.DeriveApiBaseUrl(HubUrl);
-            if (!string.IsNullOrEmpty(consoleUrl))
-                OpenUrl(consoleUrl);
-        }
+        if (HubSettings != null)
+            await new ConsoleLauncher().OpenAsync(HubSettings);
     }
 
     [RelayCommand]
     private void CopyHubUrl()
     {
         // Platform-specific clipboard — will be wired in XAML code-behind
-    }
-
-    private static void OpenUrl(string url)
-    {
-        try
-        {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = url,
-                UseShellExecute = true
-            });
-        }
-        catch (InvalidOperationException ex)
-        {
-            LogOpenUrlFailure(url, ex);
-        }
-        catch (System.ComponentModel.Win32Exception ex)
-        {
-            LogOpenUrlFailure(url, ex);
-        }
-        catch (PlatformNotSupportedException ex)
-        {
-            LogOpenUrlFailure(url, ex);
-        }
-    }
-
-    private static void LogOpenUrlFailure(string url, Exception ex)
-    {
-        System.Diagnostics.Debug.WriteLine($"Failed to open URL '{url}': {ex.GetType().Name}: {ex.Message}");
     }
 
     public void Dispose()
