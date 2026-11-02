@@ -122,7 +122,9 @@ public sealed class ConsoleLauncher
     {
         try
         {
-            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            // Fully qualified: inside LabTetherAgent, "Process" is the
+            // LabTetherAgent.Process namespace.
+            System.Diagnostics.Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
         }
         catch (Exception ex) when (ex is InvalidOperationException
                                    or System.ComponentModel.Win32Exception
