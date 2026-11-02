@@ -6,7 +6,7 @@ using CommunityToolkit.Mvvm.Input;
 using H.NotifyIcon;
 using Microsoft.UI.Xaml;
 using LabTetherAgent.App;
-using LabTetherAgent.Settings;
+using LabTetherAgent.Services;
 using LabTetherAgent.Views.About;
 using LabTetherAgent.Views.Onboarding;
 
@@ -273,26 +273,7 @@ public class TrayIconManager : IDisposable
 
     private void OpenConsole()
     {
-        var hubUrl = SettingsValidator.DeriveApiBaseUrl(_appState.Settings.HubUrl);
-        if (string.IsNullOrEmpty(hubUrl))
-            return;
-        try
-        {
-            System.Diagnostics.Process.Start(
-                new System.Diagnostics.ProcessStartInfo(hubUrl) { UseShellExecute = true });
-        }
-        catch (InvalidOperationException ex)
-        {
-            LogOpenUrlFailure(hubUrl, ex);
-        }
-        catch (System.ComponentModel.Win32Exception ex)
-        {
-            LogOpenUrlFailure(hubUrl, ex);
-        }
-        catch (PlatformNotSupportedException ex)
-        {
-            LogOpenUrlFailure(hubUrl, ex);
-        }
+        _ = new ConsoleLauncher().OpenAsync(_appState.Settings);
     }
 
     private async Task ShowAboutWithErrorHandlingAsync()
@@ -373,11 +354,6 @@ public class TrayIconManager : IDisposable
         {
             owner.Loaded -= loaded;
         }
-    }
-
-    private static void LogOpenUrlFailure(string url, Exception ex)
-    {
-        System.Diagnostics.Debug.WriteLine($"Failed to open URL '{url}': {ex.GetType().Name}: {ex.Message}");
     }
 
     private static void LogAboutFailure(Exception ex)

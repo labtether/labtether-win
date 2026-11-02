@@ -19,6 +19,7 @@ public sealed partial class FlyoutWindow : Window
 
         ViewModel = new FlyoutViewModel(appState.ApiClient);
         ViewModel.HubUrl = appState.Settings.HubUrl;
+        ViewModel.HubSettings = appState.Settings;
 
         // Visibility-aware polling
         Activated += (_, _) => ViewModel.OnFlyoutOpened();
