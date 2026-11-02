@@ -14,8 +14,8 @@ if ($actual -ne $expected) { throw "Checksum mismatch" }
 
 ## Signatures
 
-v1.7.1 is not code-signed, so it has no signatures to check. The release notes
-say whether a release is signed.
+The release notes say whether a release is code-signed. An unsigned release
+has no signatures to check.
 
 For a signed release, extract the app and check that all three LabTether
 programs carry the same valid, timestamped signature:

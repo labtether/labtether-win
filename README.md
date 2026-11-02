@@ -42,8 +42,9 @@ to edit.
 You need Windows 10 or newer (x64), a running hub, and an enrollment token from
 the hub (**Add Device**). The .NET runtime is included.
 
-v1.7.1 is not code-signed, so Windows may show "Windows protected your PC".
-Choose **More info**, then **Run anyway**. To check the download first, see
+The release notes say whether a release is code-signed. For an unsigned
+release, Windows may show "Windows protected your PC". Choose **More info**,
+then **Run anyway**. To check the download first, see
 [docs/verify-download.md](docs/verify-download.md).
 
 To upgrade, quit the tray app, empty the folder and extract the newer ZIP into
