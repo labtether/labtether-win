@@ -20,6 +20,9 @@ Changes since v1.7.1. This release matches LabTether 2.0.
   unsigned. The release notes say whether a release is code-signed.
 
 ### Fixed
+- `scripts/download-agent.ps1` without `-Version` works in Windows
+  PowerShell 5.1. It failed before downloading because it read
+  `AGENT_VERSION` with a `Join-Path` form that needs PowerShell 7.
 - The README describes the ZIP that releases ship and how to upgrade it.
 
 ## [1.7.1] - 2026-10-31
