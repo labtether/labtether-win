@@ -16,6 +16,11 @@ public class UpdateCheckerTests
     [Theory]
     [InlineData("1.1.0", "1.0.0", true)]
     [InlineData("2.0.0", "1.9.9", true)]
+    // Versions compare as numbers, not text (as text, 1.9.0 sorts above
+    // 1.10.0), and a 1.7.1 app must be offered the 2.0.0 release.
+    [InlineData("2.0.0", "1.7.1", true)]
+    [InlineData("1.10.0", "1.9.0", true)]
+    [InlineData("1.9.0", "1.10.0", false)]
     [InlineData("1.0.1", "1.0.0", true)]
     [InlineData("1.0.0", "1.0.0", false)]
     [InlineData("0.9.0", "1.0.0", false)]
