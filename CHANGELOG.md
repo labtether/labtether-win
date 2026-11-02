@@ -3,6 +3,25 @@
 All notable changes to the LabTether Windows Agent are listed here. Versions
 follow [Semantic Versioning](https://semver.org/).
 
+## [2.0.0] - unreleased
+
+Changes since v1.7.1. This release matches LabTether 2.0.
+
+### Added
+- Maintainers can build an unsigned release ZIP with a hand-started hosted
+  workflow, `unsigned-release-build.yml`. It signs nothing and uploads
+  nothing to a release.
+
+### Changed
+- The app, its MSI and the bundled agent core are version 2.0.0. The bundled
+  agent is `labtether-agent v2.0.0`, and `scripts/download-agent.ps1`
+  fetches v2.0.0 by default.
+- The README and docs/verify-download.md no longer name one release as
+  unsigned. The release notes say whether a release is code-signed.
+
+### Fixed
+- The README describes the ZIP that releases ship and how to upgrade it.
+
 ## [1.7.1] - 2026-10-31
 
 Changes since the last public release, v1.4.0. v1.7.0 was tagged but never
