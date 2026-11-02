@@ -10,9 +10,12 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+# Windows PowerShell 5.1 downloads far slower while it draws a progress bar.
+$ProgressPreference = "SilentlyContinue"
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
-    $Version = (Get-Content (Join-Path $PSScriptRoot ".." "AGENT_VERSION")).Trim()
+    # Two-argument Join-Path: Windows PowerShell 5.1 has no third argument.
+    $Version = (Get-Content -LiteralPath (Join-Path (Split-Path $PSScriptRoot -Parent) "AGENT_VERSION")).Trim()
 }
 $tag = "v" + $Version.Trim().TrimStart("v")
 if ($tag -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') {
