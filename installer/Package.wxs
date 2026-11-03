@@ -44,6 +44,10 @@
                        Type="integer"
                        Value="1"
                        KeyPath="yes" />
+        <!-- The app registers its notification name and icon here. -->
+        <RemoveRegistryKey Root="HKCU"
+                           Key="Software\Classes\AppUserModelId\LabTether.Agent"
+                           Action="removeOnUninstall" />
       </Component>
     </StandardDirectory>
 

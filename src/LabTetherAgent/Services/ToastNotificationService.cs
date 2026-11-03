@@ -1,23 +1,34 @@
 using System.Runtime.InteropServices;
-using Microsoft.Windows.AppNotifications;
-using Microsoft.Windows.AppNotifications.Builder;
+using System.Security;
+using Microsoft.Win32;
+using Windows.Data.Xml.Dom;
+using Windows.UI.Notifications;
 using LabTetherAgent.Presentation;
 using LabTetherAgent.State;
 
 namespace LabTetherAgent.Services;
 
 /// <summary>
-/// Windows toast notification service for connection state changes and alerts.
-/// Uses Windows App SDK AppNotificationManager.
+/// Windows notifications for connection changes, a stopped agent, updates and
+/// alerts. Uses the Windows toast API with the app's own notification ID.
+/// The Windows App SDK's AppNotificationManager cannot register this
+/// self-contained, unpackaged app ("The specified module could not be
+/// found"), so it showed no notification at all.
 /// </summary>
 public class ToastNotificationService
 {
     internal const string WindowsReleaseUrl = "https://github.com/labtether/labtether-win/releases/latest";
     internal const string DisplayName = "LabTether Agent";
+
+    /// <summary>The notification ID; Windows shows notifications under its DisplayName and icon.</summary>
+    internal const string AppId = "LabTether.Agent";
+    internal const string AppIdKey = @"Software\Classes\AppUserModelId\" + AppId;
+    private const string ViewUpdateArgument = "action=view-update";
+
     private readonly Dictionary<string, DateTime> _throttle = new();
     private static readonly TimeSpan ThrottleInterval = TimeSpan.FromMinutes(5);
     private readonly Action<string>? _log;
-    private bool _registered;
+    private ToastNotifier? _notifier;
 
     /// <param name="log">Writes a failure to the app's log (View logs), which Release builds keep.</param>
     public ToastNotificationService(Action<string>? log = null)
@@ -27,23 +38,22 @@ public class ToastNotificationService
 
     public bool TryInitialize()
     {
-        if (_registered) return true;
+        if (_notifier != null) return true;
         try
         {
-            AppNotificationManager.Default.NotificationInvoked += OnNotificationInvoked;
-            // Name and icon for the notification and its Notification Center
-            // group; without them Windows shows the EXE name "LabTetherAgent".
-            var icon = Path.Combine(AppContext.BaseDirectory, "Resources", "Icons", "Square44x44Logo.png");
-            if (File.Exists(icon))
-                AppNotificationManager.Default.Register(DisplayName, new Uri(icon));
-            else
-                AppNotificationManager.Default.Register();
-            _registered = true;
+            // Name and icon for the notification and its Notification Center group.
+            using (var key = Registry.CurrentUser.CreateSubKey(AppIdKey))
+            {
+                key.SetValue("DisplayName", DisplayName);
+                var icon = Path.Combine(AppContext.BaseDirectory, "Resources", "Icons", "Square44x44Logo.png");
+                if (File.Exists(icon))
+                    key.SetValue("IconUri", icon);
+            }
+            _notifier = ToastNotificationManager.CreateToastNotifier(AppId);
             return true;
         }
-        catch (Exception ex) when (ex is COMException or InvalidOperationException or ArgumentException)
+        catch (Exception ex) when (ex is COMException or UnauthorizedAccessException or IOException or SecurityException)
         {
-            AppNotificationManager.Default.NotificationInvoked -= OnNotificationInvoked;
             _log?.Invoke($"Windows notifications are unavailable: {ex.Message}");
             return false;
         }
@@ -52,53 +62,48 @@ public class ToastNotificationService
     public void NotifyDisconnected(AgentStatus? latest)
     {
         if (!ShouldNotify("disconnected")) return;
-        TryShow(Build(ToastText.Disconnected(latest, DateTimeOffset.Now)).BuildNotification());
+        TryShow(ToastText.Disconnected(latest, DateTimeOffset.Now));
     }
 
     public void NotifyReconnected()
     {
         if (!ShouldNotify("reconnected")) return;
-        TryShow(Build(ToastText.Reconnected(DateTimeOffset.Now)).BuildNotification());
+        TryShow(ToastText.Reconnected(DateTimeOffset.Now));
     }
 
     public void NotifyAgentError(string message)
     {
         if (!ShouldNotify("agent-error")) return;
-        TryShow(Build(ToastText.AgentStopped(message, DateTimeOffset.Now)).BuildNotification());
+        TryShow(ToastText.AgentStopped(message, DateTimeOffset.Now));
     }
 
     public void NotifyUpdateAvailable(string version)
     {
         if (!ShouldNotify("update")) return;
-
-        var builder = Build(ToastText.UpdateAvailable(version))
-            .AddArgument("action", "view-update")
-            .AddButton(new AppNotificationButton("View release")
-                .AddArgument("action", "view-update"));
-
-        TryShow(builder.BuildNotification());
+        TryShow(ToastText.UpdateAvailable(version), ("View release", ViewUpdateArgument));
     }
 
     public void NotifyAlert(AlertSnapshot alert)
     {
         if (!ShouldNotify($"alert:{alert.Name}")) return;
-        TryShow(Build(ToastText.Alert(alert, DateTimeOffset.Now)).BuildNotification());
+        TryShow(ToastText.Alert(alert, DateTimeOffset.Now));
     }
 
     public void Cleanup()
     {
-        if (!_registered) return;
-        AppNotificationManager.Default.NotificationInvoked -= OnNotificationInvoked;
-        AppNotificationManager.Default.Unregister();
-        _registered = false;
+        _notifier = null;
     }
 
-    private static AppNotificationBuilder Build(ToastMessage message)
+    /// <summary>The toast XML: a title, an optional second line and an optional button.</summary>
+    internal static string BuildXml(ToastMessage message, (string Label, string Argument)? button)
     {
-        var builder = new AppNotificationBuilder().AddText(message.Title);
-        if (message.Body.Length > 0)
-            builder.AddText(message.Body);
-        return builder;
+        static string Text(string value) => $"<text>{SecurityElement.Escape(value)}</text>";
+        var launch = button is { } b ? $" launch=\"{SecurityElement.Escape(b.Argument)}\"" : "";
+        var body = message.Body.Length > 0 ? Text(message.Body) : "";
+        var actions = button is { } a
+            ? $"<actions><action content=\"{SecurityElement.Escape(a.Label)}\" arguments=\"{SecurityElement.Escape(a.Argument)}\" /></actions>"
+            : "";
+        return $"<toast{launch}><visual><binding template=\"ToastGeneric\">{Text(message.Title)}{body}</binding></visual>{actions}</toast>";
     }
 
     private bool ShouldNotify(string key)
@@ -111,23 +116,28 @@ public class ToastNotificationService
         return true;
     }
 
-    private void TryShow(AppNotification notification)
+    private void TryShow(ToastMessage message, (string Label, string Argument)? button = null)
     {
-        if (!_registered)
+        if (_notifier == null)
             return;
         try
         {
-            AppNotificationManager.Default.Show(notification);
+            var xml = new XmlDocument();
+            xml.LoadXml(BuildXml(message, button));
+            var toast = new ToastNotification(xml);
+            toast.Activated += OnActivated;
+            _notifier.Show(toast);
         }
-        catch (Exception ex) when (ex is COMException or InvalidOperationException)
+        catch (Exception ex) when (ex is COMException or ArgumentException or InvalidOperationException)
         {
             _log?.Invoke($"Could not show a Windows notification: {ex.Message}");
         }
     }
 
-    private static void OnNotificationInvoked(AppNotificationManager sender, AppNotificationActivatedEventArgs args)
+    // Works while the app runs; the update toast's body and button carry the same argument.
+    private void OnActivated(ToastNotification sender, object args)
     {
-        if (!args.Arguments.TryGetValue("action", out var action) || action != "view-update")
+        if (args is not ToastActivatedEventArgs activated || activated.Arguments != ViewUpdateArgument)
             return;
         try
         {
@@ -138,7 +148,7 @@ public class ToastNotificationService
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
         {
-            System.Diagnostics.Debug.WriteLine($"Failed to open update release: {ex.Message}");
+            _log?.Invoke($"Could not open the release page: {ex.Message}");
         }
     }
 }
