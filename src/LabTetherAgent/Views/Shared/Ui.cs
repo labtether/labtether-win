@@ -9,9 +9,6 @@ public static class Ui
 
     public static Visibility Hide(bool value) => value ? Visibility.Collapsed : Visibility.Visible;
 
-    public static Visibility ShowText(string? value) =>
-        string.IsNullOrEmpty(value) ? Visibility.Collapsed : Visibility.Visible;
-
     public static bool Not(bool value) => !value;
 
     public static string OnOff(bool value) => value ? "On" : "Off";

@@ -52,7 +52,9 @@ public class AgentLogReader
             {
                 System.Diagnostics.Debug.WriteLine($"Agent log reader stopped after stream error: {ex.Message}");
             }
-        }, ct);
+            // No token here: a cancel that lands before the loop starts must end
+            // the task normally, as one during the read does, not as cancelled.
+        });
     }
 
     /// <summary>

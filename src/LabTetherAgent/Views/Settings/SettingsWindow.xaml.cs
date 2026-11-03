@@ -20,5 +20,8 @@ public sealed partial class SettingsWindow : Window
         {
             await appState.RestartAgentAsync();
         };
+        // Cancel and Save end the dialog, as the footer buttons promise.
+        ViewModel.OnCancelled += Close;
+        ViewModel.OnSaved += Close;
     }
 }

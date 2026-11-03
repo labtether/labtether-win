@@ -52,6 +52,9 @@ public readonly record struct TrayStatus(TrayGlyphState State, string Tooltip)
         return Make(state, line);
     }
 
+    /// <summary>Before the first enrollment there is no Hub to be offline from.</summary>
+    public static TrayStatus NotSetUp() => Make(TrayGlyphState.Offline, AgentStatusText.NotSetUp);
+
     private static TrayStatus Make(TrayGlyphState state, string line)
     {
         var tooltip = AppName + "\n" + line;

@@ -3,7 +3,6 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:components="using:LabTetherAgent.Components"
-    xmlns:shared="using:LabTetherAgent.Views.Shared"
     Title="LabTether Agent setup">
 
     <!-- One screen: Hub, trust and token on one sheet; device and group ID under Advanced. -->
@@ -29,7 +28,7 @@
                                  Text="{x:Bind ViewModel.HubUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                         <TextBlock Text="{x:Bind ViewModel.HubUrlError, Mode=OneWay}" Margin="0,6,0,0"
                                    Style="{StaticResource LTProblemTextStyle}" AutomationProperties.LiveSetting="Polite"
-                                   Visibility="{x:Bind shared:Ui.ShowText(ViewModel.HubUrlError), Mode=OneWay}" />
+                                   Visibility="{x:Bind ViewModel.HasHubUrlError, Mode=OneWay}" />
 
                         <TextBlock Margin="0,16,0,6" Style="{StaticResource LTFieldLabelStyle}">
                             <Run Text="CA certificate file" />

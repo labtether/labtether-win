@@ -61,8 +61,16 @@ public partial class OnboardingViewModel : ObservableObject
     public string? HubUrlError
     {
         get => _hubUrlError;
-        set => SetProperty(ref _hubUrlError, value);
+        set
+        {
+            if (SetProperty(ref _hubUrlError, value))
+                OnPropertyChanged(nameof(HasHubUrlError));
+        }
     }
+
+    // The error line binds to this bool. Bound to the string through a
+    // function, the empty line stayed visible after the URL was corrected.
+    public bool HasHubUrlError => !string.IsNullOrEmpty(HubUrlError);
 
     public bool UseEnrollmentToken
     {

@@ -2,6 +2,7 @@ using System.Reflection;
 using Microsoft.UI.Xaml.Controls;
 using Windows.Storage.Pickers;
 using LabTetherAgent.App;
+using LabTetherAgent.Presentation;
 using LabTetherAgent.Services;
 using WinRT.Interop;
 
@@ -25,7 +26,7 @@ public sealed partial class AboutDialog : ContentDialog
             ? $"{assemblyVersion.Major}.{assemblyVersion.Minor}.{assemblyVersion.Build}"
             : "0.0.0";
         AgentVersionText.Text = ReadAgentVersion();
-        HubUrlText.Text = appState.Settings.HubUrl;
+        HubUrlText.Text = appState.Settings.IsEnrolled ? appState.Settings.HubUrl : AgentStatusText.NotSetUp;
         FingerprintText.Text = ""; // filled from /agent/info
         VersionText.Text = $"Version {AppVersionText.Text}";
 

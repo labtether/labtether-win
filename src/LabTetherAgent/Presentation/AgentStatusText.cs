@@ -18,11 +18,16 @@ public static partial class AgentStatusText
 {
     public const string Separator = " · ";
 
+    /// <summary>Shown instead of a Hub before the first enrollment.</summary>
+    public const string NotSetUp = "Not set up";
+
     public static AgentHeader Header(AgentStatus? status, string? hubUrl, DateTimeOffset now)
     {
         var host = HubHost(hubUrl);
         if (status == null)
-            return new AgentHeader("Offline", host, true);
+            return host.Length == 0
+                ? new AgentHeader(NotSetUp, "", false)
+                : new AgentHeader("Offline", host, true);
 
         if (status.IsConnected)
         {

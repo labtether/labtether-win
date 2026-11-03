@@ -149,6 +149,7 @@ public partial class SettingsViewModel : ObservableObject
     public bool CanStartAtLogin => _settings.Location.SupportsOsIntegration;
 
     public event Action? OnSaved;
+    public event Action? OnCancelled;
     public event Action? OnRestartRequired;
 
     public readonly string[] LogLevels = ["debug", "info", "warn", "error"];
@@ -317,5 +318,6 @@ public partial class SettingsViewModel : ObservableObject
     private void Cancel()
     {
         LoadFromSettings();
+        OnCancelled?.Invoke();
     }
 }
