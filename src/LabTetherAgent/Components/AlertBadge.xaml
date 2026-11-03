@@ -11,6 +11,7 @@
                 <VisualState x:Name="Critical">
                     <VisualState.Setters>
                         <Setter Target="SeverityDot.Fill" Value="{ThemeResource LTBadBrush}" />
+                        <Setter Target="WarningHole.Visibility" Value="Collapsed" />
                     </VisualState.Setters>
                 </VisualState>
             </VisualStateGroup>
@@ -19,8 +20,13 @@
             <ColumnDefinition Width="8" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
-        <Ellipse x:Name="SeverityDot" Width="8" Height="8" Margin="0,6,0,0" VerticalAlignment="Top"
-                 Fill="{ThemeResource LTWarnBrush}" />
+        <!-- A contrast theme has one colour for both severities, so a warning
+             there is a ring (the hole has the panel colour) and a critical alert
+             a full dot. Elsewhere the hole is transparent: amber and red dots. -->
+        <Grid Width="8" Height="8" Margin="0,6,0,0" VerticalAlignment="Top">
+            <Ellipse x:Name="SeverityDot" Fill="{ThemeResource LTWarnBrush}" />
+            <Ellipse x:Name="WarningHole" Width="4" Height="4" Fill="{ThemeResource LTWarnDotHoleBrush}" />
+        </Grid>
         <StackPanel Grid.Column="1" VerticalAlignment="Center">
             <TextBlock x:Name="NameText" Style="{StaticResource LTBodyTextStyle}" FontWeight="Medium"
                        Foreground="{ThemeResource LTTextBrush}" TextTrimming="CharacterEllipsis" />

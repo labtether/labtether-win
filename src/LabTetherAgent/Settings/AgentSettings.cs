@@ -45,6 +45,9 @@ public class AgentSettings
     public bool LowPowerMode { get; set; }
     public bool StartAtLogin { get; set; }
 
+    /// <summary>The last MSI fresh-install marker whose defaults were applied.</summary>
+    public string HandledInstall { get; set; } = string.Empty;
+
     // Logging
     public string LogLevel { get; set; } = "info";
 
@@ -236,6 +239,7 @@ public class AgentSettings
         AllowRemoteOverrides = source.AllowRemoteOverrides;
         LowPowerMode = source.LowPowerMode;
         StartAtLogin = source.StartAtLogin;
+        HandledInstall = source.HandledInstall;
         LogLevel = source.LogLevel;
         WebRtcEnabled = source.WebRtcEnabled;
         WebRtcStunUrl = source.WebRtcStunUrl;

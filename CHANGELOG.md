@@ -70,6 +70,16 @@ Changes since v1.7.1. This release matches LabTether 2.0.
 - Save in Settings turns on while you type in a text box.
 - The logs window shows the whole time, and screen readers read each log
   line.
+- A reinstall over a kept setup turns Start at sign-in on again (the
+  uninstall removed it). The MSI marks each fresh install; the app applies
+  this once, so turning it off in Settings stays off.
+- Before setup, Settings shows an empty Hub URL with a hint instead of the
+  placeholder `wss://localhost:8443/ws/agent`.
+- Under a contrast theme a warning alert shows as a ring and a critical alert
+  as a dot; both use the theme's highlight colour.
+- When the Hub refuses an enrollment (for example a device ID it already has),
+  setup shows the Hub's reason. Without one it says the Hub did not accept the
+  device with this token.
 - The default Docker endpoint reaches the agent as
   `npipe:////./pipe/docker_engine`, the form it accepts. The app passed
   `\\.\pipe\docker_engine`, which the agent rejected, and it then looked for

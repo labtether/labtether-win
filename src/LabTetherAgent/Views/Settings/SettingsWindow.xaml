@@ -37,6 +37,7 @@
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="Hub URL" Style="{StaticResource LTRowLabelStyle}" />
                                 <TextBox Grid.Column="1" Width="300" VerticalAlignment="Center"
+                                         PlaceholderText="https://hub.example.com"
                                          AutomationProperties.Name="Hub URL" AutomationProperties.AutomationId="HubUrlBox"
                                          Text="{x:Bind ViewModel.HubUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             </Grid>

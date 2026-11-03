@@ -6,6 +6,12 @@ internal static class AgentSetupStatusClassifier
 {
     public static string? TerminalFailureMessage(AgentStatus status)
     {
+        // The Hub's own words (for example a device ID that is already
+        // enrolled) say more than any fixed text here.
+        var hubReason = (status.EnrollmentError ?? string.Empty).Trim();
+        if (hubReason.Length > 0)
+            return "The Hub refused this device: " + hubReason;
+
         var lastError = (status.LastError ?? string.Empty).Trim().ToLowerInvariant();
         if (lastError == "enrollment_token_rejected")
         {

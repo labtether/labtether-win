@@ -199,7 +199,8 @@ public partial class SettingsViewModel : ObservableObject
 
     private void LoadFromSettings()
     {
-        HubUrl = _settings.HubUrl;
+        // Before setup the stored value is only a placeholder; show the hint instead.
+        HubUrl = _settings.IsEnrolled ? _settings.HubUrl : string.Empty;
         StartAtLogin = _loginItemManager.IsEnabled();
         LowPowerMode = _settings.LowPowerMode;
         DockerEndpoint = _settings.DockerEndpoint;
@@ -247,14 +248,16 @@ public partial class SettingsViewModel : ObservableObject
     private void Save()
     {
         SaveError = null;
-        if (!SettingsValidator.IsValidHubUrl(HubUrl))
+        // Not set up and no Hub typed: keep the stored value and save the rest.
+        var keepHubUrl = !_settings.IsEnrolled && string.IsNullOrWhiteSpace(HubUrl);
+        if (!keepHubUrl && !SettingsValidator.IsValidHubUrl(HubUrl))
         {
             SaveError = "Enter a valid Hub URL that starts with https://, wss://, http:// or ws://.";
             return;
         }
         // The Hub accepts the agent token alone, so it must never reach another
         // Hub. Re-enroll saves a new Hub only after enrolling with it.
-        if (!SettingsValidator.IsSameHub(_settings.HubUrl, HubUrl) && HasSavedCredential())
+        if (!keepHubUrl && !SettingsValidator.IsSameHub(_settings.HubUrl, HubUrl) && HasSavedCredential())
         {
             SaveError = "This device's token works only with its current Hub. To use a different Hub, choose Re-enroll in the tray menu.";
             return;
@@ -289,7 +292,8 @@ public partial class SettingsViewModel : ObservableObject
             return;
         }
 
-        _settings.HubUrl = HubUrl.Trim();
+        if (!keepHubUrl)
+            _settings.HubUrl = HubUrl.Trim();
         _settings.StartAtLogin = _loginItemManager.IsEnabled();
         _settings.LowPowerMode = LowPowerMode;
         _settings.DockerEndpoint = DockerEndpoint;
