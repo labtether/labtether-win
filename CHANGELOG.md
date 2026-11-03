@@ -13,6 +13,12 @@ Changes since v1.7.1. This release matches LabTether 2.0.
   nothing to a release.
 
 ### Changed
+- Start at sign-in turns on when the first setup succeeds, so the device is
+  back online after a restart. Settings can turn it off; re-enroll keeps the
+  current choice.
+- The MSI starts the app when an install or upgrade ends. For a scripted
+  install, `msiexec /i labtether-agent-win-x64.msi /qn LAUNCH=0` leaves it
+  closed.
 - The app has the LabTether 2.0 look in light and dark, following Windows,
   with Windows' own high contrast colours under a contrast theme. Rose is
   used only for each window's main button; switches and checkboxes use the
@@ -51,6 +57,23 @@ Changes since v1.7.1. This release matches LabTether 2.0.
   corrected.
 - Before setup is finished, the tray, flyout, pop-out and About say "Not set
   up" instead of an offline "localhost" Hub, and Open console is off.
+- Windows notifications appear. The installed app showed none: the Windows
+  App SDK could not register this self-contained app. Notifications now
+  come from LabTether Agent with its icon.
+- "Offline since" appears after the Hub has been unreachable for 20 seconds,
+  and "Reconnected" only after it. Saving Settings or re-enrolling no longer
+  shows either.
+- An alert notification appears once per firing, not every five minutes.
+- After an MSI upgrade closes the app, Windows starts it again.
+- Under a contrast theme, buttons, lists and switches use the theme's
+  colours.
+- Save in Settings turns on while you type in a text box.
+- The logs window shows the whole time, and screen readers read each log
+  line.
+- The default Docker endpoint reaches the agent as
+  `npipe:////./pipe/docker_engine`, the form it accepts. The app passed
+  `\\.\pipe\docker_engine`, which the agent rejected, and it then looked for
+  a Unix socket instead.
 
 ## [1.7.1] - 2026-10-31
 

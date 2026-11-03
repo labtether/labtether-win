@@ -38,7 +38,7 @@
                                 <TextBlock Text="Hub URL" Style="{StaticResource LTRowLabelStyle}" />
                                 <TextBox Grid.Column="1" Width="300" VerticalAlignment="Center"
                                          AutomationProperties.Name="Hub URL" AutomationProperties.AutomationId="HubUrlBox"
-                                         Text="{x:Bind ViewModel.HubUrl, Mode=TwoWay}" />
+                                         Text="{x:Bind ViewModel.HubUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             </Grid>
                             <Grid Style="{StaticResource LTSettingsRowStyle}">
                                 <Grid.ColumnDefinitions>
@@ -50,7 +50,7 @@
                                          Style="{StaticResource LTMonoTextBoxStyle}"
                                          PlaceholderText="C:\path\to\hub-ca.pem"
                                          AutomationProperties.Name="CA certificate" AutomationProperties.AutomationId="CaFileBox"
-                                         Text="{x:Bind ViewModel.TlsCaFile, Mode=TwoWay}" />
+                                         Text="{x:Bind ViewModel.TlsCaFile, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             </Grid>
                             <components:SwitchRow Label="Skip certificate check" AutomationId="SkipCertificateCheckSwitch"
                                                   IsOn="{x:Bind ViewModel.TlsSkipVerify, Mode=TwoWay}" />
@@ -100,7 +100,7 @@
                                          Style="{StaticResource LTMonoTextBoxStyle}"
                                          PlaceholderText="\\.\pipe\docker_engine"
                                          AutomationProperties.Name="Docker endpoint" AutomationProperties.AutomationId="DockerEndpointBox"
-                                         Text="{x:Bind ViewModel.DockerEndpoint, Mode=TwoWay}" />
+                                         Text="{x:Bind ViewModel.DockerEndpoint, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             </Grid>
                             <Grid Style="{StaticResource LTSettingsRowStyle}">
                                 <Grid.ColumnDefinitions>

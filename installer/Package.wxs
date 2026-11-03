@@ -23,6 +23,9 @@
     <Property Id="ARPHELPLINK" Value="https://labtether.com/docs" />
     <Property Id="ARPURLINFOABOUT" Value="https://labtether.com" />
     <Property Id="ARPNOMODIFY" Value="1" />
+    <!-- Start the app when an install or upgrade ends. LAUNCH=0 on the
+         msiexec command line leaves it closed (for scripted installs). -->
+    <Property Id="LAUNCH" Value="1" />
 
     <StandardDirectory Id="LocalAppDataFolder">
       <Directory Id="LocalProgramsFolder" Name="Programs">
@@ -44,6 +47,10 @@
                        Type="integer"
                        Value="1"
                        KeyPath="yes" />
+        <!-- The app registers its notification name and icon here. -->
+        <RemoveRegistryKey Root="HKCU"
+                           Key="Software\Classes\AppUserModelId\LabTether.Agent"
+                           Action="removeOnUninstall" />
       </Component>
     </StandardDirectory>
 
@@ -81,7 +88,17 @@
                   Execute="deferred"
                   Impersonate="yes"
                   Return="ignore" />
+    <!-- The app treats this argument as a start by the installer: if it is
+         already running (Windows restarts it after an upgrade), it does not
+         open its flyout. -->
+    <CustomAction Id="LaunchApp"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand="&quot;[INSTALLFOLDER]LabTetherAgent.exe&quot; --from-installer"
+                  Return="asyncNoWait" />
     <InstallExecuteSequence>
+      <Custom Action="LaunchApp"
+              After="InstallFinalize"
+              Condition="NOT (REMOVE~=&quot;ALL&quot;) AND LAUNCH=&quot;1&quot;" />
       <Custom Action="RemoveStartAtLogin"
               Before="RemoveFiles"
               Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />

@@ -25,7 +25,7 @@ public partial class App : Application, IXamlMetadataProvider
     private Action<bool>? _notificationConnectionHandler;
     private Action<AgentStatus>? _notificationStatusHandler;
     private Action<string>? _notificationAgentErrorHandler;
-    private bool? _lastNotifiedConnectionState;
+    private ConnectionToastGate? _connectionToasts;
     private IXamlMetadataProvider? _xamlMetadataProvider;
     private Action? _redirectedActivationHandler;
     private static event Action? RedirectedActivation;
@@ -94,7 +94,10 @@ public partial class App : Application, IXamlMetadataProvider
 #endif
 
         if (_appState.Settings.Location.SupportsOsIntegration)
-            _notifications = new ToastNotificationService();
+            RestartRegistration.Register();
+
+        if (_appState.Settings.Location.SupportsOsIntegration)
+            _notifications = new ToastNotificationService(_appState.AgentProcess.LogReader.AppendRaw);
         if (_notifications?.TryInitialize() == true)
         {
             _updateAvailableHandler = _notifications.NotifyUpdateAvailable;
@@ -145,14 +148,24 @@ public partial class App : Application, IXamlMetadataProvider
             return false;
         }
 
-        // Register for future activation redirects
+        // Register for future activation redirects. A start by the installer
+        // (or by Windows after an upgrade) finds the app already running and
+        // must not open the flyout.
         instance.Activated += (_, activatedArgs) =>
         {
-            RedirectedActivation?.Invoke();
+            if (!IsInstallerStart(activatedArgs))
+                RedirectedActivation?.Invoke();
         };
 
         return true;
     }
+
+    /// <summary>The argument the MSI and the upgrade restart pass when they start the app.</summary>
+    internal const string InstallerStartArgument = "--from-installer";
+
+    private static bool IsInstallerStart(AppActivationArguments activatedArgs) =>
+        activatedArgs.Data is Windows.ApplicationModel.Activation.ILaunchActivatedEventArgs launch &&
+        (launch.Arguments ?? string.Empty).Contains(InstallerStartArgument, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Clean shutdown — stop agent, remove tray icon.
@@ -184,15 +197,12 @@ public partial class App : Application, IXamlMetadataProvider
 
     private void OnNotificationConnectionStateChanged(bool connected)
     {
-        var previous = _lastNotifiedConnectionState;
-        _lastNotifiedConnectionState = connected;
-        if (previous == null || previous == connected || _notifications == null)
+        if (_notifications is not { } notifications)
             return;
-
-        if (connected)
-            _notifications.NotifyReconnected();
-        else
-            _notifications.NotifyDisconnected(_appState?.ApiClient.LatestStatus);
+        _connectionToasts ??= new ConnectionToastGate(
+            () => notifications.NotifyDisconnected(_appState?.ApiClient.LatestStatus),
+            notifications.NotifyReconnected);
+        _connectionToasts.OnConnectionChanged(connected);
     }
 
     private void OnNotificationStatusUpdated(AgentStatus status)

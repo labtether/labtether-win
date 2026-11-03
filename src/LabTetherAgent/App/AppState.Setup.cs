@@ -33,6 +33,7 @@ public partial class AppState
         }
 
         _setupTransactionActive = true;
+        var firstSetup = !Settings.IsEnrolled;
         var priorWasRunning = AgentProcess.IsRunning;
         var persistenceTouched = false;
         var stagingDirectory = Path.Combine(
@@ -45,7 +46,7 @@ public partial class AppState
             Directory.CreateDirectory(stagingDirectory);
             using var snapshot = SetupPersistenceSnapshot.Capture(Settings, CredentialStore);
 
-            return await AgentSetupTransaction.ExecuteAsync(
+            var result = await AgentSetupTransaction.ExecuteAsync(
                 attempt: async token =>
                 {
                     if (AgentProcess.IsRunning)
@@ -107,6 +108,9 @@ public partial class AppState
                     }
                 },
                 cancellationToken);
+            if (result.Success && firstSetup)
+                TurnOnStartAtSignIn();
+            return result;
         }
         catch (Exception ex) when (AgentSetupTransaction.IsRecoverable(ex))
         {
@@ -196,6 +200,29 @@ public partial class AppState
         {
             ApiClient.OnStatusUpdated -= HandleStatus;
             AgentProcess.OnError -= HandleStartError;
+        }
+    }
+
+    // Owner decision (2026-11-03): a PC that finishes its first setup starts
+    // the agent at sign-in, so the device stays online after a restart.
+    // Re-enroll keeps the user's choice; Settings can turn it off.
+    private void TurnOnStartAtSignIn()
+    {
+        if (!Settings.Location.SupportsOsIntegration)
+            return;
+        try
+        {
+            if (!new LoginItemManager(Settings.Location).SetEnabled(true))
+            {
+                AgentProcess.LogReader.AppendRaw("Windows did not accept Start at sign-in. Turn it on in Settings.");
+                return;
+            }
+            Settings.StartAtLogin = true;
+            Settings.Save();
+        }
+        catch (Exception ex) when (AgentSetupTransaction.IsRecoverable(ex))
+        {
+            AgentProcess.LogReader.AppendRaw($"Could not save Start at sign-in: {ex.Message}");
         }
     }
 

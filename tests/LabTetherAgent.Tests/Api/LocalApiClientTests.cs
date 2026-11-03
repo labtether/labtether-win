@@ -355,6 +355,26 @@ public class LocalApiClientTests
         Assert.True(notModifiedResponse.Disposed);
     }
 
+    // After a restart or during an outage the agent answers without a Hub
+    // link. A 30 s poll then reported the reconnect up to 30 s late, long
+    // enough for an "Offline since" notification after every Save.
+    [Fact]
+    public async Task AnswerWithoutHubLinkPollsFastUntilReconnected()
+    {
+        using var client = new LocalApiClient(new HttpClient(new QueueHttpHandler(
+            _ => CurrentGoStatusResponse(connected: false),
+            _ => CurrentGoStatusResponse(connected: true))));
+        client.Configure("8091", "token");
+
+        await client.PollStatusForTestingAsync();
+        Assert.False(client.IsConnected);
+        Assert.Equal(TimeSpan.FromSeconds(5), client.CurrentPollingInterval);
+
+        await client.PollStatusForTestingAsync();
+        Assert.True(client.IsConnected);
+        Assert.Equal(TimeSpan.FromSeconds(30), client.CurrentPollingInterval);
+    }
+
     [Fact]
     public async Task PollStatusDisposesSuccessfulResponse()
     {

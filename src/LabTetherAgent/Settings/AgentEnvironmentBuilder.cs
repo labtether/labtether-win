@@ -156,7 +156,7 @@ public static class AgentEnvironmentBuilder
         // Docker
         env["LABTETHER_DOCKER_ENABLED"] = settings.DockerEnabled;
         if (!string.IsNullOrWhiteSpace(settings.DockerEndpoint))
-            env["LABTETHER_DOCKER_SOCKET"] = settings.DockerEndpoint.Trim();
+            env["LABTETHER_DOCKER_SOCKET"] = AgentDockerEndpoint(settings.DockerEndpoint);
         env["LABTETHER_DOCKER_DISCOVERY_INTERVAL"] =
             SettingsValidator.NormalizeDockerDiscoveryInterval(settings.DockerDiscoveryInterval);
 
@@ -215,5 +215,20 @@ public static class AgentEnvironmentBuilder
     {
         return Uri.TryCreate(wsUrl, UriKind.Absolute, out var uri)
             && string.Equals(uri.Scheme, "ws", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private const string WindowsPipePrefix = @"\\.\pipe\";
+
+    /// <summary>
+    /// The agent accepts a Windows named pipe only as npipe:////./pipe/NAME.
+    /// The Windows form \\.\pipe\NAME, this app's default, made it fall back
+    /// to /var/run/docker.sock, so Docker Desktop was never found.
+    /// </summary>
+    internal static string AgentDockerEndpoint(string endpoint)
+    {
+        var value = endpoint.Trim();
+        return value.StartsWith(WindowsPipePrefix, StringComparison.OrdinalIgnoreCase) && value.Length > WindowsPipePrefix.Length
+            ? "npipe:////./pipe/" + value[WindowsPipePrefix.Length..]
+            : value;
     }
 }

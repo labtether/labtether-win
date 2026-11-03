@@ -13,6 +13,9 @@ public record LogLine(DateTime Timestamp, string Level, string Message, string R
 {
     internal LogLineFragment? Fragment { get; init; }
 
+    /// <summary>The line as the agent wrote it. The log list's rows use this as their accessible name.</summary>
+    public override string ToString() => Raw;
+
     /// <summary>
     /// Parse a Go log line in the format "YYYY/MM/DD HH:MM:SS message".
     /// Falls back to raw line with "info" level if parsing fails.
