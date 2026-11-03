@@ -300,8 +300,13 @@ public class AgentEnvironmentBuilderTests
         var env = Build(settings, "9090", "auth");
 
         Assert.Equal("auto", env["LABTETHER_DOCKER_ENABLED"]);
-        Assert.Equal(@"\\.\pipe\docker_engine", env["LABTETHER_DOCKER_SOCKET"]);
+        // The agent rejects the Windows pipe form and fell back to a Unix
+        // socket, so Docker Desktop was never found with the default setting.
+        Assert.Equal("npipe:////./pipe/docker_engine", env["LABTETHER_DOCKER_SOCKET"]);
         Assert.Equal("60", env["LABTETHER_DOCKER_DISCOVERY_INTERVAL"]);
+        Assert.Equal("npipe:////./pipe/docker_engine", Build(new AgentSettings(), "9090", "auth")["LABTETHER_DOCKER_SOCKET"]);
+        Assert.Equal("npipe:////./pipe/podman-machine-default",
+            AgentEnvironmentBuilder.AgentDockerEndpoint(" npipe:////./pipe/podman-machine-default "));
     }
 
     [Theory]

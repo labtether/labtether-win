@@ -70,6 +70,10 @@ Changes since v1.7.1. This release matches LabTether 2.0.
 - Save in Settings turns on while you type in a text box.
 - The logs window shows the whole time, and screen readers read each log
   line.
+- The default Docker endpoint reaches the agent as
+  `npipe:////./pipe/docker_engine`, the form it accepts. The app passed
+  `\\.\pipe\docker_engine`, which the agent rejected, and it then looked for
+  a Unix socket instead.
 
 ## [1.7.1] - 2026-10-31
 
