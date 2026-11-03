@@ -94,6 +94,9 @@ public partial class App : Application, IXamlMetadataProvider
 #endif
 
         if (_appState.Settings.Location.SupportsOsIntegration)
+            RestartRegistration.Register();
+
+        if (_appState.Settings.Location.SupportsOsIntegration)
             _notifications = new ToastNotificationService();
         if (_notifications?.TryInitialize() == true)
         {
