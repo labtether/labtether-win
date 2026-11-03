@@ -82,11 +82,11 @@
   <data name="AboutHub" xml:space="preserve"><value>Hub</value></data>
   <data name="AboutFingerprint" xml:space="preserve"><value>Fingerprint</value></data>
   <!-- Notifications -->
-  <data name="NotifyDisconnectedTitle" xml:space="preserve"><value>Hub Connection Lost</value></data>
-  <data name="NotifyDisconnectedBody" xml:space="preserve"><value>LabTether Agent has lost connection to the hub. Retrying...</value></data>
-  <data name="NotifyReconnectedTitle" xml:space="preserve"><value>Hub Connection Restored</value></data>
-  <data name="NotifyReconnectedBody" xml:space="preserve"><value>LabTether Agent has reconnected to the hub.</value></data>
-  <data name="NotifyUpdateTitle" xml:space="preserve"><value>Agent Update Available</value></data>
+  <data name="NotifyDisconnectedTitle" xml:space="preserve"><value>Offline since {0}</value></data>
+  <data name="NotifyDisconnectedBody" xml:space="preserve"><value>Lost the connection to the Hub. Reconnecting.</value></data>
+  <data name="NotifyReconnectedTitle" xml:space="preserve"><value>Reconnected at {0}</value></data>
+  <data name="NotifyReconnectedBody" xml:space="preserve"><value>Connected to the Hub.</value></data>
+  <data name="NotifyUpdateTitle" xml:space="preserve"><value>Update available</value></data>
   <!-- Flyout -->
   <data name="FlyoutAlerts" xml:space="preserve"><value>ALERTS</value></data>
   <data name="FlyoutHyperV" xml:space="preserve"><value>Hyper-V</value></data>

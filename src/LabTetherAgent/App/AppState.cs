@@ -239,7 +239,7 @@ public partial class AppState : IDisposable
                 catch (Exception)
                 {
                     abandonedStop = AgentProcess.PrepareStop();
-                    error = "The previous state-owned agent could not be recovered safely.";
+                    error = "An agent left from an earlier run could not be checked or stopped.";
                 }
                 finally { start(); if (abandonedStop != null) _ = abandonedStop(); }
             }
