@@ -52,6 +52,19 @@
                            Key="Software\Classes\AppUserModelId\LabTether.Agent"
                            Action="removeOnUninstall" />
       </Component>
+      <!--
+        A new value on each fresh install (not on an upgrade). The app's first
+        start after it turns Start at sign-in on when the kept setup is valid,
+        because the uninstall removed the Run entry.
+      -->
+      <Component Id="FreshInstallMarker" Condition="NOT WIX_UPGRADE_DETECTED">
+        <RegistryValue Root="HKCU"
+                       Key="Software\LabTether\Agent Installer"
+                       Name="FreshInstall"
+                       Type="string"
+                       Value="[ProductCode] [Date] [Time]"
+                       KeyPath="yes" />
+      </Component>
     </StandardDirectory>
 
     <!--
@@ -110,6 +123,7 @@
     <Feature Id="Main" Title="LabTether Agent" Level="1">
       <ComponentGroupRef Id="AppPayload" />
       <ComponentRef Id="StartMenuShortcut" />
+      <ComponentRef Id="FreshInstallMarker" />
     </Feature>
   </Package>
 

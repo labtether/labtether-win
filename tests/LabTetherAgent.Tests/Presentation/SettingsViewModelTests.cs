@@ -165,6 +165,24 @@ public class SettingsViewModelTests
         Assert.Contains("Re-enroll in the tray menu", viewModel.SaveError);
     }
 
+    // Before setup Settings showed the placeholder Hub "wss://localhost:8443/ws/agent".
+    [Fact]
+    public void BeforeSetupHubUrlIsEmptyAndOtherSettingsStillSave()
+    {
+        var settings = new AgentSettings();
+        var stored = settings.HubUrl;
+        var viewModel = Create(settings, new FakeLoginItemManager(), out var persisted);
+
+        Assert.Equal("", viewModel.HubUrl);
+        viewModel.LowPowerMode = true;
+        viewModel.SaveCommand.Execute(null);
+
+        Assert.Null(viewModel.SaveError);
+        Assert.Single(persisted);
+        Assert.Equal(stored, settings.HubUrl);
+        Assert.True(settings.LowPowerMode);
+    }
+
     private static SettingsViewModel Create(
         AgentSettings settings,
         FakeLoginItemManager loginItems,

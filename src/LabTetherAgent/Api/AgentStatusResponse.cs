@@ -25,6 +25,10 @@ public class AgentStatusResponse
     [JsonPropertyName("last_error_reason")]
     public string? LastErrorReason { get; set; }
 
+    // The Hub's own words for a refused enrollment; older agents omit it.
+    [JsonPropertyName("enrollment_error")]
+    public string? EnrollmentError { get; set; }
+
     [JsonPropertyName("metrics")]
     public AgentMetricsResponse? Metrics { get; set; }
 

@@ -32,6 +32,12 @@
             <SolidColorBrush x:Key="LTRoseHoverBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="LTRosePressBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="LTAccentContrastBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+            <!-- Warning and critical share the highlight colour here; the hole makes a warning a ring. -->
+            <SolidColorBrush x:Key="LTWarnDotHoleBrush" Color="{ThemeResource SystemColorWindowColor}" />
+        </ResourceDictionary>
+        <!-- Light and Dark: no hole, so the dots keep their amber and red. -->
+        <ResourceDictionary x:Key="Default">
+            <SolidColorBrush x:Key="LTWarnDotHoleBrush" Color="Transparent" />
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
 </ResourceDictionary>

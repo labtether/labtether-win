@@ -9,6 +9,8 @@ public class AgentStatus
     public string HubConnectionState { get; set; } = "disconnected";
     public string LastError { get; set; } = string.Empty;
     public string LastErrorReason { get; set; } = string.Empty;
+    /// <summary>The Hub's reason for refusing an enrollment, when it gave one.</summary>
+    public string EnrollmentError { get; set; } = string.Empty;
     public string? Uptime { get; set; }
     /// <summary>When the Hub connection dropped, as the agent reports it.</summary>
     public DateTimeOffset? DisconnectedAt { get; set; }

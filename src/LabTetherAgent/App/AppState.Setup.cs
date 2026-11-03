@@ -192,7 +192,7 @@ public partial class AppState
                     timeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
                 {
                     return AgentConnectionAttemptResult.Failed(
-                        "The agent started, but did not establish an authenticated, durable Hub connection. Check the token and agent logs, then try again.");
+                        "The Hub did not accept this device with this token.");
                 }
             }
         }
@@ -210,14 +210,36 @@ public partial class AppState
     {
         if (!Settings.Location.SupportsOsIntegration)
             return;
+        EnableStartAtSignIn();
+        SaveSettingsQuietly();
+    }
+
+    /// <summary>
+    /// Once per fresh MSI install: turn on Start at sign-in when the kept
+    /// setup is valid (the uninstall removed the Run entry).
+    /// </summary>
+    internal void ApplyInstallDefaults(string? marker)
+    {
+        if (!Settings.Location.SupportsOsIntegration || !InstallDefaults.IsNew(marker, Settings.HandledInstall))
+            return;
+        Settings.HandledInstall = marker!;
+        if (Settings.IsEnrolled)
+            EnableStartAtSignIn();
+        SaveSettingsQuietly();
+    }
+
+    private void EnableStartAtSignIn()
+    {
+        if (new LoginItemManager(Settings.Location).SetEnabled(true))
+            Settings.StartAtLogin = true;
+        else
+            AgentProcess.LogReader.AppendRaw("Windows did not accept Start at sign-in. Turn it on in Settings.");
+    }
+
+    private void SaveSettingsQuietly()
+    {
         try
         {
-            if (!new LoginItemManager(Settings.Location).SetEnabled(true))
-            {
-                AgentProcess.LogReader.AppendRaw("Windows did not accept Start at sign-in. Turn it on in Settings.");
-                return;
-            }
-            Settings.StartAtLogin = true;
             Settings.Save();
         }
         catch (Exception ex) when (AgentSetupTransaction.IsRecoverable(ex))

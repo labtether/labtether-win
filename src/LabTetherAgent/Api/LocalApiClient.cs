@@ -367,6 +367,7 @@ public class LocalApiClient : IDisposable
             HubConnectionState = response.EffectiveConnectionState,
             LastError = response.LastError,
             LastErrorReason = response.LastErrorReason ?? string.Empty,
+            EnrollmentError = response.EnrollmentError?.Trim() ?? string.Empty,
             DisconnectedAt = KnownTime(response.DisconnectedAt),
             Uptime = response.Uptime,
             CpuPercent = response.Metrics?.CpuPercent ?? response.CpuPercent,

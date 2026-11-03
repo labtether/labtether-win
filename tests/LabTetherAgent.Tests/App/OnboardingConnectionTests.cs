@@ -30,6 +30,21 @@ public class OnboardingConnectionTests
         Assert.Equal("The Hub rejected the configured credential. Check the token and try again.", message);
     }
 
+    // Re-enrolling a device ID the Hub already has failed with fixed text that
+    // did not say why; the agent now reports the Hub's reason.
+    [Fact]
+    public void HubReasonForARefusedEnrollmentIsShown()
+    {
+        var message = AgentSetupStatusClassifier.TerminalFailureMessage(new AgentStatus
+        {
+            HubConnectionState = "connecting",
+            LastError = "enrollment_pending",
+            EnrollmentError = "device ltqa-a is already enrolled",
+        });
+
+        Assert.Equal("The Hub refused this device: device ltqa-a is already enrolled", message);
+    }
+
     [Fact]
     public void PendingEnrollmentIsNotMisclassifiedAsFailureOrSuccess()
     {
