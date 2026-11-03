@@ -45,7 +45,7 @@
                     <DataTemplate x:DataType="state:LogLine">
                         <Grid ColumnSpacing="12">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="132" />
+                                <ColumnDefinition Width="176" />
                                 <ColumnDefinition Width="56" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
