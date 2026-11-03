@@ -44,6 +44,13 @@ Changes since v1.7.1. This release matches LabTether 2.0.
   the Hub URL that Add device shows (the Hub API port) it opened a page of
   Hub API JSON. The app now asks the Hub for its console address and opens
   that.
+- The tray menu is dark on a dark taskbar and light on a light one. It was
+  always light.
+- Cancel and Save in Settings close the window.
+- In setup, the space under the Hub URL closes again once a wrong URL is
+  corrected.
+- Before setup is finished, the tray, flyout, pop-out and About say "Not set
+  up" instead of an offline "localhost" Hub, and Open console is off.
 
 ## [1.7.1] - 2026-10-31
 
