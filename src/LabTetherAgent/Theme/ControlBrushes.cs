@@ -129,6 +129,11 @@ internal static class ControlBrushes
             overrides.ThemeDictionaries[theme] = target;
         }
 
+        // An empty HighContrast entry keeps the stock high contrast brushes.
+        // Without it a contrast theme fell back to the Light brushes above:
+        // white buttons and list boxes, text on backplates, faint switches.
+        overrides.ThemeDictionaries["HighContrast"] = new ResourceDictionary();
+
         appResources.MergedDictionaries.Add(overrides);
     }
 

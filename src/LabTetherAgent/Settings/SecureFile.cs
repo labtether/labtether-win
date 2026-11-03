@@ -85,8 +85,23 @@ internal static class SecureFile
         {
             throw new IOException("Refusing to delete a non-regular secret file.");
         }
-        File.Delete(path);
+        // A virus scanner or indexer can hold a file it just saw being written
+        // for a moment. Retry a sharing violation briefly before failing.
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                File.Delete(path);
+                return;
+            }
+            catch (IOException ex) when (attempt < 5 && (ex.HResult & 0xFFFF) == SharingViolation)
+            {
+                Thread.Sleep(100 * attempt);
+            }
+        }
     }
+
+    private const int SharingViolation = 32; // ERROR_SHARING_VIOLATION
 
     /// <summary>
     /// Return true only for a non-empty, non-reparse-point secret file whose
