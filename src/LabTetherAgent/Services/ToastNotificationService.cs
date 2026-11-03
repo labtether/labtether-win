@@ -1,6 +1,8 @@
 using System.Runtime.InteropServices;
 using Microsoft.Windows.AppNotifications;
 using Microsoft.Windows.AppNotifications.Builder;
+using LabTetherAgent.Presentation;
+using LabTetherAgent.State;
 
 namespace LabTetherAgent.Services;
 
@@ -34,46 +36,29 @@ public class ToastNotificationService
         }
     }
 
-    public void NotifyDisconnected()
+    public void NotifyDisconnected(AgentStatus? latest)
     {
         if (!ShouldNotify("disconnected")) return;
-
-        var builder = new AppNotificationBuilder()
-            .AddText("Hub Connection Lost")
-            .AddText("LabTether Agent has lost connection to the hub. Retrying...");
-
-        TryShow(builder.BuildNotification());
+        TryShow(Build(ToastText.Disconnected(latest, DateTimeOffset.Now)).BuildNotification());
     }
 
     public void NotifyReconnected()
     {
         if (!ShouldNotify("reconnected")) return;
-
-        var builder = new AppNotificationBuilder()
-            .AddText("Hub Connection Restored")
-            .AddText("LabTether Agent has reconnected to the hub.");
-
-        TryShow(builder.BuildNotification());
+        TryShow(Build(ToastText.Reconnected(DateTimeOffset.Now)).BuildNotification());
     }
 
     public void NotifyAgentError(string message)
     {
         if (!ShouldNotify("agent-error")) return;
-
-        var builder = new AppNotificationBuilder()
-            .AddText("LabTether Agent Stopped")
-            .AddText(message);
-
-        TryShow(builder.BuildNotification());
+        TryShow(Build(ToastText.AgentStopped(message, DateTimeOffset.Now)).BuildNotification());
     }
 
     public void NotifyUpdateAvailable(string version)
     {
         if (!ShouldNotify("update")) return;
 
-        var builder = new AppNotificationBuilder()
-            .AddText("LabTether for Windows Update Available")
-            .AddText($"LabTether Agent v{version} is available.")
+        var builder = Build(ToastText.UpdateAvailable(version))
             .AddArgument("action", "view-update")
             .AddButton(new AppNotificationButton("View release")
                 .AddArgument("action", "view-update"));
@@ -81,20 +66,10 @@ public class ToastNotificationService
         TryShow(builder.BuildNotification());
     }
 
-    public void NotifyAlert(string name, string severity, string? message)
+    public void NotifyAlert(AlertSnapshot alert)
     {
-        var key = $"alert:{name}";
-        if (!ShouldNotify(key)) return;
-
-        var title = severity.Equals("critical", StringComparison.OrdinalIgnoreCase)
-            ? $"Critical Alert: {name}"
-            : $"Alert: {name}";
-
-        var builder = new AppNotificationBuilder()
-            .AddText(title)
-            .AddText(message ?? "An alert is firing on this device.");
-
-        TryShow(builder.BuildNotification());
+        if (!ShouldNotify($"alert:{alert.Name}")) return;
+        TryShow(Build(ToastText.Alert(alert, DateTimeOffset.Now)).BuildNotification());
     }
 
     public void Cleanup()
@@ -103,6 +78,14 @@ public class ToastNotificationService
         AppNotificationManager.Default.NotificationInvoked -= OnNotificationInvoked;
         AppNotificationManager.Default.Unregister();
         _registered = false;
+    }
+
+    private static AppNotificationBuilder Build(ToastMessage message)
+    {
+        var builder = new AppNotificationBuilder().AddText(message.Title);
+        if (message.Body.Length > 0)
+            builder.AddText(message.Body);
+        return builder;
     }
 
     private bool ShouldNotify(string key)

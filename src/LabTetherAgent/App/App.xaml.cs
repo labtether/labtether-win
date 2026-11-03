@@ -161,7 +161,7 @@ public partial class App : Application, IXamlMetadataProvider
     {
         // Detach notifications before StopAgentAsync invalidates the last
         // connected status. An intentional Quit must not emit a misleading
-        // "Hub Connection Lost — Retrying" toast on the way out.
+        // "Offline since …" toast on the way out.
         if (_appState != null && _updateAvailableHandler != null)
             _appState.UpdateChecker.OnUpdateAvailable -= _updateAvailableHandler;
         if (_appState != null && _notificationConnectionHandler != null)
@@ -192,7 +192,7 @@ public partial class App : Application, IXamlMetadataProvider
         if (connected)
             _notifications.NotifyReconnected();
         else
-            _notifications.NotifyDisconnected();
+            _notifications.NotifyDisconnected(_appState?.ApiClient.LatestStatus);
     }
 
     private void OnNotificationStatusUpdated(AgentStatus status)
@@ -201,6 +201,6 @@ public partial class App : Application, IXamlMetadataProvider
             return;
 
         foreach (var alert in status.FiringAlerts)
-            _notifications.NotifyAlert(alert.Name, alert.Severity, alert.Message);
+            _notifications.NotifyAlert(alert);
     }
 }
