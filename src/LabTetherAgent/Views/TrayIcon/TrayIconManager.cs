@@ -20,6 +20,7 @@ public class TrayIconManager : IDisposable
     private readonly AppState _appState;
     private TaskbarIcon? _taskbarIcon;
     private Microsoft.UI.Xaml.Controls.MenuFlyoutItem? _setupMenuItem;
+    private Microsoft.UI.Xaml.Controls.MenuFlyoutItem? _openConsoleMenuItem;
     private System.Drawing.Icon? _trayDrawingIcon;
     private (TrayGlyphState State, bool Light, int Size)? _renderedGlyph;
     private Window? _lifetimeWindow;
@@ -162,15 +163,20 @@ public class TrayIconManager : IDisposable
     {
         if (_taskbarIcon == null || _disposed) return;
 
-        var tray = TrayStatus.Resolve(
-            _appState.ApiClient.IsConnected,
-            _lastStatus ?? _appState.ApiClient.LatestStatus,
-            _offlineSince,
-            _stoppedAt,
-            DateTimeOffset.Now);
+        var enrolled = _appState.Settings.IsEnrolled;
+        var tray = enrolled
+            ? TrayStatus.Resolve(
+                _appState.ApiClient.IsConnected,
+                _lastStatus ?? _appState.ApiClient.LatestStatus,
+                _offlineSince,
+                _stoppedAt,
+                DateTimeOffset.Now)
+            : TrayStatus.NotSetUp();
         _taskbarIcon.ToolTipText = tray.Tooltip;
         if (_setupMenuItem != null)
             _setupMenuItem.Text = SetupMenuText();
+        if (_openConsoleMenuItem != null)
+            _openConsoleMenuItem.IsEnabled = enrolled;
 
         // GeneratedIconSource depends on a live WinUI render root. This tray
         // icon is created entirely in code and therefore rendered as an empty,
@@ -180,6 +186,8 @@ public class TrayIconManager : IDisposable
             (tray.State, TaskbarEnvironment.IsLightTaskbar(), TaskbarEnvironment.SmallIconSize());
         if (_renderedGlyph == glyph)
             return;
+        if (_renderedGlyph?.Light != glyph.Light)
+            TrayMenuTheme.Apply(glyph.Light);
         var nextIcon = CreateTrayIcon(glyph.State, TaskbarEnvironment.Palette(glyph.Light), glyph.Size);
         _taskbarIcon.IconSource = null;
         _taskbarIcon.Icon = nextIcon;
@@ -198,12 +206,13 @@ public class TrayIconManager : IDisposable
     {
         var menu = new Microsoft.UI.Xaml.Controls.MenuFlyout();
 
-        var openConsole = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem
+        _openConsoleMenuItem = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem
         {
             Text = "Open console",
             Command = new RelayCommand(OpenConsole),
+            IsEnabled = _appState.Settings.IsEnrolled,
         };
-        menu.Items.Add(openConsole);
+        menu.Items.Add(_openConsoleMenuItem);
 
         menu.Items.Add(new Microsoft.UI.Xaml.Controls.MenuFlyoutSeparator());
 
@@ -275,7 +284,8 @@ public class TrayIconManager : IDisposable
 
     private void OpenConsole()
     {
-        _ = new ConsoleLauncher().OpenAsync(_appState.Settings);
+        if (_appState.Settings.IsEnrolled)
+            _ = new ConsoleLauncher().OpenAsync(_appState.Settings);
     }
 
     private async Task ShowAboutWithErrorHandlingAsync()

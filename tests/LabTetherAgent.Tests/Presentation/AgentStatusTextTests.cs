@@ -37,6 +37,8 @@ public class AgentStatusTextTests
             Assert.Equal(new AgentHeader("Connecting", "hub.example.lan", false),
                 AgentStatusText.Header(new AgentStatus { HubConnectionState = "connecting" }, hub, now));
             Assert.Equal(new AgentHeader("Offline", "hub.example.lan", true), AgentStatusText.Header(null, hub, now));
+            // Before setup the flyout showed the placeholder Hub "localhost" as offline.
+            Assert.Equal(new AgentHeader("Not set up", "", false), AgentStatusText.Header(null, "", now));
         }
         finally
         {

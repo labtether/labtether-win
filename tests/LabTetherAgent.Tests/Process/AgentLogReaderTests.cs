@@ -155,6 +155,24 @@ public class AgentLogReaderTests
     }
 
     [Fact]
+    public async Task ReadAsync_EndsNormallyWhenCancelledBeforeItStarts()
+    {
+        // A cancel that beat the background start used to fault the task as
+        // cancelled (seen as a flaky ReadAsync_CancelsWhileWaitingForMoreText).
+        using var pipe = new System.IO.Pipes.AnonymousPipeServerStream(System.IO.Pipes.PipeDirection.Out);
+        using var input = new System.IO.Pipes.AnonymousPipeClientStream(
+            System.IO.Pipes.PipeDirection.In, pipe.GetClientHandleAsString());
+        using var stream = new StreamReader(input);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var reader = new AgentLogReader();
+
+        await reader.ReadAsync(stream, cancellation.Token).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Empty(reader.GetSnapshot());
+    }
+
+    [Fact]
     public async Task ReadAsync_PublishesACompletePipeBufferWithoutWaitingForAnotherWrite()
     {
         using var pipe = new System.IO.Pipes.AnonymousPipeServerStream(System.IO.Pipes.PipeDirection.Out);

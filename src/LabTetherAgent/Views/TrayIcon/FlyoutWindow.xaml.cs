@@ -32,7 +32,7 @@ public sealed partial class FlyoutWindow : Window
         this.InitializeComponent();
         ViewModel = new FlyoutViewModel(appState.ApiClient)
         {
-            HubUrl = appState.Settings.HubUrl,
+            HubUrl = appState.Settings.IsEnrolled ? appState.Settings.HubUrl : "",
             HubSettings = appState.Settings,
         };
 

@@ -13,16 +13,19 @@ public partial class FlyoutViewModel : AgentStatusViewModel
     /// <summary>Saved Hub address and TLS trust, used by Open console.</summary>
     public AgentSettings? HubSettings { get; set; }
 
+    /// <summary>Before setup there is no console to open.</summary>
+    public bool CanOpenConsole => HubSettings?.IsEnrolled == true;
+
     public FlyoutViewModel(LocalApiClient apiClient) : base(apiClient) { }
 
     public void OnFlyoutOpened() => OnWindowOpened();
 
     public void OnFlyoutClosed() => OnWindowClosed();
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanOpenConsole))]
     private async Task OpenConsoleAsync()
     {
-        if (HubSettings != null)
-            await new ConsoleLauncher().OpenAsync(HubSettings);
+        if (CanOpenConsole)
+            await new ConsoleLauncher().OpenAsync(HubSettings!);
     }
 }

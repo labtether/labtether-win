@@ -13,7 +13,7 @@ public sealed partial class PopOutWindow : Window
     public PopOutWindow(AppState appState)
     {
         this.InitializeComponent();
-        ViewModel = new PopOutViewModel(appState.ApiClient) { HubUrl = appState.Settings.HubUrl };
+        ViewModel = new PopOutViewModel(appState.ApiClient) { HubUrl = appState.Settings.IsEnrolled ? appState.Settings.HubUrl : "" };
         WindowChrome.Apply(this, Root, TitleBar);
         WindowChrome.SizeContent(this, Root, 320, 204);
 
