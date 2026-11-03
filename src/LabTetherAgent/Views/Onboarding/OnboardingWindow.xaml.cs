@@ -1,21 +1,23 @@
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Media;
-using Windows.Graphics;
 using LabTetherAgent.App;
 using LabTetherAgent.Presentation;
+using LabTetherAgent.Views.Shared;
 
 namespace LabTetherAgent.Views.Onboarding;
 
 public sealed partial class OnboardingWindow : Window
 {
+    private readonly AppState _appState;
+
     public OnboardingViewModel ViewModel { get; }
     public event Action? OnCompleted;
 
     public OnboardingWindow(AppState appState)
     {
+        _appState = appState;
         this.InitializeComponent();
-        AppWindow.Resize(new SizeInt32(560, 460));
-        SystemBackdrop = new MicaBackdrop();
+        WindowChrome.Apply(this, Root, TitleBar);
+        WindowChrome.SizeContent(this, Root, 660, 640);
 
         ViewModel = new OnboardingViewModel(
             appState.Settings,
@@ -28,43 +30,26 @@ public sealed partial class OnboardingWindow : Window
             OnCompleted?.Invoke();
             Close();
         };
-
-        // Navigate to first step
-        NavigateToStep(1);
-        ViewModel.PropertyChanged += (_, args) =>
-        {
-            if (args.PropertyName == nameof(ViewModel.CurrentStep))
-                NavigateToStep(ViewModel.CurrentStep);
-        };
         Closed += (_, _) => ViewModel.CancelConnectionAttempt();
+        // Advanced opens below the fold of the fixed-size window; scroll to it.
+        AdvancedExpander.Expanding += (_, _) =>
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                () => AdvancedExpander.StartBringIntoView());
     }
 
-    private void NavigateToStep(int step)
+    internal void ExpandAdvanced(bool expand)
     {
-        switch (step)
+        if (!expand) return;
+        AdvancedExpander.Loaded += (_, _) =>
         {
-            case 1:
-                StepFrame.Navigate(typeof(HubUrlPage), ViewModel);
-                break;
-            case 2:
-                StepFrame.Navigate(typeof(TokenPage), ViewModel);
-                break;
-            case 3:
-                StepFrame.Navigate(typeof(ConnectingPage), ViewModel);
-                break;
-        }
+            AdvancedExpander.IsExpanded = true;
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                () => AdvancedExpander.StartBringIntoView());
+        };
     }
 
-    private SolidColorBrush StepIndicatorBrush(int step, int currentStep)
-    {
-        return step <= currentStep
-            ? (SolidColorBrush)Application.Current.Resources["AccentFillColorDefaultBrush"]
-            : (SolidColorBrush)Application.Current.Resources["ControlStrongFillColorDefaultBrush"];
-    }
+    private void OnCancel(object sender, RoutedEventArgs e) => Close();
 
-    private Visibility IsLastStep(int step) =>
-        step == 3 ? Visibility.Visible : Visibility.Collapsed;
-
-    private Visibility IsNotLastStep(int step) =>
-        step < 3 ? Visibility.Visible : Visibility.Collapsed;
+    private void OnViewLogs(object sender, RoutedEventArgs e) =>
+        new LogViewer.LogViewerWindow(_appState).Activate();
 }

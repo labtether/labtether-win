@@ -35,9 +35,9 @@ to edit.
    [Releases](https://github.com/labtether/labtether-win/releases/latest).
 2. Extract it into a folder of its own that you will keep, for example
    `%LOCALAPPDATA%\Programs\LabTether`. No administrator rights are needed.
-3. Run `LabTetherAgent.exe` from that folder. The tray icon walks you through
-   connecting to your hub. To start it with Windows, turn on
-   **Start at Login** in Settings.
+3. Run `LabTetherAgent.exe` from that folder. The setup window asks for the
+   Hub URL and a token. To start it with Windows, turn on
+   **Start at sign-in** in Settings.
 
 You need Windows 10 or newer (x64), a running hub, and an enrollment token from
 the hub (**Add Device**). The .NET runtime is included.
@@ -52,7 +52,7 @@ it. Your settings and enrollment are stored outside the folder, so they stay.
 
 ## Uninstall
 
-1. Turn off **Start at Login** in Settings, then exit the tray app.
+1. Turn off **Start at sign-in** in Settings, then quit the tray app.
 2. Remove the hub's SSH key line that the agent added to
    `%USERPROFILE%\.ssh\authorized_keys`. In PowerShell, from the app's folder:
 
@@ -73,9 +73,9 @@ LabTether entries in Windows Credential Manager.
 - **Can't connect.** Check that the hub URL opens from this machine and that
   the enrollment token is still valid.
 - **Moving to another hub.** A token works only with the hub that issued it,
-  so Settings keeps the current hub. Choose **Setup / Re-enroll** in the tray
+  so Settings keeps the current hub. Choose **Re-enroll…** in the tray
   menu and use an enrollment token from the new hub.
-- **Agent logs.** Choose **View Logs** in the tray menu.
+- **Agent logs.** Choose **View logs** in the tray menu.
 
 ## How it works
 

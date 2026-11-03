@@ -1,8 +1,7 @@
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Media;
-using Windows.Graphics;
 using LabTetherAgent.App;
 using LabTetherAgent.Presentation;
+using LabTetherAgent.Views.Shared;
 
 namespace LabTetherAgent.Views.Settings;
 
@@ -13,8 +12,8 @@ public sealed partial class SettingsWindow : Window
     public SettingsWindow(AppState appState)
     {
         this.InitializeComponent();
-        AppWindow.Resize(new SizeInt32(500, 640));
-        SystemBackdrop = new MicaBackdrop();
+        WindowChrome.Apply(this, Root, TitleBar);
+        WindowChrome.SizeContent(this, Root, 660, 640);
 
         ViewModel = new SettingsViewModel(appState.Settings, appState.CredentialStore);
         ViewModel.OnRestartRequired += async () =>

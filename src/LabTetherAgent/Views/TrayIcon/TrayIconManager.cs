@@ -1,12 +1,11 @@
 using System.Runtime.InteropServices;
-using System.Drawing.Drawing2D;
-using System.Drawing.Imaging;
-using System.Drawing.Text;
 using CommunityToolkit.Mvvm.Input;
 using H.NotifyIcon;
 using Microsoft.UI.Xaml;
 using LabTetherAgent.App;
+using LabTetherAgent.Presentation;
 using LabTetherAgent.Services;
+using LabTetherAgent.State;
 using LabTetherAgent.Views.About;
 using LabTetherAgent.Views.Onboarding;
 
@@ -20,18 +19,28 @@ public class TrayIconManager : IDisposable
 {
     private readonly AppState _appState;
     private TaskbarIcon? _taskbarIcon;
+    private Microsoft.UI.Xaml.Controls.MenuFlyoutItem? _setupMenuItem;
     private System.Drawing.Icon? _trayDrawingIcon;
+    private (TrayGlyphState State, bool Light, int Size)? _renderedGlyph;
     private Window? _lifetimeWindow;
     private FlyoutWindow? _flyoutWindow;
+    private DateTimeOffset _flyoutDismissedAt;
     private OnboardingWindow? _onboardingWindow;
     private SynchronizationContext? _uiContext;
+    private Windows.UI.ViewManagement.UISettings? _uiSettings;
     private Action<bool>? _connectionStateHandler;
+    private Action<AgentStatus>? _statusHandler;
     private Action<string>? _agentErrorHandler;
     private Action? _agentStartedHandler;
+    private AgentStatus? _lastStatus;
+    private DateTimeOffset? _offlineSince;
+    private DateTimeOffset? _stoppedAt;
     private bool _aboutDialogVisible;
     private bool _disposed;
 
-    internal readonly record struct TrayIconVisual(string Glyph, byte Red, byte Green, byte Blue);
+    // A click on the tray icon first dismisses an open flyout; treat a show
+    // request that close behind it as the second half of a toggle.
+    private static readonly TimeSpan FlyoutToggleWindow = TimeSpan.FromMilliseconds(400);
 
     public TrayIconManager(AppState appState)
     {
@@ -50,11 +59,11 @@ public class TrayIconManager : IDisposable
 
         _taskbarIcon = new TaskbarIcon
         {
-            ToolTipText = "LabTether Agent",
+            ToolTipText = TrayStatus.AppName,
         };
 
         // Set initial icon
-        UpdateIcon(false);
+        UpdateIcon();
 
         // Left-click or double-click → show flyout
         // H.NotifyIcon.WinUI 2.x uses command properties instead of routed events
@@ -70,27 +79,59 @@ public class TrayIconManager : IDisposable
         // interaction properties are configured.
         _taskbarIcon.ForceCreate(enablesEfficiencyMode: false);
 
-        // Subscribe to connection state changes
-        _connectionStateHandler = connected => RunOnUiThread(() => UpdateIcon(connected));
+        _connectionStateHandler = connected => RunOnUiThread(() =>
+        {
+            _offlineSince = connected ? null : _offlineSince ?? DateTimeOffset.Now;
+            if (connected) _stoppedAt = null;
+            UpdateIcon();
+        });
         _appState.ApiClient.OnConnectionStateChanged += _connectionStateHandler;
 
+        // Alerts change the glyph while the flyout is closed (polled every 30 s).
+        _statusHandler = status => RunOnUiThread(() =>
+        {
+            _lastStatus = status;
+            UpdateIcon();
+        });
+        _appState.ApiClient.OnStatusUpdated += _statusHandler;
+
         // A failed start or crash restart leaves no child to report status.
-        // Keep that failure visible until the next start or connection change.
-        _agentErrorHandler = _ => RunOnUiThread(() => UpdateIcon(false, agentFailed: true));
-        _agentStartedHandler = () => RunOnUiThread(() => UpdateIcon(_appState.ApiClient.IsConnected));
+        // Keep that failure visible until the next start or connection.
+        _agentErrorHandler = _ => RunOnUiThread(() =>
+        {
+            _stoppedAt ??= DateTimeOffset.Now;
+            UpdateIcon();
+        });
+        _agentStartedHandler = () => RunOnUiThread(() =>
+        {
+            _stoppedAt = null;
+            UpdateIcon();
+        });
         _appState.AgentProcess.OnError += _agentErrorHandler;
         _appState.AgentProcess.OnStarted += _agentStartedHandler;
+
+        // Redraw for a light or dark taskbar when the Windows theme changes.
+        _uiSettings = new Windows.UI.ViewManagement.UISettings();
+        _uiSettings.ColorValuesChanged += OnSystemColorsChanged;
     }
 
-    public void ShowFlyout()
+    public void ShowFlyout() => ShowFlyout(toggle: true);
+
+    private void ShowFlyout(bool toggle)
     {
         if (_flyoutWindow == null)
         {
+            if (toggle && DateTimeOffset.Now - _flyoutDismissedAt < FlyoutToggleWindow)
+                return;
             _flyoutWindow = new FlyoutWindow(_appState);
-            _flyoutWindow.Closed += (_, _) => _flyoutWindow = null;
+            _flyoutWindow.Closed += (_, _) =>
+            {
+                _flyoutDismissedAt = DateTimeOffset.Now;
+                _flyoutWindow = null;
+            };
         }
 
-        _flyoutWindow.Activate();
+        _flyoutWindow.ShowNearTray();
     }
 
     public void ShowOnboarding()
@@ -114,85 +155,44 @@ public class TrayIconManager : IDisposable
         _onboardingWindow = null;
     }
 
-    private void UpdateIcon(bool connected, bool agentFailed = false)
+    private void OnSystemColorsChanged(Windows.UI.ViewManagement.UISettings sender, object args) =>
+        RunOnUiThread(UpdateIcon);
+
+    private void UpdateIcon()
     {
-        if (_taskbarIcon == null) return;
+        if (_taskbarIcon == null || _disposed) return;
+
+        var tray = TrayStatus.Resolve(
+            _appState.ApiClient.IsConnected,
+            _lastStatus ?? _appState.ApiClient.LatestStatus,
+            _offlineSince,
+            _stoppedAt,
+            DateTimeOffset.Now);
+        _taskbarIcon.ToolTipText = tray.Tooltip;
+        if (_setupMenuItem != null)
+            _setupMenuItem.Text = SetupMenuText();
 
         // GeneratedIconSource depends on a live WinUI render root. This tray
         // icon is created entirely in code and therefore rendered as an empty,
         // clickable slot on Windows 11. Produce a native HICON instead so the
         // shell always receives visible pixels in unpackaged builds.
-        var visual = agentFailed ? AgentFailedVisual : ResolveTrayIconVisual(connected);
-        var nextIcon = CreateTrayIcon(visual);
+        (TrayGlyphState State, bool Light, int Size) glyph =
+            (tray.State, TaskbarEnvironment.IsLightTaskbar(), TaskbarEnvironment.SmallIconSize());
+        if (_renderedGlyph == glyph)
+            return;
+        var nextIcon = CreateTrayIcon(glyph.State, TaskbarEnvironment.Palette(glyph.Light), glyph.Size);
         _taskbarIcon.IconSource = null;
         _taskbarIcon.Icon = nextIcon;
         _trayDrawingIcon?.Dispose();
         _trayDrawingIcon = nextIcon;
-
-        _taskbarIcon.ToolTipText = agentFailed
-            ? "LabTether Agent — Agent stopped (see View Logs)"
-            : connected
-                ? "LabTether Agent — Connected"
-                : "LabTether Agent — Disconnected";
+        _renderedGlyph = glyph;
     }
 
-    internal static readonly TrayIconVisual AgentFailedVisual = new("!", 196, 43, 28);
-
-    internal static TrayIconVisual ResolveTrayIconVisual(bool connected) => connected
-        ? new TrayIconVisual("L", 46, 160, 67)
-        : new TrayIconVisual("L", 117, 117, 117);
-
-    internal static System.Drawing.Icon CreateTrayIcon(TrayIconVisual visual)
+    internal static System.Drawing.Icon CreateTrayIcon(TrayGlyphState state, TrayPalette palette, int size)
     {
-        const int iconSize = 32;
-        using var bitmap = new System.Drawing.Bitmap(
-            iconSize,
-            iconSize,
-            PixelFormat.Format32bppArgb);
-        using var graphics = System.Drawing.Graphics.FromImage(bitmap);
-        graphics.Clear(System.Drawing.Color.Transparent);
-        graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        graphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
-
-        using (var background = new System.Drawing.SolidBrush(
-                   System.Drawing.Color.FromArgb(255, visual.Red, visual.Green, visual.Blue)))
-        {
-            graphics.FillEllipse(background, 1, 1, iconSize - 2, iconSize - 2);
-        }
-
-        using var font = new System.Drawing.Font(
-            "Segoe UI",
-            21,
-            System.Drawing.FontStyle.Bold,
-            System.Drawing.GraphicsUnit.Pixel);
-        using var foreground = new System.Drawing.SolidBrush(System.Drawing.Color.White);
-        using var format = new System.Drawing.StringFormat
-        {
-            Alignment = System.Drawing.StringAlignment.Center,
-            LineAlignment = System.Drawing.StringAlignment.Center,
-        };
-        graphics.DrawString(
-            visual.Glyph,
-            font,
-            foreground,
-            new System.Drawing.RectangleF(0, -1, iconSize, iconSize),
-            format);
-
-        var handle = bitmap.GetHicon();
-        try
-        {
-            using var borrowed = System.Drawing.Icon.FromHandle(handle);
-            return (System.Drawing.Icon)borrowed.Clone();
-        }
-        finally
-        {
-            DestroyIcon(handle);
-        }
+        using var bitmap = TrayGlyph.Render(state, palette, size);
+        return TrayGlyph.ToIcon(bitmap);
     }
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool DestroyIcon(nint handle);
 
     private Microsoft.UI.Xaml.Controls.MenuFlyout BuildContextMenu()
     {
@@ -200,19 +200,19 @@ public class TrayIconManager : IDisposable
 
         var openConsole = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem
         {
-            Text = "Open Console",
+            Text = "Open console",
             Command = new RelayCommand(OpenConsole),
         };
         menu.Items.Add(openConsole);
 
         menu.Items.Add(new Microsoft.UI.Xaml.Controls.MenuFlyoutSeparator());
 
-        var setup = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem
+        _setupMenuItem = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem
         {
-            Text = "Setup / Re-enroll",
+            Text = SetupMenuText(),
             Command = new RelayCommand(ShowOnboarding),
         };
-        menu.Items.Add(setup);
+        menu.Items.Add(_setupMenuItem);
 
         var settings = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem
         {
@@ -227,7 +227,7 @@ public class TrayIconManager : IDisposable
 
         var logs = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem
         {
-            Text = "View Logs",
+            Text = "View logs",
             Command = new RelayCommand(() =>
             {
                 var win = new LogViewer.LogViewerWindow(_appState);
@@ -238,7 +238,7 @@ public class TrayIconManager : IDisposable
 
         var popOut = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem
         {
-            Text = "Pop Out",
+            Text = "Pop out",
             Command = new RelayCommand(() =>
             {
                 var win = new PopOut.PopOutWindow(_appState);
@@ -271,6 +271,8 @@ public class TrayIconManager : IDisposable
         return menu;
     }
 
+    private string SetupMenuText() => _appState.Settings.IsEnrolled ? "Re-enroll…" : "Set up…";
+
     private void OpenConsole()
     {
         _ = new ConsoleLauncher().OpenAsync(_appState.Settings);
@@ -300,8 +302,9 @@ public class TrayIconManager : IDisposable
         // ContentDialog needs a live XamlRoot. The tray app has no persistent
         // main window, so use the existing flyout as the owner and bring it up
         // before resolving its visual root.
-        ShowFlyout();
-        if (_flyoutWindow?.Content is not FrameworkElement owner)
+        ShowFlyout(toggle: false);
+        var flyout = _flyoutWindow;
+        if (flyout?.Content is not FrameworkElement owner)
             throw new InvalidOperationException("The tray flyout has no XAML content root.");
 
         var xamlRoot = await WaitForXamlRootAsync(owner);
@@ -309,9 +312,12 @@ public class TrayIconManager : IDisposable
             throw new InvalidOperationException("The tray flyout did not acquire a XAML root.");
 
         _aboutDialogVisible = true;
+        // The dialog and its save picker take focus; keep the flyout open and
+        // large enough to hold the dialog until it closes.
+        flyout.HoldOpenForDialog(true);
         try
         {
-            var ownerWindowHandle = WinRT.Interop.WindowNative.GetWindowHandle(_flyoutWindow);
+            var ownerWindowHandle = WinRT.Interop.WindowNative.GetWindowHandle(flyout);
             var dialog = new AboutDialog(_appState, ownerWindowHandle)
             {
                 XamlRoot = xamlRoot,
@@ -320,6 +326,7 @@ public class TrayIconManager : IDisposable
         }
         finally
         {
+            flyout.HoldOpenForDialog(false);
             _aboutDialogVisible = false;
         }
     }
@@ -378,6 +385,10 @@ public class TrayIconManager : IDisposable
         _disposed = true;
         if (_connectionStateHandler != null)
             _appState.ApiClient.OnConnectionStateChanged -= _connectionStateHandler;
+        if (_statusHandler != null)
+            _appState.ApiClient.OnStatusUpdated -= _statusHandler;
+        if (_uiSettings != null)
+            _uiSettings.ColorValuesChanged -= OnSystemColorsChanged;
         if (_agentErrorHandler != null)
             _appState.AgentProcess.OnError -= _agentErrorHandler;
         if (_agentStartedHandler != null)

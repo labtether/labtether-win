@@ -6,7 +6,7 @@ public class AgentStatusTests
 {
     [Theory]
     [InlineData(false, "connecting", "Connecting")]
-    [InlineData(false, "auth_failed", "Authentication Failed")]
+    [InlineData(false, "auth_failed", "Authentication failed")]
     [InlineData(false, "disconnected", "Disconnected")]
     [InlineData(false, "unexpected_internal_state", "Disconnected")]
     [InlineData(true, "connecting", "Connected")]

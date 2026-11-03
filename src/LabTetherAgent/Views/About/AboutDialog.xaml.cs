@@ -26,8 +26,8 @@ public sealed partial class AboutDialog : ContentDialog
             : "0.0.0";
         AgentVersionText.Text = ReadAgentVersion();
         HubUrlText.Text = appState.Settings.HubUrl;
-        FingerprintText.Text = "—"; // populated from /agent/info
-        VersionText.Text = $"v{AppVersionText.Text} (agent v{AgentVersionText.Text})";
+        FingerprintText.Text = ""; // filled from /agent/info
+        VersionText.Text = $"Version {AppVersionText.Text}";
 
         // Load fingerprint from API
         _ = LoadFingerprintAsync();
@@ -36,8 +36,7 @@ public sealed partial class AboutDialog : ContentDialog
     private async Task LoadFingerprintAsync()
     {
         var info = await _appState.ApiClient.FetchInfoAsync();
-        if (info?.Fingerprint != null)
-            FingerprintText.Text = info.Fingerprint;
+        FingerprintText.Text = string.IsNullOrWhiteSpace(info?.Fingerprint) ? "Not available" : info!.Fingerprint;
     }
 
     // Handle "Export Diagnostics" button
@@ -50,26 +49,18 @@ public sealed partial class AboutDialog : ContentDialog
         var deferral = args.GetDeferral();
         _exportInProgress = true;
         IsPrimaryButtonEnabled = false;
-        ExportStatus.IsOpen = false;
+        ShowExportStatus(null, problem: false);
         try
         {
             var exported = await ExportDiagnosticsAsync();
             if (exported)
-            {
-                ExportStatus.Severity = InfoBarSeverity.Success;
-                ExportStatus.Title = "Diagnostics exported";
-                ExportStatus.Message = "The ZIP archive was saved successfully.";
-                ExportStatus.IsOpen = true;
-            }
+                ShowExportStatus("Diagnostics saved", problem: false);
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine(
                 $"Diagnostics export failed: {ex.GetType().Name}: {ex.Message}");
-            ExportStatus.Severity = InfoBarSeverity.Error;
-            ExportStatus.Title = "Diagnostics export failed";
-            ExportStatus.Message = "Choose another location and try again.";
-            ExportStatus.IsOpen = true;
+            ShowExportStatus("Could not save diagnostics. Choose another folder.", problem: true);
         }
         finally
         {
@@ -79,6 +70,14 @@ public sealed partial class AboutDialog : ContentDialog
         }
     }
 
+    private void ShowExportStatus(string? text, bool problem)
+    {
+        ExportStatus.Text = problem ? "" : text ?? "";
+        ExportError.Text = problem ? text ?? "" : "";
+        ExportStatus.Visibility = !problem && text != null ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+        ExportError.Visibility = problem ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+    }
+
     private async Task<bool> ExportDiagnosticsAsync()
     {
         var picker = new FileSavePicker
@@ -86,7 +85,7 @@ public sealed partial class AboutDialog : ContentDialog
             SuggestedStartLocation = PickerLocationId.Desktop,
             SuggestedFileName = DiagnosticsExport.CreateSuggestedFileName(DateTimeOffset.Now),
         };
-        picker.FileTypeChoices.Add("ZIP Archive", [".zip"]);
+        picker.FileTypeChoices.Add("ZIP archive", [".zip"]);
 
         // WinUI 3 requires initializing the picker with the owning window handle.
         // Use the exact flyout HWND. GetActiveWindow() can return a transient

@@ -1,9 +1,8 @@
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Media;
-using Windows.Graphics;
 using Windows.Storage.Pickers;
 using LabTetherAgent.App;
 using LabTetherAgent.Presentation;
+using LabTetherAgent.Views.Shared;
 using WinRT.Interop;
 
 namespace LabTetherAgent.Views.LogViewer;
@@ -17,8 +16,8 @@ public sealed partial class LogViewerWindow : Window
     {
         _appState = appState;
         this.InitializeComponent();
-        AppWindow.Resize(new SizeInt32(700, 500));
-        SystemBackdrop = new MicaBackdrop();
+        WindowChrome.Apply(this, Root, TitleBar);
+        WindowChrome.SizeContent(this, Root, 760, 540);
         ViewModel = new LogViewerViewModel(appState.AgentProcess.LogReader);
         ViewModel.OnNewLine += OnNewLogLine;
         Closed += OnClosed;
@@ -41,7 +40,7 @@ public sealed partial class LogViewerWindow : Window
 
     private async void OnExport(object sender, RoutedEventArgs e)
     {
-        ExportStatus.IsOpen = false;
+        ShowExportStatus("", problem: false);
         try
         {
             var picker = new FileSavePicker
@@ -59,19 +58,19 @@ public sealed partial class LogViewerWindow : Window
             await Windows.Storage.FileIO.WriteTextAsync(
                 file,
                 ViewModel.BuildExportContent(_appState.Settings));
-            ExportStatus.Severity = Microsoft.UI.Xaml.Controls.InfoBarSeverity.Success;
-            ExportStatus.Title = "Logs exported";
-            ExportStatus.Message = "The text file was saved successfully.";
-            ExportStatus.IsOpen = true;
+            ShowExportStatus($"Saved {file.Name}", problem: false);
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine(
                 $"Log export failed: {ex.GetType().Name}: {ex.Message}");
-            ExportStatus.Severity = Microsoft.UI.Xaml.Controls.InfoBarSeverity.Error;
-            ExportStatus.Title = "Log export failed";
-            ExportStatus.Message = "Choose another location and try again.";
-            ExportStatus.IsOpen = true;
+            ShowExportStatus("Could not save the logs. Choose another folder.", problem: true);
         }
+    }
+
+    private void ShowExportStatus(string text, bool problem)
+    {
+        ExportStatus.Text = problem ? "" : text;
+        ExportError.Text = problem ? text : "";
     }
 }

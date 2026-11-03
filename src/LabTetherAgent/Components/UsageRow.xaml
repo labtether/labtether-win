@@ -1,0 +1,42 @@
+<UserControl
+    x:Class="LabTetherAgent.Components.UsageRow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    IsTabStop="False">
+    <!-- Label, a thin usage bar and the percent. One neutral colour; amber from 85 %. -->
+    <Grid Height="36" Padding="12,0" ColumnSpacing="12">
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup>
+                <VisualState x:Name="Normal" />
+                <VisualState x:Name="High">
+                    <VisualState.Setters>
+                        <Setter Target="Fill.Background" Value="{ThemeResource LTWarnBrush}" />
+                        <Setter Target="ValueText.Foreground" Value="{ThemeResource LTWarnTextBrush}" />
+                        <Setter Target="ValueText.FontWeight" Value="Medium" />
+                        <Setter Target="UnitText.Foreground" Value="{ThemeResource LTWarnTextBrush}" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="64" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="44" />
+        </Grid.ColumnDefinitions>
+        <TextBlock x:Name="LabelText" Style="{StaticResource LTBodyTextStyle}" VerticalAlignment="Center"
+                   Foreground="{ThemeResource LTText2Brush}" />
+        <Grid x:Name="Track" Grid.Column="1" Height="4" CornerRadius="2" VerticalAlignment="Center"
+              Background="{ThemeResource LTTrackBrush}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="UsedColumn" Width="0*" />
+                <ColumnDefinition x:Name="FreeColumn" Width="100*" />
+            </Grid.ColumnDefinitions>
+            <Border x:Name="Fill" CornerRadius="2" Background="{ThemeResource LTText3Brush}" />
+        </Grid>
+        <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+            <TextBlock x:Name="ValueText" Style="{StaticResource LTBodyTextStyle}" Foreground="{ThemeResource LTTextBrush}" />
+            <TextBlock x:Name="UnitText" Style="{StaticResource LTBodyTextStyle}" Text="%"
+                       Foreground="{ThemeResource LTText3Brush}" />
+        </StackPanel>
+    </Grid>
+</UserControl>

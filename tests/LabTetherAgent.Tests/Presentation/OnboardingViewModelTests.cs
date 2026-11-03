@@ -71,7 +71,7 @@ public class OnboardingViewModelTests
     }
 
     [Fact]
-    public async Task ReachableHubWithRejectedEnrollmentKeepsWizardOpenAndShowsCredentialError()
+    public async Task ReachableHubWithRejectedEnrollmentKeepsSetupOpenAndShowsCredentialError()
     {
         var credentialPath = Path.Combine(
             Path.GetTempPath(),
@@ -98,12 +98,11 @@ public class OnboardingViewModelTests
         {
             HubUrl = "https://hub.example.test:8443",
             Token = "syntactically-valid-but-rejected-token",
-            CurrentStep = 3,
         };
         var completed = false;
         viewModel.OnCompleted += () => completed = true;
 
-        await viewModel.FinishCommand.ExecuteAsync(null);
+        await viewModel.ConnectCommand.ExecuteAsync(null);
 
         Assert.NotNull(stagedCandidate);
         Assert.Equal("syntactically-valid-but-rejected-token", stagedCandidate!.EnrollmentToken);
@@ -114,12 +113,12 @@ public class OnboardingViewModelTests
         Assert.False(completed);
         Assert.False(viewModel.IsConnected);
         Assert.False(viewModel.IsConnecting);
-        Assert.True(viewModel.CanFinish);
+        Assert.True(viewModel.CanConnect);
         Assert.Contains("token was rejected", viewModel.ConnectionError, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public async Task BackAfterRejectedEnrollmentClearsStaleErrorAndRetryShowsOnlyNewFailure()
+    public async Task EditingTokenAfterRejectedEnrollmentClearsStaleErrorAndRetryShowsOnlyNewFailure()
     {
         var credentialPath = Path.Combine(
             Path.GetTempPath(),
@@ -138,33 +137,68 @@ public class OnboardingViewModelTests
         {
             HubUrl = "https://hub.example.test:8443",
             Token = "first-syntactically-valid-token",
-            CurrentStep = 3,
         };
 
-        await viewModel.FinishCommand.ExecuteAsync(null);
+        await viewModel.ConnectCommand.ExecuteAsync(null);
 
         Assert.Equal("The first enrollment token was rejected.", viewModel.ConnectionError);
 
-        viewModel.BackCommand.Execute(null);
+        viewModel.Token = "replacement-syntactically-valid-token";
 
-        Assert.Equal(2, viewModel.CurrentStep);
         Assert.Null(viewModel.ConnectionError);
         Assert.False(viewModel.IsConnected);
 
-        viewModel.Token = "replacement-syntactically-valid-token";
-        viewModel.NextCommand.Execute(null);
-
-        Assert.Equal(3, viewModel.CurrentStep);
-        Assert.Null(viewModel.ConnectionError);
-
-        await viewModel.FinishCommand.ExecuteAsync(null);
+        await viewModel.ConnectCommand.ExecuteAsync(null);
 
         Assert.Equal(2, attempt);
         Assert.Equal("The replacement enrollment token was rejected.", viewModel.ConnectionError);
     }
 
+    // The one-screen setup has no step gate, so Connect itself must refuse an
+    // incomplete form instead of probing an invalid Hub or sending no token.
     [Fact]
-    public async Task EditingFinalStepIdentityClearsErrorFromPreviousSubmission()
+    public async Task ConnectDoesNothingUntilHubUrlAndTokenAreValid()
+    {
+        var credentialPath = Path.Combine(
+            Path.GetTempPath(),
+            "LabTetherAgentTests",
+            Guid.NewGuid().ToString("N"),
+            ".credentials");
+        var agentStarted = false;
+        var viewModel = new OnboardingViewModel(
+            new AgentSettings(),
+            new CredentialStore(vaultAvailable: false, fallbackPath: credentialPath),
+            VerifiedHubConnectionTester(),
+            (_, _, _) =>
+            {
+                agentStarted = true;
+                return Task.FromResult(AgentConnectionAttemptResult.Connected());
+            });
+
+        Assert.False(viewModel.CanConnect);
+        Assert.Null(viewModel.HubUrlError);
+
+        viewModel.HubUrl = "hub.example.test";
+        viewModel.Token = "valid-enrollment-token";
+        Assert.False(viewModel.CanConnect);
+        Assert.NotNull(viewModel.HubUrlError);
+        await viewModel.ConnectCommand.ExecuteAsync(null);
+        Assert.False(agentStarted);
+
+        viewModel.HubUrl = "https://hub.example.test:8443";
+        viewModel.Token = "   ";
+        Assert.False(viewModel.CanConnect);
+        await viewModel.ConnectCommand.ExecuteAsync(null);
+        Assert.False(agentStarted);
+
+        viewModel.Token = "valid-enrollment-token";
+        Assert.True(viewModel.CanConnect);
+        await viewModel.ConnectCommand.ExecuteAsync(null);
+        Assert.True(agentStarted);
+    }
+
+    [Fact]
+    public async Task EditingDeviceIdClearsErrorFromPreviousSubmission()
     {
         var credentialPath = Path.Combine(
             Path.GetTempPath(),
@@ -181,10 +215,9 @@ public class OnboardingViewModelTests
             HubUrl = "https://hub.example.test:8443",
             AssetId = "first-windows-node",
             Token = "syntactically-valid-enrollment-token",
-            CurrentStep = 3,
         };
 
-        await viewModel.FinishCommand.ExecuteAsync(null);
+        await viewModel.ConnectCommand.ExecuteAsync(null);
 
         Assert.NotNull(viewModel.ConnectionError);
 
@@ -195,7 +228,7 @@ public class OnboardingViewModelTests
     }
 
     [Fact]
-    public async Task WizardCompletesOnlyAfterAgentReportsAuthenticatedConnection()
+    public async Task SetupCompletesOnlyAfterAgentReportsAuthenticatedConnection()
     {
         var credentialPath = Path.Combine(
             Path.GetTempPath(),
@@ -214,12 +247,11 @@ public class OnboardingViewModelTests
         {
             HubUrl = "https://hub.example.test:8443",
             Token = "valid-enrollment-token",
-            CurrentStep = 3,
         };
         var completed = false;
         viewModel.OnCompleted += () => completed = true;
 
-        await viewModel.FinishCommand.ExecuteAsync(null);
+        await viewModel.ConnectCommand.ExecuteAsync(null);
 
         Assert.True(completed);
         Assert.True(viewModel.IsConnected);
@@ -228,7 +260,7 @@ public class OnboardingViewModelTests
     }
 
     [Fact]
-    public async Task ClosingWizardDuringHubPreflightDoesNotPersistOrStartAgent()
+    public async Task ClosingSetupDuringHubCheckDoesNotPersistOrStartAgent()
     {
         var probeStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseProbe = new TaskCompletionSource<HttpResponseMessage>(
@@ -256,10 +288,9 @@ public class OnboardingViewModelTests
         {
             HubUrl = "https://hub.example.test:8443",
             Token = "unused-enrollment-token",
-            CurrentStep = 3,
         };
 
-        var finish = viewModel.FinishCommand.ExecuteAsync(null);
+        var finish = viewModel.ConnectCommand.ExecuteAsync(null);
         await probeStarted.Task;
         viewModel.CancelConnectionAttempt();
         releaseProbe.SetResult(new HttpResponseMessage(HttpStatusCode.OK)
@@ -295,10 +326,9 @@ public class OnboardingViewModelTests
             HubUrl = "https://hub.example.test:8443",
             AssetId = "new-windows-node",
             Token = "rejected-first-install-token",
-            CurrentStep = 3,
         };
 
-        await viewModel.FinishCommand.ExecuteAsync(null);
+        await viewModel.ConnectCommand.ExecuteAsync(null);
 
         Assert.False(settings.IsEnrolled);
         Assert.Equal("wss://localhost:8443/ws/agent", settings.HubUrl);

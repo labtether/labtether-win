@@ -14,5 +14,10 @@ public sealed partial class SectionHeader : UserControl
     public SectionHeader() { this.InitializeComponent(); }
 
     private static void OnTitleChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-        => ((SectionHeader)d).TitleText.Text = ((string)e.NewValue).ToUpperInvariant();
+    {
+        var header = (SectionHeader)d;
+        header.TitleText.Text = (string)e.NewValue;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetHeadingLevel(
+            header.TitleText, Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level2);
+    }
 }

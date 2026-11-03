@@ -42,6 +42,12 @@ public class LocalApiClient : IDisposable
     private bool _isConnected;
     public bool IsConnected { get { lock (_stateGate) return _isConnected; } }
 
+    /// <summary>The last status the agent reported, so a newly opened window can show it at once.</summary>
+    public AgentStatus? LatestStatus
+    {
+        get { lock (_stateGate) return _cachedStatus == null ? null : MapToAgentStatus(_cachedStatus); }
+    }
+
     internal int FailureCount { get { lock (_stateGate) return _failureCount; } }
     internal TimeSpan CurrentPollingInterval { get { lock (_stateGate) return _currentPollingInterval; } }
 
@@ -355,6 +361,7 @@ public class LocalApiClient : IDisposable
             HubConnectionState = response.EffectiveConnectionState,
             LastError = response.LastError,
             LastErrorReason = response.LastErrorReason ?? string.Empty,
+            DisconnectedAt = KnownTime(response.DisconnectedAt),
             Uptime = response.Uptime,
             CpuPercent = response.Metrics?.CpuPercent ?? response.CpuPercent,
             MemoryPercent = response.Metrics?.MemoryPercent ?? response.MemoryPercent,
@@ -371,11 +378,20 @@ public class LocalApiClient : IDisposable
                     string.IsNullOrWhiteSpace(a.Name) ? a.Title ?? string.Empty : a.Name,
                     a.State ?? string.Empty,
                     a.Severity ?? string.Empty,
-                    a.Message ?? a.Summary)).ToList() ?? [],
+                    a.Message ?? a.Summary,
+                    KnownTime(a.Timestamp))).ToList() ?? [],
         };
 
         return status;
     }
+
+    // Go sends RFC 3339 with up to nine fraction digits, and its zero time for
+    // "never". An unreadable or pre-2000 time is unknown, never an error.
+    private static DateTimeOffset? KnownTime(string? value) =>
+        DateTimeOffset.TryParse(value, System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AssumeUniversal, out var known) && known.Year >= 2000
+            ? known
+            : null;
 
     private static HttpRequestMessage CreateRequest(
         HttpMethod method,

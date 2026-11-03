@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Shared shapes and styles over the generated tokens. The stock control colours
+  (rose main button, text-coloured switches and checks) are installed from the
+  same tokens by Theme/ControlBrushes.cs.
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <CornerRadius x:Key="ControlCornerRadius">8</CornerRadius>
+    <CornerRadius x:Key="OverlayCornerRadius">12</CornerRadius>
+    <FontFamily x:Key="LTMonoFontFamily">Cascadia Mono, Consolas</FontFamily>
+
+    <Style TargetType="CheckBox" BasedOn="{StaticResource DefaultCheckBoxStyle}">
+        <Setter Property="CornerRadius" Value="4" />
+    </Style>
+
+    <Style x:Key="LTSheetStyle" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource LTPanelBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource LTLineBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource LTRadius4}" />
+        <Setter Property="Padding" Value="4" />
+    </Style>
+
+    <Style x:Key="LTFooterStyle" TargetType="Border">
+        <Setter Property="BorderBrush" Value="{ThemeResource LTLineBrush}" />
+        <Setter Property="BorderThickness" Value="0,1,0,0" />
+        <Setter Property="Padding" Value="24,12" />
+    </Style>
+
+    <Style x:Key="LTSectionTitleStyle" TargetType="TextBlock" BasedOn="{StaticResource LTBodyTextStyle}">
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{ThemeResource LTTextBrush}" />
+    </Style>
+
+    <Style x:Key="LTRowLabelStyle" TargetType="TextBlock" BasedOn="{StaticResource LTBodyTextStyle}">
+        <Setter Property="Foreground" Value="{ThemeResource LTTextBrush}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+
+    <Style x:Key="LTValueWordStyle" TargetType="TextBlock" BasedOn="{StaticResource LTBodyTextStyle}">
+        <Setter Property="Foreground" Value="{ThemeResource LTText2Brush}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="LTFieldLabelStyle" TargetType="TextBlock" BasedOn="{StaticResource LTMetaTextStyle}">
+        <Setter Property="FontWeight" Value="Medium" />
+        <Setter Property="Foreground" Value="{ThemeResource LTText2Brush}" />
+        <Setter Property="Margin" Value="0,0,0,6" />
+    </Style>
+
+    <Style x:Key="LTDetailTextStyle" TargetType="TextBlock" BasedOn="{StaticResource LTMetaTextStyle}">
+        <Setter Property="Foreground" Value="{ThemeResource LTText3Brush}" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+
+    <Style x:Key="LTProblemTextStyle" TargetType="TextBlock" BasedOn="{StaticResource LTMetaTextStyle}">
+        <Setter Property="Foreground" Value="{ThemeResource LTBadTextBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <Style x:Key="LTSettingsRowStyle" TargetType="Grid">
+        <Setter Property="MinHeight" Value="{StaticResource LTSizeRowH}" />
+        <Setter Property="Padding" Value="12,0" />
+        <Setter Property="ColumnSpacing" Value="16" />
+    </Style>
+
+    <Style x:Key="LTMonoTextBoxStyle" TargetType="TextBox" BasedOn="{StaticResource DefaultTextBoxStyle}">
+        <Setter Property="FontFamily" Value="{StaticResource LTMonoFontFamily}" />
+        <Setter Property="FontSize" Value="12" />
+    </Style>
+
+    <Style x:Key="LTFooterButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+        <Setter Property="MinWidth" Value="88" />
+        <Setter Property="MinHeight" Value="{StaticResource LTSizeCtl}" />
+    </Style>
+
+    <Style x:Key="LTPrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
+        <Setter Property="MinWidth" Value="88" />
+        <Setter Property="MinHeight" Value="{StaticResource LTSizeCtl}" />
+    </Style>
+
+    <Style x:Key="LTTitleBarTextStyle" TargetType="TextBlock" BasedOn="{StaticResource LTMicroTextStyle}">
+        <Setter Property="Foreground" Value="{ThemeResource LTTextBrush}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+</ResourceDictionary>
