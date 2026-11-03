@@ -13,6 +13,12 @@ Changes since v1.7.1. This release matches LabTether 2.0.
   nothing to a release.
 
 ### Changed
+- Start at sign-in turns on when the first setup succeeds, so the device is
+  back online after a restart. Settings can turn it off; re-enroll keeps the
+  current choice.
+- The MSI starts the app when an install or upgrade ends. For a scripted
+  install, `msiexec /i labtether-agent-win-x64.msi /qn LAUNCH=0` leaves it
+  closed.
 - The app has the LabTether 2.0 look in light and dark, following Windows,
   with Windows' own high contrast colours under a contrast theme. Rose is
   used only for each window's main button; switches and checkboxes use the

@@ -18,7 +18,7 @@ internal static class RestartRegistration
 
     public static void Register()
     {
-        var result = RegisterApplicationRestart(null, RestartNoCrash | RestartNoHang | RestartNoReboot);
+        var result = RegisterApplicationRestart(global::LabTetherAgent.App.App.InstallerStartArgument, RestartNoCrash | RestartNoHang | RestartNoReboot);
         if (result != 0)
             System.Diagnostics.Debug.WriteLine($"RegisterApplicationRestart failed: 0x{result:X8}");
     }

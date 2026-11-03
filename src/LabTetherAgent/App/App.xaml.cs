@@ -148,14 +148,24 @@ public partial class App : Application, IXamlMetadataProvider
             return false;
         }
 
-        // Register for future activation redirects
+        // Register for future activation redirects. A start by the installer
+        // (or by Windows after an upgrade) finds the app already running and
+        // must not open the flyout.
         instance.Activated += (_, activatedArgs) =>
         {
-            RedirectedActivation?.Invoke();
+            if (!IsInstallerStart(activatedArgs))
+                RedirectedActivation?.Invoke();
         };
 
         return true;
     }
+
+    /// <summary>The argument the MSI and the upgrade restart pass when they start the app.</summary>
+    internal const string InstallerStartArgument = "--from-installer";
+
+    private static bool IsInstallerStart(AppActivationArguments activatedArgs) =>
+        activatedArgs.Data is Windows.ApplicationModel.Activation.ILaunchActivatedEventArgs launch &&
+        (launch.Arguments ?? string.Empty).Contains(InstallerStartArgument, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Clean shutdown — stop agent, remove tray icon.
