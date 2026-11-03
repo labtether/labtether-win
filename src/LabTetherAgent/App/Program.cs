@@ -14,6 +14,9 @@ public static class Program
     internal const string WinUiRuntimeProbeArgument = "--winui-runtime-probe";
 
     internal static bool IsWinUiRuntimeProbe { get; private set; }
+
+    /// <summary>Debug builds: write window snapshots to this folder and exit.</summary>
+    internal static string? SnapshotDirectory { get; private set; }
     internal static AppStateLocation StateLocation { get; private set; } = AppStateLocation.Installed;
 
     [STAThread]
@@ -28,11 +31,20 @@ public static class Program
         GlobalExceptionHandlers.Install();
 
         IsWinUiRuntimeProbe = HasWinUiRuntimeProbeArgument(args);
+#if DEBUG
+        var snapshot = Array.FindIndex(args, arg => string.Equals(arg, "--render-snapshots", StringComparison.OrdinalIgnoreCase));
+        if (snapshot >= 0 && snapshot + 1 < args.Length)
+        {
+            SnapshotDirectory = Path.GetFullPath(args[snapshot + 1]);
+            args = args.Where((_, i) => i != snapshot && i != snapshot + 1).ToArray();
+        }
+#endif
         StateLocation = AppStateLocation.FromArguments(args);
 
         // Single-instance check must happen before any WinUI initialization
         // Use global:: to disambiguate from the LabTetherAgent.App namespace
-        if (!IsWinUiRuntimeProbe && !global::LabTetherAgent.App.App.EnsureSingleInstance(StateLocation))
+        if (!IsWinUiRuntimeProbe && SnapshotDirectory == null &&
+            !global::LabTetherAgent.App.App.EnsureSingleInstance(StateLocation))
             return;
 
         WinRT.ComWrappersSupport.InitializeComWrappers();

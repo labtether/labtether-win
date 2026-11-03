@@ -13,6 +13,22 @@ Changes since v1.7.1. This release matches LabTether 2.0.
   nothing to a release.
 
 ### Changed
+- The app has the LabTether 2.0 look in light and dark, following Windows,
+  with Windows' own high contrast colours under a contrast theme. Rose is
+  used only for each window's main button; switches and checkboxes use the
+  text colour.
+- The tray icon is the LabTether mascot drawn in one colour for light and
+  dark taskbars. An amber dot means a warning alert, a red dot a critical
+  alert or a stopped agent, and a ring with a dimmed glyph means offline.
+  The tooltip says what happened and when, for example "Offline since 21:12".
+- The flyout opens above the tray and closes when it loses focus. It shows
+  problems first, then CPU, memory and disk as thin bars that turn amber
+  from 85%.
+- Setup is one screen: Hub URL, CA certificate file, Skip certificate check,
+  token type and token, with Device ID and Group ID under Advanced.
+- Settings are label-left rows under Connection, General and Docker, and
+  the tray menu, Settings and setup use sentence case ("Open console",
+  "Re-enroll…", "Start at sign-in").
 - The app, its MSI and the bundled agent core are version 2.0.0. The bundled
   agent is `labtether-agent v2.0.0`, and `scripts/download-agent.ps1`
   fetches v2.0.0 by default.

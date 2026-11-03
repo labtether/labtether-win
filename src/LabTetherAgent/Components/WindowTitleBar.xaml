@@ -1,0 +1,17 @@
+<UserControl
+    x:Class="LabTetherAgent.Components.WindowTitleBar"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:components="using:LabTetherAgent.Components"
+    IsTabStop="False">
+    <!-- The window's title row: mascot and title. Windows draws the caption buttons over its right end. -->
+    <Grid Height="32" Padding="12,0,138,0" ColumnSpacing="12">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <components:Mascot Width="16" Height="16" VerticalAlignment="Center" />
+        <TextBlock x:Name="TitleText" Grid.Column="1" Style="{StaticResource LTTitleBarTextStyle}"
+                   TextTrimming="CharacterEllipsis" />
+    </Grid>
+</UserControl>

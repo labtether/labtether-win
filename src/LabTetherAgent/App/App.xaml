@@ -7,6 +7,9 @@
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+                <ResourceDictionary Source="ms-appx:///Theme/LabTetherTheme.xaml" />
+                <ResourceDictionary Source="ms-appx:///Theme/LabTetherHighContrast.xaml" />
+                <ResourceDictionary Source="ms-appx:///Theme/LabTetherControls.xaml" />
             </ResourceDictionary.MergedDictionaries>
             <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
             <converters:StringToBoolConverter x:Key="StringToBoolConverter" />

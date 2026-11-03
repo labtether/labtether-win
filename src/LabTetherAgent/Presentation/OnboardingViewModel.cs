@@ -6,8 +6,8 @@ using LabTetherAgent.Settings;
 namespace LabTetherAgent.Presentation;
 
 /// <summary>
-/// ViewModel for the 3-step onboarding wizard.
-/// Step 1: Hub URL, Step 2: Token type + token, Step 3: Identity + connect.
+/// ViewModel for the one-screen setup: Hub URL and trust, token type and token,
+/// and under Advanced the device ID and group ID. Connect enrolls the agent.
 /// </summary>
 public partial class OnboardingViewModel : ObservableObject
 {
@@ -16,21 +16,17 @@ public partial class OnboardingViewModel : ObservableObject
     private readonly Func<AgentSettings, bool, CancellationToken, Task<AgentConnectionAttemptResult>> _connectAgent;
     private CancellationTokenSource? _connectionAttempt;
 
-    private int _currentStep = 1;
-    private bool _canGoNext;
-    private bool _canGoBack;
-
-    // Step 1
+    // Hub
     private string _hubUrl = "https://";
     private bool _isHubUrlValid;
     private string? _hubUrlError;
 
-    // Step 2
+    // Token
     private bool _useEnrollmentToken = true;
     private string _token = string.Empty;
     private bool _isTokenValid;
 
-    // Step 3
+    // Advanced, and the connection attempt
     private string _assetId = string.Empty;
     private string _groupId = string.Empty;
     private bool _isConnecting;
@@ -38,31 +34,9 @@ public partial class OnboardingViewModel : ObservableObject
     private string? _connectionError;
 
     // TLS trust — off by default. Must be explicitly enabled by the user for
-    // self-signed homelab certificates. Flows into _settings.TlsSkipVerify on Finish.
+    // self-signed homelab certificates. Flows into _settings.TlsSkipVerify on Connect.
     private bool _tlsSkipVerify;
     private string _tlsCaFile = string.Empty;
-
-    public int CurrentStep
-    {
-        get => _currentStep;
-        set
-        {
-            if (SetProperty(ref _currentStep, value))
-                OnCurrentStepChanged(value);
-        }
-    }
-
-    public bool CanGoNext
-    {
-        get => _canGoNext;
-        set => SetProperty(ref _canGoNext, value);
-    }
-
-    public bool CanGoBack
-    {
-        get => _canGoBack;
-        set => SetProperty(ref _canGoBack, value);
-    }
 
     public string HubUrl
     {
@@ -77,7 +51,11 @@ public partial class OnboardingViewModel : ObservableObject
     public bool IsHubUrlValid
     {
         get => _isHubUrlValid;
-        set => SetProperty(ref _isHubUrlValid, value);
+        set
+        {
+            if (SetProperty(ref _isHubUrlValid, value))
+                OnPropertyChanged(nameof(CanConnect));
+        }
     }
 
     public string? HubUrlError
@@ -109,7 +87,11 @@ public partial class OnboardingViewModel : ObservableObject
     public bool IsTokenValid
     {
         get => _isTokenValid;
-        set => SetProperty(ref _isTokenValid, value);
+        set
+        {
+            if (SetProperty(ref _isTokenValid, value))
+                OnPropertyChanged(nameof(CanConnect));
+        }
     }
 
     public string AssetId
@@ -151,8 +133,17 @@ public partial class OnboardingViewModel : ObservableObject
     public string? ConnectionError
     {
         get => _connectionError;
-        set => SetProperty(ref _connectionError, value);
+        set
+        {
+            if (SetProperty(ref _connectionError, value))
+                OnPropertyChanged(nameof(HasConnectionError));
+        }
     }
+
+    public bool HasConnectionError => !string.IsNullOrEmpty(ConnectionError);
+
+    /// <summary>Footer text while Connect runs: "Connecting to hub.example.lan…".</summary>
+    public string ConnectingText => $"Connecting to {AgentStatusText.HubHost(HubUrl)}…";
 
     public bool TlsSkipVerify
     {
@@ -203,22 +194,24 @@ public partial class OnboardingViewModel : ObservableObject
         GroupId = settings.GroupId;
         TlsSkipVerify = settings.TlsSkipVerify;
         TlsCaFile = settings.TlsCaFile;
-        UpdateNavigationState();
     }
 
     private void OnHubUrlChanged(string value)
     {
         ClearConnectionOutcome();
         IsHubUrlValid = SettingsValidator.IsValidHubUrl(value);
-        HubUrlError = IsHubUrlValid ? null : "Enter a valid hub URL (https:// or wss://)";
-        UpdateNavigationState();
+        // An empty field or the prefilled scheme is not an error yet.
+        var untouched = value.Trim() is "" or "https://" or "http://" or "wss://" or "ws://";
+        HubUrlError = IsHubUrlValid || untouched
+            ? null
+            : "Enter a full Hub URL that starts with https:// or wss://.";
+        OnPropertyChanged(nameof(ConnectingText));
     }
 
     private void OnTokenChanged(string value)
     {
         ClearConnectionOutcome();
         IsTokenValid = SettingsValidator.IsValidToken(value);
-        UpdateNavigationState();
     }
 
     private void OnUseEnrollmentTokenChanged(bool value)
@@ -259,38 +252,16 @@ public partial class OnboardingViewModel : ObservableObject
 
     private void OnTlsCaFileChanged(string value) => ClearConnectionOutcome();
 
-    private void OnCurrentStepChanged(int value)
-    {
-        // A failure belongs to the exact values submitted on the final step.
-        // Do not carry that banner back through the wizard or show it again
-        // when the user returns with corrected credentials.
-        ClearConnectionOutcome();
-        UpdateNavigationState();
-    }
+    private void OnIsConnectingChanged(bool value) => OnPropertyChanged(nameof(CanConnect));
 
-    private void OnIsConnectingChanged(bool value)
-    {
-        OnPropertyChanged(nameof(CanFinish));
-        UpdateNavigationState();
-    }
-
-    public bool CanFinish => !IsConnecting;
+    /// <summary>Connect needs a valid Hub URL and token, and no attempt already running.</summary>
+    public bool CanConnect => IsHubUrlValid && IsTokenValid && !IsConnecting;
 
     [RelayCommand]
-    private void Next()
+    private async Task ConnectAsync()
     {
-        if (CurrentStep < 3) CurrentStep++;
-    }
-
-    [RelayCommand]
-    private void Back()
-    {
-        if (CurrentStep > 1) CurrentStep--;
-    }
-
-    [RelayCommand]
-    private async Task FinishAsync()
-    {
+        if (!CanConnect)
+            return;
         IsConnecting = true;
         IsConnected = false;
         ConnectionError = null;
@@ -355,7 +326,7 @@ public partial class OnboardingViewModel : ObservableObject
                                    System.Security.Cryptography.CryptographicException or
                                    System.Security.SecurityException)
         {
-            ConnectionError = "The agent core could not establish a secure connection. Check the agent logs and try again.";
+            ConnectionError = "Could not start a secure connection to the Hub.";
         }
         finally
         {
@@ -371,20 +342,11 @@ public partial class OnboardingViewModel : ObservableObject
         _connectionAttempt?.Cancel();
     }
 
+    // A failure belongs to the exact values submitted. Any edit clears it, so
+    // a retry shows only its own result.
     private void ClearConnectionOutcome()
     {
         ConnectionError = null;
         IsConnected = false;
-    }
-
-    private void UpdateNavigationState()
-    {
-        CanGoBack = CurrentStep > 1 && !IsConnecting;
-        CanGoNext = CurrentStep switch
-        {
-            1 => IsHubUrlValid,
-            2 => IsTokenValid,
-            _ => false
-        };
     }
 }

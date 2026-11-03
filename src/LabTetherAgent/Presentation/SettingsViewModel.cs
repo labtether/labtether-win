@@ -127,7 +127,10 @@ public partial class SettingsViewModel : ObservableObject
         set
         {
             if (SetProperty(ref _logLevel, value))
+            {
                 OnLogLevelChanged(value);
+                OnPropertyChanged(nameof(LogLevelIndex));
+            }
         }
     }
 
@@ -149,6 +152,23 @@ public partial class SettingsViewModel : ObservableObject
     public event Action? OnRestartRequired;
 
     public readonly string[] LogLevels = ["debug", "info", "warn", "error"];
+
+    /// <summary>Display names for <see cref="LogLevels"/>, in the same order.</summary>
+    public readonly string[] LogLevelNames = ["Debug", "Info", "Warning", "Error"];
+
+    /// <summary>The log level as an index into <see cref="LogLevelNames"/>, for the list box.</summary>
+    public int LogLevelIndex
+    {
+        get => Array.IndexOf(LogLevels, LogLevel);
+        set
+        {
+            if (value >= 0 && value < LogLevels.Length && LogLevels[value] != LogLevel)
+            {
+                LogLevel = LogLevels[value];
+                OnPropertyChanged();
+            }
+        }
+    }
 
     public SettingsViewModel(AgentSettings settings, CredentialStore credentialStore)
         : this(
@@ -228,14 +248,14 @@ public partial class SettingsViewModel : ObservableObject
         SaveError = null;
         if (!SettingsValidator.IsValidHubUrl(HubUrl))
         {
-            SaveError = "Enter a valid hub URL using https://, wss://, http://, or ws://.";
+            SaveError = "Enter a valid Hub URL that starts with https://, wss://, http:// or ws://.";
             return;
         }
         // The Hub accepts the agent token alone, so it must never reach another
-        // Hub. Setup / Re-enroll saves a new Hub only after enrolling with it.
+        // Hub. Re-enroll saves a new Hub only after enrolling with it.
         if (!SettingsValidator.IsSameHub(_settings.HubUrl, HubUrl) && HasSavedCredential())
         {
-            SaveError = "This device's token works only with its current Hub. To use a different Hub, choose Setup / Re-enroll from the tray menu.";
+            SaveError = "This device's token works only with its current Hub. To use a different Hub, choose Re-enroll in the tray menu.";
             return;
         }
         if (!SettingsValidator.IsValidLogLevel(LogLevel))
@@ -245,26 +265,26 @@ public partial class SettingsViewModel : ObservableObject
         }
         if (ConnectionTester.HasConflictingTlsTrustOptions(TlsSkipVerify, TlsCaFile))
         {
-            SaveError = "Choose either a custom CA certificate or skip certificate verification, not both.";
+            SaveError = "Choose a CA certificate or Skip certificate check, not both.";
             return;
         }
         if (!ConnectionTester.TryNormalizeCustomCaFile(TlsCaFile, out var normalizedCaFile)
             || (normalizedCaFile.Length > 0
                 && !ConnectionTester.IsUsableCustomCaFile(normalizedCaFile)))
         {
-            SaveError = "Choose a readable, regular custom CA certificate file.";
+            SaveError = "Choose a CA certificate file that this account can read.";
             return;
         }
         if (normalizedCaFile.Length > 0
             && !ConnectionTester.IsValidCustomCaFile(normalizedCaFile))
         {
-            SaveError = "Choose a valid PEM custom CA file containing a self-signed root certificate.";
+            SaveError = "Choose a valid PEM CA file that contains a self-signed root certificate.";
             return;
         }
 
         if (!_loginItemManager.SetEnabled(StartAtLogin))
         {
-            SaveError = "Windows could not update Start at Login. No settings were saved.";
+            SaveError = "Windows could not change Start at sign-in. Nothing was saved.";
             return;
         }
 

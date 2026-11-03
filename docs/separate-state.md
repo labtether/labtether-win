@@ -14,7 +14,7 @@ cannot use junctions or symbolic links. If it does not exist, the app creates it
 so that only you, SYSTEM and Administrators can open it. The app refuses an
 existing directory that another user owns or can open.
 Each directory has its own activation key and exact child recovery record.
-Start at Login and toast registration are unavailable for separate state; the
+Start at sign-in and toast registration are unavailable for separate state; the
 installed app's registrations and saved credentials are not changed. The normal
 setup and Hub connection flow is used. Quit stops the owned child; durable state
 stays in the chosen directory for later use. Removing that directory is a separate

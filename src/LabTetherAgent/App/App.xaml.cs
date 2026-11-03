@@ -68,6 +68,11 @@ public partial class App : Application, IXamlMetadataProvider
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        // Application.Resources is not available in the constructor. Install
+        // the token control brushes before any window exists (and in the
+        // probe, so a token or resource fault fails the release gate).
+        LabTetherAgent.Theme.ControlBrushes.Install(Resources);
+
         if (Program.IsWinUiRuntimeProbe)
         {
             // Exercise both App.xaml and a project-owned compiled XAML
@@ -80,6 +85,13 @@ public partial class App : Application, IXamlMetadataProvider
 
         // Initialize global state
         _appState = AppState.Initialize(Program.StateLocation);
+#if DEBUG
+        if (Program.SnapshotDirectory is { } snapshotDirectory)
+        {
+            _ = global::LabTetherAgent.Views.Snapshot.SnapshotRunner.RunAsync(_appState, snapshotDirectory);
+            return;
+        }
+#endif
 
         if (_appState.Settings.Location.SupportsOsIntegration)
             _notifications = new ToastNotificationService();

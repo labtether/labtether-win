@@ -1,34 +1,32 @@
-using Microsoft.UI;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 
 namespace LabTetherAgent.Components;
 
 public sealed partial class StatusIndicator : UserControl
 {
-    public static readonly DependencyProperty IsConnectedProperty =
-        DependencyProperty.Register(nameof(IsConnected), typeof(bool), typeof(StatusIndicator),
-            new PropertyMetadata(false, OnStateChanged));
+    public static readonly DependencyProperty IsProblemProperty =
+        DependencyProperty.Register(nameof(IsProblem), typeof(bool), typeof(StatusIndicator),
+            new PropertyMetadata(false, (d, _) => ((StatusIndicator)d).ApplyState()));
 
     public static readonly DependencyProperty StatusTextProperty =
         DependencyProperty.Register(nameof(StatusText), typeof(string), typeof(StatusIndicator),
-            new PropertyMetadata("Disconnected", OnTextChanged));
+            new PropertyMetadata("", (d, _) => ((StatusIndicator)d).ApplyState()));
 
-    public bool IsConnected { get => (bool)GetValue(IsConnectedProperty); set => SetValue(IsConnectedProperty, value); }
+    public bool IsProblem { get => (bool)GetValue(IsProblemProperty); set => SetValue(IsProblemProperty, value); }
     public string StatusText { get => (string)GetValue(StatusTextProperty); set => SetValue(StatusTextProperty, value); }
 
-    public StatusIndicator() { this.InitializeComponent(); }
-
-    private static void OnStateChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    public StatusIndicator()
     {
-        var control = (StatusIndicator)d;
-        var connected = (bool)e.NewValue;
-        control.StatusDot.Fill = new SolidColorBrush(connected
-            ? Colors.LimeGreen
-            : Colors.Gray);
+        this.InitializeComponent();
+        Loaded += (_, _) => ApplyState();
     }
 
-    private static void OnTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-        => ((StatusIndicator)d).StatusLabel.Text = (string)e.NewValue;
+    private void ApplyState()
+    {
+        StatusLabel.Text = StatusText;
+        AutomationProperties.SetName(this, StatusText);
+        VisualStateManager.GoToState(this, IsProblem ? "Problem" : "Normal", false);
+    }
 }

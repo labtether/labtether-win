@@ -1,9 +1,8 @@
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Windowing;
-using Windows.Graphics;
+using Microsoft.UI.Xaml;
 using LabTetherAgent.App;
 using LabTetherAgent.Presentation;
+using LabTetherAgent.Views.Shared;
 
 namespace LabTetherAgent.Views.PopOut;
 
@@ -14,11 +13,9 @@ public sealed partial class PopOutWindow : Window
     public PopOutWindow(AppState appState)
     {
         this.InitializeComponent();
-        AppWindow.Resize(new SizeInt32(300, 200));
-        SystemBackdrop = new MicaBackdrop();
-
-        ViewModel = new PopOutViewModel(appState.ApiClient);
-        ViewModel.HubUrl = appState.Settings.HubUrl;
+        ViewModel = new PopOutViewModel(appState.ApiClient) { HubUrl = appState.Settings.HubUrl };
+        WindowChrome.Apply(this, Root, TitleBar);
+        WindowChrome.SizeContent(this, Root, 320, 204);
 
         if (AppWindow.Presenter is OverlappedPresenter presenter)
             presenter.IsAlwaysOnTop = true;

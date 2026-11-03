@@ -7,26 +7,19 @@ public sealed partial class MetricsCard : UserControl
 {
     public static readonly DependencyProperty CpuPercentProperty =
         DependencyProperty.Register(nameof(CpuPercent), typeof(double), typeof(MetricsCard),
-            new PropertyMetadata(0.0, OnCpuChanged));
+            new PropertyMetadata(0.0, (d, e) => ((MetricsCard)d).CpuRow.Percent = (double)e.NewValue));
 
-    public static readonly DependencyProperty MemoryTextProperty =
-        DependencyProperty.Register(nameof(MemoryText), typeof(string), typeof(MetricsCard),
-            new PropertyMetadata("--", OnMemoryChanged));
+    public static readonly DependencyProperty MemoryPercentProperty =
+        DependencyProperty.Register(nameof(MemoryPercent), typeof(double), typeof(MetricsCard),
+            new PropertyMetadata(0.0, (d, e) => ((MetricsCard)d).MemoryRow.Percent = (double)e.NewValue));
 
     public static readonly DependencyProperty DiskPercentProperty =
         DependencyProperty.Register(nameof(DiskPercent), typeof(double), typeof(MetricsCard),
-            new PropertyMetadata(0.0, OnDiskChanged));
+            new PropertyMetadata(0.0, (d, e) => ((MetricsCard)d).DiskRow.Percent = (double)e.NewValue));
 
     public double CpuPercent { get => (double)GetValue(CpuPercentProperty); set => SetValue(CpuPercentProperty, value); }
-    public string MemoryText { get => (string)GetValue(MemoryTextProperty); set => SetValue(MemoryTextProperty, value); }
+    public double MemoryPercent { get => (double)GetValue(MemoryPercentProperty); set => SetValue(MemoryPercentProperty, value); }
     public double DiskPercent { get => (double)GetValue(DiskPercentProperty); set => SetValue(DiskPercentProperty, value); }
 
     public MetricsCard() { this.InitializeComponent(); }
-
-    private static void OnCpuChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-        => ((MetricsCard)d).CpuText.Text = $"{(double)e.NewValue:F0}%";
-    private static void OnMemoryChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-        => ((MetricsCard)d).MemText.Text = (string)e.NewValue;
-    private static void OnDiskChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-        => ((MetricsCard)d).DiskText.Text = $"{(double)e.NewValue:F0}%";
 }

@@ -1,3 +1,5 @@
+using LabTetherAgent.Presentation;
+using LabTetherAgent.State;
 using LabTetherAgent.Views.TrayIcon;
 
 namespace LabTetherAgent.Tests.Views.TrayIcon;
@@ -34,59 +36,118 @@ public class TrayIconManagerTests
         Assert.Equal(7, CountOccurrences(buildMenuSource, "Command ="));
     }
 
-    [Fact]
-    public void ResolveTrayIconVisual_ReturnsDeterministicConnectedVisual()
-    {
-        var visual = TrayIconManager.ResolveTrayIconVisual(connected: true);
+    private static readonly TrayPalette Palette = new(
+        System.Drawing.Color.FromArgb(24, 24, 27),
+        System.Drawing.Color.FromArgb(82, 82, 91),
+        System.Drawing.Color.FromArgb(194, 122, 14),
+        System.Drawing.Color.FromArgb(220, 48, 48));
 
-        Assert.Equal("L", visual.Glyph);
-        Assert.Equal((byte)46, visual.Red);
-        Assert.Equal((byte)160, visual.Green);
-        Assert.Equal((byte)67, visual.Blue);
-    }
-
-    [Fact]
-    public void ResolveTrayIconVisual_UsesDistinctDisconnectedVisual()
-    {
-        var connected = TrayIconManager.ResolveTrayIconVisual(connected: true);
-        var disconnected = TrayIconManager.ResolveTrayIconVisual(connected: false);
-
-        Assert.Equal("L", disconnected.Glyph);
-        Assert.NotEqual(connected, disconnected);
-        Assert.Equal((byte)117, disconnected.Red);
-        Assert.Equal((byte)117, disconnected.Green);
-        Assert.Equal((byte)117, disconnected.Blue);
-    }
-
-    [Fact]
-    public void CreateTrayIcon_ProducesVisibleNativePixels()
+    // The shell shows these pixels on a light or dark taskbar. The glyph must
+    // be visible ink with real transparency (no filled background), at every
+    // tray size Windows asks for, and each state must look different.
+    [Theory]
+    [InlineData(16)]
+    [InlineData(20)]
+    [InlineData(24)]
+    [InlineData(32)]
+    [InlineData(40)]
+    public void CreateTrayIcon_DrawsTransparentGlyphWithDistinctStates(int size)
     {
         if (!OperatingSystem.IsWindows())
             return;
 
-        var visual = TrayIconManager.ResolveTrayIconVisual(connected: true);
-        using var icon = TrayIconManager.CreateTrayIcon(visual);
-        using var bitmap = icon.ToBitmap();
+        using var ok = Render(TrayGlyphState.Ok, size);
+        using var warning = Render(TrayGlyphState.Warning, size);
+        using var critical = Render(TrayGlyphState.Critical, size);
+        using var offline = Render(TrayGlyphState.Offline, size);
 
-        Assert.Equal(32, bitmap.Width);
-        Assert.Equal(32, bitmap.Height);
+        Assert.Equal(size, ok.Width);
+        Assert.Equal(size, ok.Height);
+        Assert.Equal(0, ok.GetPixel(0, 0).A);
+        Assert.True(CountIn(ok, size, 5, 5, 11, 9, p => p.A < 128) > 0, "The face is not cut out of the screen.");
+        Assert.True(Count(ok, p => p.A > 200 && p.R < 60) > size * 2, "The connected glyph has too little ink.");
+        Assert.Equal(0, Count(ok, IsWarning));
 
-        var visiblePixels = 0;
-        var greenPixels = 0;
-        for (var y = 0; y < bitmap.Height; y++)
+        Assert.True(Count(warning, IsWarning) > size / 2, "The warning dot is missing.");
+        Assert.True(Count(critical, IsCritical) > size / 2, "The critical dot is missing.");
+        Assert.Equal(0, Count(critical, IsWarning));
+
+        Assert.Equal(0, Count(offline, IsWarning) + Count(offline, IsCritical));
+        Assert.True(Count(offline, p => p.A > 200 && p.R < 60) < Count(ok, p => p.A > 200 && p.R < 60),
+            "The offline glyph is not dimmed.");
+    }
+
+    [Fact]
+    public void TrayStatus_OrdersStatesAndWritesTwoLineTooltips()
+    {
+        var culture = System.Globalization.CultureInfo.CurrentCulture;
+        System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+        try
         {
-            for (var x = 0; x < bitmap.Width; x++)
+            var now = DateTimeOffset.Now;
+            var at = new DateTimeOffset(now.Year, now.Month, now.Day, 21, 12, 0, now.Offset);
+            var disk = new AgentStatus
             {
-                var pixel = bitmap.GetPixel(x, y);
-                if (pixel.A > 0)
-                    visiblePixels++;
-                if (pixel.A > 0 && pixel.G > pixel.R && pixel.G > pixel.B)
-                    greenPixels++;
-            }
-        }
+                IsConnected = true,
+                Alerts = [new AlertSnapshot("Disk is 91% full", "firing", "warning", "218 of 238 GB used")],
+            };
+            var two = new AgentStatus
+            {
+                IsConnected = true,
+                Alerts = [new("Disk is 91% full", "firing", "warning", null), new("Memory", "firing", "critical", null)],
+            };
 
-        Assert.True(visiblePixels > 500, $"Only {visiblePixels} tray-icon pixels were visible.");
-        Assert.True(greenPixels > 250, $"Only {greenPixels} tray-icon pixels carried the connected state.");
+            Assert.Equal(new TrayStatus(TrayGlyphState.Ok, "LabTether Agent\nConnected"),
+                TrayStatus.Resolve(true, new AgentStatus { IsConnected = true }, null, null, now));
+            Assert.Equal(new TrayStatus(TrayGlyphState.Warning, "LabTether Agent\nDisk is 91% full"),
+                TrayStatus.Resolve(true, disk, null, null, now));
+            Assert.Equal(new TrayStatus(TrayGlyphState.Critical, "LabTether Agent\n2 alerts"),
+                TrayStatus.Resolve(true, two, null, null, now));
+            Assert.Equal(new TrayStatus(TrayGlyphState.Offline, "LabTether Agent\nOffline since 21:12"),
+                TrayStatus.Resolve(false, new AgentStatus { DisconnectedAt = at }, null, null, now));
+            Assert.Equal(new TrayStatus(TrayGlyphState.Offline, "LabTether Agent\nOffline since 21:12"),
+                TrayStatus.Resolve(false, null, at, null, now));
+            Assert.Equal(new TrayStatus(TrayGlyphState.Critical, "LabTether Agent\nAgent stopped at 21:12"),
+                TrayStatus.Resolve(true, disk, null, at, now));
+            Assert.DoesNotContain("\u2014", TrayStatus.Resolve(false, null, null, null, now).Tooltip);
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentCulture = culture;
+        }
+    }
+
+    private static System.Drawing.Bitmap Render(TrayGlyphState state, int size)
+    {
+        using var icon = TrayIconManager.CreateTrayIcon(state, Palette, size);
+        return icon.ToBitmap();
+    }
+
+    private static bool IsWarning(System.Drawing.Color p) => p.A > 200 && p.R > 150 && p.G > 90 && p.G < 160 && p.B < 60;
+
+    private static bool IsCritical(System.Drawing.Color p) => p.A > 200 && p.R > 180 && p.G < 80 && p.B < 80;
+
+    // Counts matches inside a box given in the 16-unit drawing's coordinates.
+    private static int CountIn(System.Drawing.Bitmap bitmap, int size, int left, int top, int right, int bottom,
+        Func<System.Drawing.Color, bool> match)
+    {
+        var scale = size / 16.0;
+        var count = 0;
+        for (var y = (int)(top * scale); y < (int)(bottom * scale); y++)
+            for (var x = (int)(left * scale); x < (int)(right * scale); x++)
+                if (match(bitmap.GetPixel(x, y)))
+                    count++;
+        return count;
+    }
+
+    private static int Count(System.Drawing.Bitmap bitmap, Func<System.Drawing.Color, bool> match)
+    {
+        var count = 0;
+        for (var y = 0; y < bitmap.Height; y++)
+            for (var x = 0; x < bitmap.Width; x++)
+                if (match(bitmap.GetPixel(x, y)))
+                    count++;
+        return count;
     }
 
     private static string FindTrayIconManagerSource()

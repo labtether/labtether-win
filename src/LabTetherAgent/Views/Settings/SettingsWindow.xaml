@@ -2,70 +2,145 @@
     x:Class="LabTetherAgent.Views.Settings.SettingsWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    Title="LabTether Agent Settings">
+    xmlns:components="using:LabTetherAgent.Components"
+    Title="LabTether Agent settings">
 
-    <ScrollViewer Padding="24">
-        <StackPanel Spacing="16">
-            <TextBlock Text="Settings" FontSize="24" FontWeight="SemiBold" Margin="0,0,0,8" />
+    <!-- Label-left, control-right rows on three sheets. Compact controls (28 px). -->
+    <Grid x:Name="Root" Background="{ThemeResource LTCanvasBrush}">
+        <Grid.Resources>
+            <ResourceDictionary>
+                <ResourceDictionary.MergedDictionaries>
+                    <ResourceDictionary Source="ms-appx:///Microsoft.UI.Xaml/DensityStyles/Compact.xaml" />
+                </ResourceDictionary.MergedDictionaries>
+                <x:Double x:Key="TextControlThemeMinHeight">28</x:Double>
+                <Thickness x:Key="TextControlThemePadding">10,4,6,4</Thickness>
+                <x:Double x:Key="ComboBoxMinHeight">28</x:Double>
+            </ResourceDictionary>
+        </Grid.Resources>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <components:WindowTitleBar x:Name="TitleBar" Title="LabTether Agent settings" />
 
-            <!-- Connection -->
-            <TextBlock Text="CONNECTION" FontSize="11" FontWeight="SemiBold"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" CharacterSpacing="60" />
-            <TextBox Header="Hub URL" Text="{x:Bind ViewModel.HubUrl, Mode=TwoWay}" />
-            <ToggleSwitch Header="TLS Skip Verify" IsOn="{x:Bind ViewModel.TlsSkipVerify, Mode=TwoWay}"
-                          OffContent="Verify certificates" OnContent="Skip verification (dev only)" />
-            <TextBox Header="Custom CA certificate"
-                     PlaceholderText="C:\path\to\labtether-ca.crt"
-                     Text="{x:Bind ViewModel.TlsCaFile, Mode=TwoWay}" />
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel Padding="24,8,24,24" Spacing="20">
+                <StackPanel Spacing="8">
+                    <components:SectionHeader Title="Connection" />
+                    <Border Style="{StaticResource LTSheetStyle}">
+                        <StackPanel>
+                            <Grid Style="{StaticResource LTSettingsRowStyle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Hub URL" Style="{StaticResource LTRowLabelStyle}" />
+                                <TextBox Grid.Column="1" Width="300" VerticalAlignment="Center"
+                                         AutomationProperties.Name="Hub URL" AutomationProperties.AutomationId="HubUrlBox"
+                                         Text="{x:Bind ViewModel.HubUrl, Mode=TwoWay}" />
+                            </Grid>
+                            <Grid Style="{StaticResource LTSettingsRowStyle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="CA certificate" Style="{StaticResource LTRowLabelStyle}" />
+                                <TextBox Grid.Column="1" Width="300" VerticalAlignment="Center"
+                                         Style="{StaticResource LTMonoTextBoxStyle}"
+                                         PlaceholderText="C:\path\to\hub-ca.pem"
+                                         AutomationProperties.Name="CA certificate" AutomationProperties.AutomationId="CaFileBox"
+                                         Text="{x:Bind ViewModel.TlsCaFile, Mode=TwoWay}" />
+                            </Grid>
+                            <components:SwitchRow Label="Skip certificate check" AutomationId="SkipCertificateCheckSwitch"
+                                                  IsOn="{x:Bind ViewModel.TlsSkipVerify, Mode=TwoWay}" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
 
-            <!-- General -->
-            <TextBlock Text="GENERAL" FontSize="11" FontWeight="SemiBold"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" CharacterSpacing="60"
-                       Margin="0,8,0,0" />
-            <ToggleSwitch Header="Start at Login" IsEnabled="{x:Bind ViewModel.CanStartAtLogin}" IsOn="{x:Bind ViewModel.StartAtLogin, Mode=TwoWay}" />
-            <ToggleSwitch Header="Low Power Mode" IsOn="{x:Bind ViewModel.LowPowerMode, Mode=TwoWay}"
-                          OffContent="Normal polling" OnContent="Reduced CPU usage" />
-            <TextBlock Text="Updates are managed by the LabTether Agent app. The bundled agent core is updated only with a verified whole-app update."
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                       TextWrapping="Wrap" />
-            <ToggleSwitch Header="Allow Remote Overrides" IsOn="{x:Bind ViewModel.AllowRemoteOverrides, Mode=TwoWay}"
-                          OffContent="Hub cannot change local settings" OnContent="Hub can push settings" />
-            <ComboBox Header="Log Level" SelectedItem="{x:Bind ViewModel.LogLevel, Mode=TwoWay}"
-                      ItemsSource="{x:Bind ViewModel.LogLevels}" />
+                <StackPanel Spacing="8">
+                    <components:SectionHeader Title="General" />
+                    <Border Style="{StaticResource LTSheetStyle}">
+                        <StackPanel>
+                            <components:SwitchRow Label="Start at sign-in" AutomationId="StartAtSignInSwitch"
+                                                  IsEnabled="{x:Bind ViewModel.CanStartAtLogin}"
+                                                  IsOn="{x:Bind ViewModel.StartAtLogin, Mode=TwoWay}" />
+                            <components:SwitchRow Label="Low power mode" AutomationId="LowPowerSwitch"
+                                                  IsOn="{x:Bind ViewModel.LowPowerMode, Mode=TwoWay}" />
+                            <components:SwitchRow Label="Let the Hub change settings" AutomationId="RemoteOverridesSwitch"
+                                                  IsOn="{x:Bind ViewModel.AllowRemoteOverrides, Mode=TwoWay}" />
+                            <components:SwitchRow Label="Remote View over WebRTC" AutomationId="WebRtcSwitch"
+                                                  IsOn="{x:Bind ViewModel.WebRtcEnabled, Mode=TwoWay}" />
+                            <Grid Style="{StaticResource LTSettingsRowStyle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Log level" Style="{StaticResource LTRowLabelStyle}" />
+                                <ComboBox Grid.Column="1" Width="140" VerticalAlignment="Center"
+                                          AutomationProperties.Name="Log level" AutomationProperties.AutomationId="LogLevelBox"
+                                          ItemsSource="{x:Bind ViewModel.LogLevelNames}"
+                                          SelectedIndex="{x:Bind ViewModel.LogLevelIndex, Mode=TwoWay}" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
 
-            <!-- Docker -->
-            <TextBlock Text="DOCKER" FontSize="11" FontWeight="SemiBold"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" CharacterSpacing="60"
-                       Margin="0,8,0,0" />
-            <TextBox Header="Docker Endpoint" Text="{x:Bind ViewModel.DockerEndpoint, Mode=TwoWay}"
-                     PlaceholderText="\\.\pipe\docker_engine" />
-            <NumberBox Header="Discovery Interval (seconds)"
-                       Value="{x:Bind ViewModel.DockerDiscoveryIntervalNumber, Mode=TwoWay}"
-                       Minimum="10" Maximum="600" SpinButtonPlacementMode="Compact" />
+                <StackPanel Spacing="8">
+                    <components:SectionHeader Title="Docker" />
+                    <Border Style="{StaticResource LTSheetStyle}">
+                        <StackPanel>
+                            <Grid Style="{StaticResource LTSettingsRowStyle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Endpoint" Style="{StaticResource LTRowLabelStyle}" />
+                                <TextBox Grid.Column="1" Width="300" VerticalAlignment="Center"
+                                         Style="{StaticResource LTMonoTextBoxStyle}"
+                                         PlaceholderText="\\.\pipe\docker_engine"
+                                         AutomationProperties.Name="Docker endpoint" AutomationProperties.AutomationId="DockerEndpointBox"
+                                         Text="{x:Bind ViewModel.DockerEndpoint, Mode=TwoWay}" />
+                            </Grid>
+                            <Grid Style="{StaticResource LTSettingsRowStyle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Discovery interval" Style="{StaticResource LTRowLabelStyle}" />
+                                <NumberBox Grid.Column="1" Width="96" VerticalAlignment="Center"
+                                           Minimum="10" Maximum="600" SpinButtonPlacementMode="Compact"
+                                           AutomationProperties.Name="Discovery interval in seconds"
+                                           AutomationProperties.AutomationId="DiscoveryIntervalBox"
+                                           Value="{x:Bind ViewModel.DockerDiscoveryIntervalNumber, Mode=TwoWay}" />
+                                <TextBlock Grid.Column="2" Text="seconds" Style="{StaticResource LTDetailTextStyle}"
+                                           VerticalAlignment="Center" Margin="-6,0,0,0" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
 
-            <!-- WebRTC -->
-            <TextBlock Text="REMOTE ACCESS" FontSize="11" FontWeight="SemiBold"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" CharacterSpacing="60"
-                       Margin="0,8,0,0" />
-            <ToggleSwitch Header="WebRTC" IsOn="{x:Bind ViewModel.WebRtcEnabled, Mode=TwoWay}"
-                          OffContent="Disabled" OnContent="Enabled" />
-
-            <!-- Save / Cancel -->
-            <TextBlock Text="{x:Bind ViewModel.SaveError, Mode=OneWay}"
-                       Foreground="{ThemeResource SystemFillColorCriticalBrush}"
-                       TextWrapping="Wrap" />
-            <Grid Margin="0,16,0,0">
+        <Border Grid.Row="2" Style="{StaticResource LTFooterStyle}">
+            <Grid ColumnSpacing="8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <Button Grid.Column="1" Content="Cancel" Margin="0,0,8,0"
+                <TextBlock Text="{x:Bind ViewModel.SaveError, Mode=OneWay}" Style="{StaticResource LTProblemTextStyle}"
+                           VerticalAlignment="Center" Margin="0,0,8,0" MaxLines="3"
+                           AutomationProperties.LiveSetting="Assertive" />
+                <Button Grid.Column="1" Content="Cancel" Style="{StaticResource LTFooterButtonStyle}"
+                        AutomationProperties.AutomationId="CancelButton"
                         Command="{x:Bind ViewModel.CancelCommand}" />
-                <Button Grid.Column="2" Content="Save" Style="{ThemeResource AccentButtonStyle}"
+                <Button Grid.Column="2" Content="Save" Style="{StaticResource LTPrimaryButtonStyle}"
+                        AutomationProperties.AutomationId="SaveButton"
                         Command="{x:Bind ViewModel.SaveCommand}"
                         IsEnabled="{x:Bind ViewModel.IsDirty, Mode=OneWay}" />
             </Grid>
-        </StackPanel>
-    </ScrollViewer>
+        </Border>
+    </Grid>
 </Window>

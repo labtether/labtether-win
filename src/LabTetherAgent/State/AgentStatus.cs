@@ -10,6 +10,8 @@ public class AgentStatus
     public string LastError { get; set; } = string.Empty;
     public string LastErrorReason { get; set; } = string.Empty;
     public string? Uptime { get; set; }
+    /// <summary>When the Hub connection dropped, as the agent reports it.</summary>
+    public DateTimeOffset? DisconnectedAt { get; set; }
 
     // Metrics
     public double CpuPercent { get; set; }
@@ -47,7 +49,7 @@ public class AgentStatus
             return (HubConnectionState ?? string.Empty).Trim().ToLowerInvariant() switch
             {
                 "connecting" => "Connecting",
-                "auth_failed" => "Authentication Failed",
+                "auth_failed" => "Authentication failed",
                 "disconnected" or "" => "Disconnected",
                 _ => "Disconnected",
             };
@@ -67,4 +69,5 @@ public class AgentStatus
         };
 }
 
-public record AlertSnapshot(string Name, string State, string Severity, string? Message);
+/// <param name="Since">When the alert started firing, as the agent reports it.</param>
+public record AlertSnapshot(string Name, string State, string Severity, string? Message, DateTimeOffset? Since = null);

@@ -17,6 +17,10 @@ public class AgentStatusResponse
     [JsonPropertyName("last_error")]
     public string LastError { get; set; } = string.Empty;
 
+    // Kept as text: a time the wrapper cannot read must never fail the status.
+    [JsonPropertyName("disconnected_at")]
+    public string? DisconnectedAt { get; set; }
+
     // Fixed code for why the last Hub connect failed; older agents omit it.
     [JsonPropertyName("last_error_reason")]
     public string? LastErrorReason { get; set; }
@@ -119,4 +123,7 @@ public class AlertResponse
 
     [JsonPropertyName("summary")]
     public string? Summary { get; set; }
+
+    [JsonPropertyName("timestamp")]
+    public string? Timestamp { get; set; }
 }

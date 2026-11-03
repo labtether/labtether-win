@@ -162,7 +162,7 @@ public class SettingsViewModelTests
         Assert.Equal("https://NAS01.example.com:8443", settings.HubUrl);
         Assert.Single(persisted);
         Assert.True(viewModel.IsDirty);
-        Assert.Contains("Setup / Re-enroll", viewModel.SaveError);
+        Assert.Contains("Re-enroll in the tray menu", viewModel.SaveError);
     }
 
     private static SettingsViewModel Create(
