@@ -51,6 +51,19 @@ Changes since v1.7.1. This release matches LabTether 2.0.
   corrected.
 - Before setup is finished, the tray, flyout, pop-out and About say "Not set
   up" instead of an offline "localhost" Hub, and Open console is off.
+- Windows notifications appear. The installed app showed none: the Windows
+  App SDK could not register this self-contained app. Notifications now
+  come from LabTether Agent with its icon.
+- "Offline since" appears after the Hub has been unreachable for 20 seconds,
+  and "Reconnected" only after it. Saving Settings or re-enrolling no longer
+  shows either.
+- An alert notification appears once per firing, not every five minutes.
+- After an MSI upgrade closes the app, Windows starts it again.
+- Under a contrast theme, buttons, lists and switches use the theme's
+  colours.
+- Save in Settings turns on while you type in a text box.
+- The logs window shows the whole time, and screen readers read each log
+  line.
 
 ## [1.7.1] - 2026-10-31
 
