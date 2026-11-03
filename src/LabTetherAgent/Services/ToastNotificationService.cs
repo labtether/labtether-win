@@ -13,9 +13,17 @@ namespace LabTetherAgent.Services;
 public class ToastNotificationService
 {
     internal const string WindowsReleaseUrl = "https://github.com/labtether/labtether-win/releases/latest";
+    internal const string DisplayName = "LabTether Agent";
     private readonly Dictionary<string, DateTime> _throttle = new();
     private static readonly TimeSpan ThrottleInterval = TimeSpan.FromMinutes(5);
+    private readonly Action<string>? _log;
     private bool _registered;
+
+    /// <param name="log">Writes a failure to the app's log (View logs), which Release builds keep.</param>
+    public ToastNotificationService(Action<string>? log = null)
+    {
+        _log = log;
+    }
 
     public bool TryInitialize()
     {
@@ -23,15 +31,20 @@ public class ToastNotificationService
         try
         {
             AppNotificationManager.Default.NotificationInvoked += OnNotificationInvoked;
-            AppNotificationManager.Default.Register();
+            // Name and icon for the notification and its Notification Center
+            // group; without them Windows shows the EXE name "LabTetherAgent".
+            var icon = Path.Combine(AppContext.BaseDirectory, "Resources", "Icons", "Square44x44Logo.png");
+            if (File.Exists(icon))
+                AppNotificationManager.Default.Register(DisplayName, new Uri(icon));
+            else
+                AppNotificationManager.Default.Register();
             _registered = true;
             return true;
         }
-        catch (Exception ex) when (ex is COMException or InvalidOperationException)
+        catch (Exception ex) when (ex is COMException or InvalidOperationException or ArgumentException)
         {
             AppNotificationManager.Default.NotificationInvoked -= OnNotificationInvoked;
-            System.Diagnostics.Debug.WriteLine(
-                $"Windows notifications unavailable: {ex.GetType().Name}: {ex.Message}");
+            _log?.Invoke($"Windows notifications are unavailable: {ex.Message}");
             return false;
         }
     }
@@ -108,8 +121,7 @@ public class ToastNotificationService
         }
         catch (Exception ex) when (ex is COMException or InvalidOperationException)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"Windows notification failed: {ex.GetType().Name}: {ex.Message}");
+            _log?.Invoke($"Could not show a Windows notification: {ex.Message}");
         }
     }
 
