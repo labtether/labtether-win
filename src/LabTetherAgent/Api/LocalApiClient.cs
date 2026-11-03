@@ -290,8 +290,14 @@ public class LocalApiClient : IDisposable
                         _cachedStatus = decoded;
                         _statusETag = responseETag;
                     }
-                    notify = SetConnectedState(_cachedStatus?.IsHubConnected ?? false, configurationVersion);
+                    var hubConnected = _cachedStatus?.IsHubConnected ?? false;
+                    notify = SetConnectedState(hubConnected, configurationVersion);
                     ResetFailureBackoff();
+                    // While the agent answers but has no Hub link (after a
+                    // restart or during an outage), check every few seconds so
+                    // a reconnect is seen at once, not up to 30 s later.
+                    if (!hubConnected && _currentPollingInterval != VisibleInterval)
+                        ChangePollingInterval(VisibleInterval, VisibleInterval);
                 }
             }
             notify();
