@@ -20,6 +20,19 @@ public class ToastNotificationServiceTests
         Assert.Equal("View release", xml.Descendants("action").Single().Attribute("content")!.Value);
     }
 
+    // A firing alert used to toast again every five minutes while it fired.
+    [Fact]
+    public void AnAlertToastsOncePerFiring()
+    {
+        var service = new ToastNotificationService();
+        var started = DateTimeOffset.UtcNow;
+        var alert = new LabTetherAgent.State.AlertSnapshot("Disk nearly full", "firing", "critical", null, started);
+
+        Assert.True(service.ShouldNotifyAlert(alert));
+        Assert.False(service.ShouldNotifyAlert(alert));
+        Assert.True(service.ShouldNotifyAlert(alert with { Since = started.AddMinutes(30) }));
+    }
+
     [Fact]
     public void BuildXmlLeavesOutAnEmptySecondLine()
     {

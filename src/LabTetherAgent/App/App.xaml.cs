@@ -25,7 +25,7 @@ public partial class App : Application, IXamlMetadataProvider
     private Action<bool>? _notificationConnectionHandler;
     private Action<AgentStatus>? _notificationStatusHandler;
     private Action<string>? _notificationAgentErrorHandler;
-    private bool? _lastNotifiedConnectionState;
+    private ConnectionToastGate? _connectionToasts;
     private IXamlMetadataProvider? _xamlMetadataProvider;
     private Action? _redirectedActivationHandler;
     private static event Action? RedirectedActivation;
@@ -187,15 +187,12 @@ public partial class App : Application, IXamlMetadataProvider
 
     private void OnNotificationConnectionStateChanged(bool connected)
     {
-        var previous = _lastNotifiedConnectionState;
-        _lastNotifiedConnectionState = connected;
-        if (previous == null || previous == connected || _notifications == null)
+        if (_notifications is not { } notifications)
             return;
-
-        if (connected)
-            _notifications.NotifyReconnected();
-        else
-            _notifications.NotifyDisconnected(_appState?.ApiClient.LatestStatus);
+        _connectionToasts ??= new ConnectionToastGate(
+            () => notifications.NotifyDisconnected(_appState?.ApiClient.LatestStatus),
+            notifications.NotifyReconnected);
+        _connectionToasts.OnConnectionChanged(connected);
     }
 
     private void OnNotificationStatusUpdated(AgentStatus status)

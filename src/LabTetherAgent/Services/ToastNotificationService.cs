@@ -26,6 +26,7 @@ public class ToastNotificationService
     private const string ViewUpdateArgument = "action=view-update";
 
     private readonly Dictionary<string, DateTime> _throttle = new();
+    private readonly HashSet<string> _alertsShown = new();
     private static readonly TimeSpan ThrottleInterval = TimeSpan.FromMinutes(5);
     private readonly Action<string>? _log;
     private ToastNotifier? _notifier;
@@ -83,10 +84,21 @@ public class ToastNotificationService
         TryShow(ToastText.UpdateAvailable(version), ("View release", ViewUpdateArgument));
     }
 
+    /// <summary>Once per firing alert: the agent reports it again on every status poll.</summary>
     public void NotifyAlert(AlertSnapshot alert)
     {
-        if (!ShouldNotify($"alert:{alert.Name}")) return;
+        if (!ShouldNotifyAlert(alert)) return;
         TryShow(ToastText.Alert(alert, DateTimeOffset.Now));
+    }
+
+    // An alert is the same firing alert while its name and start time match;
+    // it used to toast again every five minutes for as long as it fired.
+    internal bool ShouldNotifyAlert(AlertSnapshot alert)
+    {
+        var key = $"{alert.Name}\n{alert.Since?.UtcTicks}";
+        if (_alertsShown.Count > 200)
+            _alertsShown.Clear();
+        return _alertsShown.Add(key);
     }
 
     public void Cleanup()
