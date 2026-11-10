@@ -44,6 +44,17 @@ public class AgentLogReaderTests
         Assert.Contains("[app]", received.Raw);
     }
 
+    // A start error must show under the Logs window's Error filter.
+    [Fact]
+    public void StartErrorIsLoggedAsAnError()
+    {
+        var process = new AgentProcess();
+        process.ReportError("This Hub's saved certificate is missing or can't be read.");
+
+        var line = Assert.Single(process.LogReader.GetSnapshot());
+        Assert.Equal("error", line.Level);
+    }
+
     [Fact]
     public void Clear_EmptiesBuffer()
     {

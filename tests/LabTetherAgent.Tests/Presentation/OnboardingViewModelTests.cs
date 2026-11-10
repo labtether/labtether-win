@@ -7,6 +7,32 @@ namespace LabTetherAgent.Tests.Presentation;
 
 public class OnboardingViewModelTests
 {
+    // After the app's own copy of the Hub CA is lost, the start error says to
+    // re-enroll. Setup must not prefill that missing path: Connect would only
+    // say the file is unavailable, and the person never chose it.
+    [Fact]
+    public void ReenrollDoesNotOfferAManagedCaThatIsGone()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "LabTetherAgentTests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var settings = new AgentSettings(AppStateLocation.ForDirectory(root)) { HubUrl = "https://nas01.example.com:8443" };
+            settings.TlsCaFile = settings.ManagedCaFilePath;
+            var credentials = new CredentialStore(vaultAvailable: false, fallbackPath: Path.Combine(root, ".credentials"));
+
+            Assert.Empty(new OnboardingViewModel(settings, credentials, new ConnectionTester()).TlsCaFile);
+
+            Directory.CreateDirectory(root);
+            File.WriteAllText(settings.ManagedCaFilePath, "saved CA");
+            Assert.Equal(settings.ManagedCaFilePath,
+                new OnboardingViewModel(settings, credentials, new ConnectionTester()).TlsCaFile);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
     [Fact]
     public void TokenTypeRadioButtonsRoundTripBetweenEnrollmentAndApiModes()
     {

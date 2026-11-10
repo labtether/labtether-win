@@ -203,7 +203,13 @@ public partial class OnboardingViewModel : ObservableObject
             : settings.AssetId;
         GroupId = settings.GroupId;
         TlsSkipVerify = settings.TlsSkipVerify;
-        TlsCaFile = settings.TlsCaFile;
+        // The app's own copy of the Hub CA can be gone (the start error then
+        // says to re-enroll). Setup does not offer that path: the person never
+        // chose it, and Connect would only say the file is unavailable. Without
+        // it setup asks about the Hub's CA again.
+        TlsCaFile = settings.UsesManagedCaFile && !File.Exists(settings.ManagedCaFilePath)
+            ? string.Empty
+            : settings.TlsCaFile;
     }
 
     private void OnHubUrlChanged(string value)
