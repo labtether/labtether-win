@@ -169,7 +169,12 @@ public class SettingsViewModelTests
     [Fact]
     public void BeforeSetupHubUrlIsEmptyAndOtherSettingsStillSave()
     {
-        var settings = new AgentSettings();
+        // Not the installed app's token: this PC may have an enrolled copy.
+        var settings = new AgentSettings
+        {
+            PersistedAgentTokenPathOverride = Path.Combine(
+                Path.GetTempPath(), "LabTetherAgentTests", Guid.NewGuid().ToString("N"), "agent-token"),
+        };
         var stored = settings.HubUrl;
         var viewModel = Create(settings, new FakeLoginItemManager(), out var persisted);
 

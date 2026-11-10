@@ -58,6 +58,11 @@ public class HubCertificateProbe
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(Timeout);
             using var request = new HttpRequestMessage(HttpMethod.Get, caUrl);
+            // A certificate a server only shows proves nothing: certificates
+            // are public. The one read above is used only once this request
+            // has been answered, which needs a finished handshake, so the
+            // server holds that certificate's key. Even then it only decides
+            // whether to ask; the token waits for a verified connection.
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
 
             if (hubCertificate == null)

@@ -1,4 +1,6 @@
 using System.Net;
+using System.Net.Security;
+using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using LabTetherAgent.Services;
@@ -88,6 +90,59 @@ public class HubCertificateTrustTests
 
         Assert.Null((await probe.ProbeAsync("http://hub.example.test:8080")).Offer);
         Assert.Single(requests);
+    }
+
+    // A shown certificate is not proof: anyone can present the Hub's public
+    // certificate. Without a finished handshake (an answered request) there
+    // is no offer, however well the shown certificate matches the offered CA.
+    [Fact]
+    public async Task CertificateThatIsOnlyShownGivesNoOffer()
+    {
+        var now = DateTimeOffset.UtcNow;
+        using var ca = TestCertificates.Ca("Example Hub CA", now);
+        using var hub = TestCertificates.Leaf(ca, "hub.example.test", now.AddDays(-1), now.AddDays(30));
+        var caPem = ca.ExportCertificatePem();
+
+        var shownOnly = new HubCertificateProbe(observe => new TlsStubHandler(() =>
+        {
+            observe(hub, null, SslPolicyErrors.RemoteCertificateChainErrors);
+            throw new HttpRequestException("handshake did not finish", new AuthenticationException());
+        }));
+        Assert.Null((await shownOnly.ProbeAsync("https://hub.example.test:8443")).Offer);
+
+        // The same certificate over a finished handshake is offered for the question.
+        var finished = new HubCertificateProbe(observe => new TlsStubHandler(() =>
+        {
+            observe(hub, null, SslPolicyErrors.RemoteCertificateChainErrors);
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(caPem) };
+        }));
+        Assert.Equal(HubCertificateTrust.Fingerprint(ca),
+            (await finished.ProbeAsync("https://hub.example.test:8443")).Offer!.Fingerprint);
+    }
+
+    // After Trust this Hub only the accepted CA counts. A server Windows itself
+    // trusts (a publicly trusted certificate) is not the Hub and must fail.
+    [Fact]
+    public void AcceptedCaIsTheOnlyRootEvenWhenWindowsTrustsTheServer()
+    {
+        var now = DateTimeOffset.UtcNow;
+        using var ca = TestCertificates.Ca("Example Hub CA", now);
+        using var publicCa = TestCertificates.Ca("A Public CA", now);
+        using var hub = TestCertificates.Leaf(ca, "hub.example.test", now.AddDays(-1), now.AddDays(30));
+        using var other = TestCertificates.Leaf(publicCa, "hub.example.test", now.AddDays(-1), now.AddDays(30));
+        using var handler = (HttpClientHandler)ConnectionTester.CreateDefaultHandler(
+            tlsSkipVerify: false, tlsCaFile: null, tlsCaPem: ca.ExportCertificatePem());
+        var verify = handler.ServerCertificateCustomValidationCallback!;
+        using var request = new HttpRequestMessage(HttpMethod.Get, "https://hub.example.test:8443");
+
+        Assert.True(verify(request, hub, null, SslPolicyErrors.RemoteCertificateChainErrors));
+        Assert.False(verify(request, other, null, SslPolicyErrors.None));
+    }
+
+    private sealed class TlsStubHandler(Func<HttpResponseMessage> respond) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(respond());
     }
 
     private sealed class RecordingHandler(List<HttpRequestMessage> requests) : HttpMessageHandler
