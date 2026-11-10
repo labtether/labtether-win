@@ -16,6 +16,13 @@ Changes since v1.7.1. This release matches LabTether 2.0.
   nothing. An expired certificate or one for another address is an error and
   cannot be trusted this way. If the CA later differs from the one the device
   enrolled with, setup says "This Hub's certificate changed" and asks again.
+- A Hub trusted this way is then checked against that saved CA only, not
+  against Windows' own certificate list. A server with a publicly trusted
+  certificate for the same address is refused. If the saved CA file is
+  missing or can't be read, the agent is not started and the flyout, the
+  notification and the log say so. A Hub with a publicly trusted certificate
+  and no CA file works as before. Needs the bundled agent from
+  labtether-agent `54d2e6a` or newer.
 - Maintainers can build an unsigned release ZIP with a hand-started hosted
   workflow, `unsigned-release-build.yml`. It signs nothing and uploads
   nothing to a release.

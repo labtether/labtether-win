@@ -37,6 +37,7 @@ internal static class SnapshotRunner
             var suffix = theme == ElementTheme.Light ? "light" : "dark";
             await CaptureAsync(log, outputDirectory, $"win-flyout-{suffix}", theme, () => Flyout(appState, Connected()));
             await CaptureAsync(log, outputDirectory, $"win-flyout-offline-{suffix}", theme, () => Flyout(appState, Offline()));
+            await CaptureAsync(log, outputDirectory, $"win-flyout-stopped-{suffix}", theme, () => FlyoutStopped(appState));
             await CaptureAsync(log, outputDirectory, $"win-settings-{suffix}", theme, () => Settings(appState));
             await CaptureAsync(log, outputDirectory, $"win-onboarding-{suffix}", theme, () => Setup(appState, expand: false));
             await CaptureAsync(log, outputDirectory, $"win-onboarding-advanced-{suffix}", theme, () => Setup(appState, expand: true));
@@ -138,6 +139,15 @@ internal static class SnapshotRunner
         var window = new FlyoutWindow(appState) { DismissOnDeactivate = false };
         window.ViewModel.HubUrl = "wss://hub.example.lan/ws/agent";
         window.ViewModel.UpdateFromStatus(status);
+        window.ShowNearTray();
+        return window;
+    }
+
+    private static FlyoutWindow FlyoutStopped(AppState appState)
+    {
+        var window = new FlyoutWindow(appState) { DismissOnDeactivate = false };
+        window.ViewModel.HubUrl = "wss://hub.example.lan/ws/agent";
+        window.ViewModel.StartProblem = LabTetherAgent.Services.HubCertificateTrust.SavedCaUnusable;
         window.ShowNearTray();
         return window;
     }

@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using LabTetherAgent.Services;
 
 namespace LabTetherAgent.Settings;
 
@@ -9,6 +10,24 @@ namespace LabTetherAgent.Settings;
 /// </summary>
 public static class AgentEnvironmentBuilder
 {
+    internal const string TlsCaFileVariable = "LABTETHER_TLS_CA_FILE";
+    internal const string TlsCaOnlyVariable = "LABTETHER_TLS_CA_ONLY";
+
+    /// <summary>
+    /// With the managed Hub CA as the agent's only root, the agent stops at
+    /// start when that file cannot be used. Returns that fault in words before
+    /// a child is started, or null when the agent can start.
+    /// </summary>
+    internal static string? HubCaStartProblem(IReadOnlyDictionary<string, string> environment)
+    {
+        if (!environment.ContainsKey(TlsCaOnlyVariable))
+            return null;
+        return environment.TryGetValue(TlsCaFileVariable, out var caFile) &&
+               ConnectionTester.IsValidCustomCaFile(caFile)
+            ? null
+            : HubCertificateTrust.SavedCaUnusable;
+    }
+
     public static Dictionary<string, string> BuildEnvironment(
         AgentSettings settings,
         string localApiPort,
@@ -154,9 +173,16 @@ public static class AgentEnvironmentBuilder
         // or in the setup directory while setup proves a new Hub.
         if (hasCustomCa)
         {
-            env["LABTETHER_TLS_CA_FILE"] = settings.UsesManagedCaFile
+            env[TlsCaFileVariable] = settings.UsesManagedCaFile
                 ? Path.Combine(secretDirectory, AgentManagedState.CaCertificateFileName)
                 : settings.TlsCaFile.Trim();
+            // The managed CA is the one this Hub was verified with. Without
+            // this the agent also trusts Windows' roots, so a server with any
+            // publicly trusted certificate for the Hub's name could pass as
+            // the Hub and receive the agent token. Never set without a CA
+            // file: the agent then stops at start.
+            if (settings.UsesManagedCaFile)
+                env[TlsCaOnlyVariable] = "true";
         }
 
         // Docker
