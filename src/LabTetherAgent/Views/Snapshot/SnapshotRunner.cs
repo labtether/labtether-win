@@ -173,7 +173,7 @@ internal static class SnapshotRunner
     {
         var window = Setup(appState, expand: false);
         window.ViewModel.ShowTrustPromptForSnapshot(new LabTetherAgent.Services.HubTrustOffer(
-            "", "ab6a2b918ed79cf3e7f02f4e66e8dec38a21826f260aa9ae4cd1f21d4e862ab8"));
+            "", "fd44a8fbb823d34a35f0d72ced949251c15896094d449781c9600eec2de80b32"));
         return window;
     }
 
