@@ -120,6 +120,54 @@ public sealed class AppStateCaFileCheckTests : IDisposable
         Assert.Equal(HubCertificateTrust.SavedCaUnusable, owner.AgentProcess.StartProblem);
     }
 
+    // An update must not weaken what an earlier build saved. labtether-win
+    // main before this change wrote the record for Trust this Hub and for a
+    // CA file chosen in setup, both verified with that CA alone. Both load as
+    // the agent's only root, with no new question to the Hub. A CA file saved
+    // without a record (chosen in Settings, or by 1.x) was never checked: it
+    // keeps the earlier trust until the Hub has been asked.
+    [Fact]
+    public async Task SettingsAnEarlierBuildSavedKeepTheirVerifiedState()
+    {
+        using var hubCa = LabTetherAgent.Tests.Services.TestCertificates.Ca("Hub CA", DateTimeOffset.UtcNow);
+        var managed = Path.Combine(_location.DirectoryPath, "ca.crt");
+        File.WriteAllText(managed, hubCa.ExportCertificatePem());
+        var shapes = new (string Name, string CaFile, string Record, bool OnlyRoot)[]
+        {
+            ("Trust this Hub", managed, HubCertificateTrust.Fingerprint(hubCa), true),
+            ("CA file chosen in setup", _caFile, HubCaFileCheck.Fingerprint(_caFile), true),
+            ("CA file never checked", _caFile, "", false),
+        };
+        foreach (var shape in shapes)
+        {
+            var saved = new Dictionary<string, string>
+            {
+                ["HubUrl"] = "wss://hub.example.com/ws/agent",
+                ["AssetId"] = "nas01",
+                ["TlsCaFile"] = shape.CaFile,
+            };
+            if (shape.Record.Length > 0)
+                saved["EnrolledHubCaFingerprint"] = shape.Record;
+            File.WriteAllText(_location.SettingsPath, System.Text.Json.JsonSerializer.Serialize(saved));
+
+            var settings = AgentSettings.Load(_location);
+            using var owner = Owner(settings);
+            var asked = 0;
+            owner.CheckCaFileOverride = (_, _) =>
+            {
+                asked++;
+                return Task.FromResult(HubCaFileVerdict.NotChecked);
+            };
+            await owner.CheckSavedCaFileAsync();
+            var env = AgentEnvironmentBuilder.BuildEnvironment(settings, "8091", "auth");
+
+            Assert.True(shape.OnlyRoot == env.ContainsKey("LABTETHER_TLS_CA_ONLY"), shape.Name);
+            Assert.True(shape.OnlyRoot == (asked == 0), shape.Name);
+            Assert.True(AgentEnvironmentBuilder.HubCaStartProblem(settings, env) == null, shape.Name);
+            Assert.Equal(shape.Record, AgentSettings.Load(_location).EnrolledHubCaFingerprint);
+        }
+    }
+
     private AppState Owner(AgentSettings settings)
     {
         var shell = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),
