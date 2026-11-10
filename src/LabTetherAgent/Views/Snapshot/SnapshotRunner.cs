@@ -39,6 +39,7 @@ internal static class SnapshotRunner
             await CaptureAsync(log, outputDirectory, $"win-flyout-offline-{suffix}", theme, () => Flyout(appState, Offline()));
             await CaptureAsync(log, outputDirectory, $"win-flyout-stopped-{suffix}", theme, () => FlyoutStopped(appState));
             await CaptureAsync(log, outputDirectory, $"win-settings-{suffix}", theme, () => Settings(appState));
+            await CaptureAsync(log, outputDirectory, $"win-settings-ca-notice-{suffix}", theme, () => SettingsCaNotice(appState));
             await CaptureAsync(log, outputDirectory, $"win-onboarding-{suffix}", theme, () => Setup(appState, expand: false));
             await CaptureAsync(log, outputDirectory, $"win-onboarding-advanced-{suffix}", theme, () => Setup(appState, expand: true));
             await CaptureAsync(log, outputDirectory, $"win-onboarding-trust-{suffix}", theme, () => SetupTrust(appState));
@@ -166,6 +167,13 @@ internal static class SnapshotRunner
         vm.LogLevel = "info";
         vm.DockerEndpoint = "";
         vm.DockerDiscoveryInterval = "30";
+        return window;
+    }
+
+    private static SettingsWindow SettingsCaNotice(AppState appState)
+    {
+        var window = Settings(appState);
+        window.ViewModel.CaFileNotice = LabTetherAgent.Services.HubCaFileCheck.DoesNotMatch;
         return window;
     }
 

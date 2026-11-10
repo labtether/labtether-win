@@ -28,10 +28,12 @@ public class AgentSettings
     public string TlsCaFile { get; set; } = string.Empty;
 
     /// <summary>
-    /// SHA-256 fingerprint of the Hub CA this device's token was issued under,
-    /// recorded when setup commits. "The same Hub" means this record, never
-    /// whichever CA file is configured later. Empty when the device enrolled
-    /// without a single CA to verify against.
+    /// SHA-256 fingerprint of the CA this device's Hub was verified with:
+    /// recorded when setup commits, or when a CA file chosen under Advanced
+    /// first verifies the Hub on its own. "The same Hub" means this record,
+    /// never whichever CA file is configured later, and once it exists the
+    /// agent trusts only that CA for the Hub. Empty when the Hub was never
+    /// verified against a CA of its own.
     /// </summary>
     public string EnrolledHubCaFingerprint { get; set; } = string.Empty;
 

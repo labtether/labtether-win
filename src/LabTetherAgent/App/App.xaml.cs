@@ -126,7 +126,8 @@ public partial class App : Application, IXamlMetadataProvider
         // If enrolled, start the agent automatically
         if (!_appState.ShouldShowOnboarding)
         {
-            _appState.StartAgent();
+            // Starts the agent; first checks a CA file an earlier version saved unchecked.
+            _ = _appState.StartAgentAfterCaFileCheckAsync();
         }
         else
         {

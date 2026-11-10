@@ -300,12 +300,34 @@ public class AgentEnvironmentBuilderTests
             new AgentSettings { HubUrl = "https://hub.example.com", TlsSkipVerify = true }, "9090", "auth");
         Assert.False(skip.ContainsKey("LABTETHER_TLS_CA_ONLY"));
 
-        // A CA file chosen by hand under Advanced is passed as before.
+        // A CA file chosen by hand that the app has not checked against the
+        // Hub is passed as before: a device that works through Windows' own
+        // certificate list must keep working after an update.
         var chosen = Build(
             new AgentSettings { HubUrl = "https://hub.example.com", TlsCaFile = @"C:\LabTether\ca.crt" },
             "9090", "auth");
         Assert.Equal(@"C:\LabTether\ca.crt", chosen["LABTETHER_TLS_CA_FILE"]);
         Assert.False(chosen.ContainsKey("LABTETHER_TLS_CA_ONLY"));
+    }
+
+    // From the moment a hand-chosen CA file's fingerprint is on record (the
+    // app saw it verify the Hub on its own) it is the agent's only root, and
+    // it stays so whatever happens to the file later: nothing here may bring
+    // Windows' own certificate list back.
+    [Fact]
+    public void BuildEnvironment_ChosenCaFileOnRecordIsTheAgentsOnlyRoot()
+    {
+        var settings = new AgentSettings
+        {
+            HubUrl = "https://hub.example.com",
+            TlsCaFile = @"C:\LabTether\no-longer-there.pem",
+            EnrolledHubCaFingerprint = new string('a', 64),
+        };
+
+        var env = Build(settings, "9090", "auth");
+
+        Assert.Equal(@"C:\LabTether\no-longer-there.pem", env["LABTETHER_TLS_CA_FILE"]);
+        Assert.Equal("true", env["LABTETHER_TLS_CA_ONLY"]);
     }
 
     [Fact]
