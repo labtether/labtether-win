@@ -1,5 +1,6 @@
 using LabTetherAgent.App;
 using LabTetherAgent.Presentation;
+using LabTetherAgent.Services;
 using LabTetherAgent.Settings;
 
 namespace LabTetherAgent.Tests.Presentation;
@@ -245,10 +246,73 @@ public class SettingsViewModelTests
         }
     }
 
+    // A CA file chosen in Settings becomes the agent's only root, so it is
+    // saved only after it has verified this Hub on its own. A file that does
+    // not match, or a Hub that cannot be asked, must leave the working
+    // settings as they were.
+    [Fact]
+    public async Task ChosenCaFileIsSavedOnlyAfterItVerifiesTheHub()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "LabTetherAgentTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            using var ca = LabTetherAgent.Tests.Services.TestCertificates.Ca("Hub CA", DateTimeOffset.UtcNow);
+            var caFile = Path.Combine(root, "hub-ca.pem");
+            File.WriteAllText(caFile, ca.ExportCertificatePem());
+            var settings = new AgentSettings
+            {
+                HubUrl = "wss://nas01.example.com:8443/ws/agent",
+                ApiToken = "nas01-agent-token",
+                TlsSkipVerify = true,
+            };
+            var verdict = HubCaFileVerdict.DoesNotMatch;
+            var asked = new List<(string Hub, string File)>();
+            var viewModel = Create(settings, new FakeLoginItemManager(), out var persisted, (hub, file) =>
+            {
+                asked.Add((hub, file));
+                return Task.FromResult(verdict);
+            });
+
+            viewModel.TlsSkipVerify = false;
+            viewModel.TlsCaFile = caFile;
+            await viewModel.SaveCommand.ExecuteAsync(null);
+            Assert.Equal("This CA certificate does not match this Hub's certificate.", viewModel.SaveError);
+
+            verdict = HubCaFileVerdict.NotChecked;
+            await viewModel.SaveCommand.ExecuteAsync(null);
+            Assert.Equal(HubCaFileCheck.HubNotReached, viewModel.SaveError);
+            Assert.Empty(persisted);
+            Assert.True(settings.TlsSkipVerify);
+            Assert.Empty(settings.TlsCaFile);
+
+            verdict = HubCaFileVerdict.Verified;
+            await viewModel.SaveCommand.ExecuteAsync(null);
+            Assert.Null(viewModel.SaveError);
+            Assert.Single(persisted);
+            Assert.Equal(caFile, settings.TlsCaFile);
+            Assert.True(settings.UsesVerifiedCaFile);
+            Assert.All(asked, call => Assert.Equal(("wss://nas01.example.com:8443/ws/agent", caFile), call));
+            Assert.Equal(3, asked.Count);
+
+            // Another setting saved later does not ask the Hub again.
+            viewModel.LowPowerMode = true;
+            await viewModel.SaveCommand.ExecuteAsync(null);
+            Assert.Null(viewModel.SaveError);
+            Assert.Equal(3, asked.Count);
+            Assert.True(settings.UsesVerifiedCaFile);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static SettingsViewModel Create(
         AgentSettings settings,
         FakeLoginItemManager loginItems,
-        out List<AgentSettings> persisted)
+        out List<AgentSettings> persisted,
+        Func<string, string, Task<HubCaFileVerdict>>? checkCaFile = null)
     {
         persisted = [];
         var persistenceSink = persisted;
@@ -262,7 +326,9 @@ public class SettingsViewModelTests
             settings,
             credentialStore,
             loginItems,
-            (saved, _) => persistenceSink.Add(saved));
+            (saved, _) => persistenceSink.Add(saved),
+            // No test here may reach the network.
+            checkCaFile ?? ((_, _) => Task.FromResult(HubCaFileVerdict.Verified)));
     }
 
     private sealed class FakeLoginItemManager : ILoginItemManager

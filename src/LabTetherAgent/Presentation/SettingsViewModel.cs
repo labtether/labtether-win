@@ -17,6 +17,7 @@ public partial class SettingsViewModel : ObservableObject
     private readonly CredentialStore _credentialStore;
     private readonly ILoginItemManager _loginItemManager;
     private readonly Action<AgentSettings, CredentialStore> _persistSettings;
+    private readonly Func<string, string, Task<HubCaFileVerdict>> _checkCaFile;
 
     private string _hubUrl = string.Empty;
     private bool _startAtLogin;
@@ -188,12 +189,15 @@ public partial class SettingsViewModel : ObservableObject
         AgentSettings settings,
         CredentialStore credentialStore,
         ILoginItemManager loginItemManager,
-        Action<AgentSettings, CredentialStore> persistSettings)
+        Action<AgentSettings, CredentialStore> persistSettings,
+        Func<string, string, Task<HubCaFileVerdict>>? checkCaFile = null)
     {
         _settings = settings;
         _credentialStore = credentialStore;
         _loginItemManager = loginItemManager;
         _persistSettings = persistSettings;
+        _checkCaFile = checkCaFile ??
+            ((hubUrl, caFile) => HubCaFileCheck.RunAsync(new ConnectionTester(), hubUrl, caFile));
         LoadFromSettings();
     }
 
@@ -245,7 +249,7 @@ public partial class SettingsViewModel : ObservableObject
     private void OnLogLevelChanged(string value) => IsDirty = true;
 
     [RelayCommand]
-    private void Save()
+    private async Task SaveAsync()
     {
         SaveError = null;
         // Not set up and no Hub typed: keep the stored value and save the rest.
@@ -295,6 +299,33 @@ public partial class SettingsViewModel : ObservableObject
             return;
         }
 
+        // A CA file chosen here is saved only after it has verified this Hub
+        // on its own; the agent then trusts only that file for the Hub.
+        var verifiedCaFile = !keepHubUrl && !SettingsValidator.IsSameHub(_settings.HubUrl, HubUrl)
+            ? string.Empty
+            : _settings.VerifiedCaFileSha256;
+        if (ChangesCertificateTrust(normalizedCaFile))
+        {
+            verifiedCaFile = string.Empty;
+            if (HasSavedCredential() &&
+                HubCaFileCheck.Applies(HubUrl, TlsSkipVerify, normalizedCaFile, managedCaFile: false))
+            {
+                var (checkedHubUrl, checkedSkip, checkedCaFile) = (HubUrl, TlsSkipVerify, TlsCaFile);
+                var verdict = await _checkCaFile(HubUrl.Trim(), normalizedCaFile);
+                // The answer is about the values that were submitted, not ones typed since.
+                if (HubUrl != checkedHubUrl || TlsSkipVerify != checkedSkip || TlsCaFile != checkedCaFile)
+                    return;
+                if (verdict != HubCaFileVerdict.Verified)
+                {
+                    SaveError = verdict == HubCaFileVerdict.DoesNotMatch
+                        ? HubCaFileCheck.DoesNotMatch
+                        : HubCaFileCheck.HubNotReached;
+                    return;
+                }
+                verifiedCaFile = AgentSettings.CaFileSha256(normalizedCaFile);
+            }
+        }
+
         if (!_loginItemManager.SetEnabled(StartAtLogin))
         {
             SaveError = "Windows could not change Start at sign-in. Nothing was saved.";
@@ -313,6 +344,7 @@ public partial class SettingsViewModel : ObservableObject
         _settings.AutoUpdateEnabled = false;
         _settings.TlsSkipVerify = TlsSkipVerify;
         _settings.TlsCaFile = normalizedCaFile;
+        _settings.VerifiedCaFileSha256 = verifiedCaFile;
         _settings.LogLevel = LogLevel;
 
         _persistSettings(_settings, _credentialStore);

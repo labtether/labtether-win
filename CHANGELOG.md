@@ -23,6 +23,13 @@ Changes since v1.7.1. This release matches LabTether 2.0.
   notification and the log say so. A Hub with a publicly trusted certificate
   and no CA file works as before. Needs the bundled agent from
   labtether-agent `54d2e6a` or newer.
+- A CA certificate file chosen by hand under Advanced is treated the same way
+  once it has verified the Hub on its own. Settings checks a newly chosen file
+  with the Hub before saving: a file that does not match is refused with
+  "This CA certificate does not match this Hub's certificate." and the
+  earlier setting stays. A CA file saved by an earlier version is checked at
+  the next start; if it does not match, or the Hub cannot be reached, the
+  device keeps working as before and the check runs again at the next start.
 - Maintainers can build an unsigned release ZIP with a hand-started hosted
   workflow, `unsigned-release-build.yml`. It signs nothing and uploads
   nothing to a release.

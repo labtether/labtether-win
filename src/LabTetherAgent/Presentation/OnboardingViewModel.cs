@@ -327,6 +327,12 @@ public partial class OnboardingViewModel : ObservableObject
             candidate.TlsSkipVerify = skipVerify;
             candidate.TlsCaFile = caFile.Trim();
             candidate.TrustedHubCaPem = trustedHub?.CaPem ?? string.Empty;
+            // The test above trusted only the chosen CA file, so that file is
+            // the setup agent's only root as well.
+            candidate.VerifiedCaFileSha256 =
+                trustedHub == null && HubCaFileCheck.Applies(hubUrl, skipVerify, caFile, candidate.UsesManagedCaFile)
+                    ? AgentSettings.CaFileSha256(caFile)
+                    : string.Empty;
             candidate.LocalApiAuthToken = string.Empty;
 
             if (useEnrollmentToken)

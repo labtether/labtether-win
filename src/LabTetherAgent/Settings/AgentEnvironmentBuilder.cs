@@ -176,12 +176,15 @@ public static class AgentEnvironmentBuilder
             env[TlsCaFileVariable] = settings.UsesManagedCaFile
                 ? Path.Combine(secretDirectory, AgentManagedState.CaCertificateFileName)
                 : settings.TlsCaFile.Trim();
-            // The managed CA is the one this Hub was verified with. Without
-            // this the agent also trusts Windows' roots, so a server with any
-            // publicly trusted certificate for the Hub's name could pass as
-            // the Hub and receive the agent token. Never set without a CA
-            // file: the agent then stops at start.
-            if (settings.UsesManagedCaFile)
+            // The managed CA is the one this Hub was verified with, and a
+            // file the user chose counts once the app has seen it verify the
+            // Hub on its own. Without this the agent also trusts Windows'
+            // roots, so a server with any publicly trusted certificate for
+            // the Hub's name could pass as the Hub and receive the agent
+            // token. Never set without a CA file: the agent then stops at
+            // start. Never set for a file not yet checked: a device that
+            // works through Windows' roots must keep working.
+            if (settings.UsesManagedCaFile || settings.UsesVerifiedCaFile)
                 env[TlsCaOnlyVariable] = "true";
         }
 

@@ -214,6 +214,46 @@ public class OnboardingTrustTests : IDisposable
             AgentEnvironmentBuilder.BuildEnvironment(settings, "8091", "auth")["LABTETHER_TLS_CA_FILE"]);
     }
 
+    // Setup's own test trusts only a CA file chosen under Advanced. When it
+    // passes, the setup agent must trust only that file too, or the token
+    // could go to a server that Windows' certificate list accepts.
+    [Fact]
+    public async Task ChosenCaFileThatVerifiedTheHubIsTheSetupAgentsOnlyRoot()
+    {
+        var settings = AgentSettings.Load(AppStateLocation.ForDirectory(Path.Combine(_root, "chosen")));
+        Directory.CreateDirectory(_root);
+        var caFile = Path.Combine(_root, "chosen-ca.pem");
+        using (var ca = TestCertificates.Ca("Chosen CA", DateTimeOffset.UtcNow))
+            File.WriteAllText(caFile, ca.ExportCertificatePem());
+        var tester = new ConnectionTester((_, chosen, _) => new StubHandler(() => chosen != null
+            ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"service\":\"labtether-hub\"}") }
+            : throw new HttpRequestException("TLS", new AuthenticationException("untrusted root"))));
+        var viewModel = new OnboardingViewModel(
+            settings,
+            new CredentialStore(vaultAvailable: false, fallbackPath: Path.Combine(_root, Guid.NewGuid().ToString("N"), ".credentials")),
+            tester,
+            (candidate, _, _) =>
+            {
+                _started.Add(candidate);
+                return Task.FromResult(AgentConnectionAttemptResult.Connected());
+            },
+            (url, cancellation) => _probe(url, cancellation))
+        {
+            HubUrl = HubB,
+            Token = "hub-b-enrollment-token",
+            TlsCaFile = caFile,
+        };
+
+        await viewModel.ConnectCommand.ExecuteAsync(null);
+
+        var candidate = Assert.Single(_started);
+        Assert.True(candidate.UsesVerifiedCaFile);
+        var environment = AgentEnvironmentBuilder.BuildEnvironmentForTrustedDirectory(
+            candidate, "8091", "auth", Path.Combine(_root, "chosen", ".setup-test"));
+        Assert.Equal(caFile, environment["LABTETHER_TLS_CA_FILE"]);
+        Assert.Equal("true", environment["LABTETHER_TLS_CA_ONLY"]);
+    }
+
     private OnboardingViewModel Create(AgentSettings settings, string hubUrl, string token)
     {
         // Windows rejects the Hub's certificate until a CA accepted in the panel is supplied.

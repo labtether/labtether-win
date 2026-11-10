@@ -300,12 +300,44 @@ public class AgentEnvironmentBuilderTests
             new AgentSettings { HubUrl = "https://hub.example.com", TlsSkipVerify = true }, "9090", "auth");
         Assert.False(skip.ContainsKey("LABTETHER_TLS_CA_ONLY"));
 
-        // A CA file chosen by hand under Advanced is passed as before.
+        // A CA file chosen by hand that the app has not checked against the
+        // Hub is passed as before: a device that works through Windows' own
+        // certificate list must keep working after an update.
         var chosen = Build(
             new AgentSettings { HubUrl = "https://hub.example.com", TlsCaFile = @"C:\LabTether\ca.crt" },
             "9090", "auth");
         Assert.Equal(@"C:\LabTether\ca.crt", chosen["LABTETHER_TLS_CA_FILE"]);
         Assert.False(chosen.ContainsKey("LABTETHER_TLS_CA_ONLY"));
+    }
+
+    // Once the app has seen a hand-chosen CA file verify the Hub on its own,
+    // that file is the agent's only root, but only while it is the file that
+    // was checked.
+    [Fact]
+    public void BuildEnvironment_CheckedChosenCaFileIsTheAgentsOnlyRoot()
+    {
+        Directory.CreateDirectory(_secretDirectory);
+        var caFile = Path.Combine(_secretDirectory, "chosen-ca.pem");
+        try
+        {
+            File.WriteAllText(caFile, "the file that was checked");
+            var settings = new AgentSettings
+            {
+                HubUrl = "https://hub.example.com",
+                TlsCaFile = caFile,
+                VerifiedCaFileSha256 = AgentSettings.CaFileSha256(caFile),
+            };
+            var env = Build(settings, "9090", "auth");
+            Assert.Equal(caFile, env["LABTETHER_TLS_CA_FILE"]);
+            Assert.Equal("true", env["LABTETHER_TLS_CA_ONLY"]);
+
+            File.WriteAllText(caFile, "another file put in its place");
+            Assert.False(Build(settings, "9090", "auth").ContainsKey("LABTETHER_TLS_CA_ONLY"));
+        }
+        finally
+        {
+            File.Delete(caFile);
+        }
     }
 
     [Fact]
