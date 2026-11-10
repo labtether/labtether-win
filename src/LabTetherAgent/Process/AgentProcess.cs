@@ -163,7 +163,8 @@ public partial class AgentProcess : IDisposable
     public void ReportError(string message)
     {
         StartProblem = message;
-        LogReader.AppendRaw(message);
+        // A start error must show under the Logs window's Error filter.
+        LogReader.AppendRaw(message, "error");
         OnError?.Invoke(message);
     }
 

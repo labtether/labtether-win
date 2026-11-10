@@ -76,9 +76,9 @@ public class AgentLogReader
     /// <summary>
     /// Append a raw string (e.g., from the app itself, not the agent process).
     /// </summary>
-    public void AppendRaw(string message)
+    public void AppendRaw(string message, string level = "info")
     {
-        var line = new LogLine(DateTime.Now, "info", message, $"[app] {message}");
+        var line = new LogLine(DateTime.Now, level, message, $"[app] {message}");
         Append(line);
         OnLogLine?.Invoke(line);
     }

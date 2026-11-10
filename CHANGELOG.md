@@ -73,6 +73,14 @@ Changes since v1.7.1. This release matches LabTether 2.0.
   unsigned. The release notes say whether a release is code-signed.
 
 ### Fixed
+- When setup asks about a Hub's own certificate, keyboard focus moves to the
+  question's Cancel button and the title is read out. Focus used to fall back
+  to the Hub URL field, four Tab presses away.
+- Re-enroll after the app's saved Hub certificate was lost no longer fills
+  the CA certificate field with that missing file, so Connect asks about the
+  Hub's certificate instead of saying the file is unavailable.
+- A start error appears in the Logs window as an error, so the Error filter
+  shows it.
 - `scripts/download-agent.ps1` without `-Version` works in Windows
   PowerShell 5.1. It failed before downloading because it read
   `AGENT_VERSION` with a `Join-Path` form that needs PowerShell 7.
