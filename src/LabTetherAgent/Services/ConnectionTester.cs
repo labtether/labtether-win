@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Security;
+using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using LabTetherAgent.Settings;
@@ -13,18 +14,23 @@ public class ConnectionTester
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
     private const int MaxProbeBodyBytes = 8 * 1024;
-    private readonly Func<bool, string?, HttpMessageHandler> _handlerFactory;
+    private readonly Func<bool, string?, string?, HttpMessageHandler> _handlerFactory;
 
     public ConnectionTester() : this(CreateDefaultHandler)
     {
     }
 
     public ConnectionTester(Func<bool, HttpMessageHandler> handlerFactory)
-        : this((skipVerify, _) => handlerFactory(skipVerify))
+        : this((skipVerify, _, _) => handlerFactory(skipVerify))
     {
     }
 
     internal ConnectionTester(Func<bool, string?, HttpMessageHandler> handlerFactory)
+        : this((skipVerify, caFile, _) => handlerFactory(skipVerify, caFile))
+    {
+    }
+
+    internal ConnectionTester(Func<bool, string?, string?, HttpMessageHandler> handlerFactory)
     {
         _handlerFactory = handlerFactory ?? throw new ArgumentNullException(nameof(handlerFactory));
     }
@@ -38,10 +44,15 @@ public class ConnectionTester
     /// the user's explicit <c>AgentSettings.TlsSkipVerify</c> value — do not pass
     /// <c>true</c> unconditionally.
     /// </param>
+    /// <param name="trustedCaPem">
+    /// A Hub CA the user accepted in setup with Trust this Hub and that is not
+    /// saved yet. The Hub must validate against it; it replaces the CA file.
+    /// </param>
     public async Task<ConnectionTestResult> TestAsync(
         string hubUrl,
         bool tlsSkipVerify = false,
-        string? tlsCaFile = null)
+        string? tlsCaFile = null,
+        string? trustedCaPem = null)
     {
         if (string.IsNullOrWhiteSpace(hubUrl))
             return new ConnectionTestResult(false, "Hub URL is empty.");
@@ -51,6 +62,11 @@ public class ConnectionTester
         var identityUrl = HubIdentityUrl(hubUrl);
         if (identityUrl is null)
             return new ConnectionTestResult(false, "Invalid URL format.");
+        if (!string.IsNullOrWhiteSpace(trustedCaPem))
+        {
+            tlsSkipVerify = false;
+            tlsCaFile = null;
+        }
         if (HasConflictingTlsTrustOptions(tlsSkipVerify, tlsCaFile))
         {
             return new ConnectionTestResult(
@@ -65,7 +81,7 @@ public class ConnectionTester
 
         try
         {
-            using var handler = _handlerFactory(tlsSkipVerify, tlsCaFile);
+            using var handler = _handlerFactory(tlsSkipVerify, tlsCaFile, trustedCaPem);
             using var client = new HttpClient(handler) { Timeout = Timeout };
             using var timeout = new CancellationTokenSource(Timeout);
             using var response = await client.GetAsync(
@@ -115,6 +131,12 @@ public class ConnectionTester
         catch (OperationCanceledException)
         {
             return new ConnectionTestResult(false, "Connection timed out.");
+        }
+        catch (HttpRequestException ex) when (ex.InnerException is AuthenticationException)
+        {
+            // The TLS handshake was refused over the certificate. Setup may
+            // then offer to trust the Hub's own CA.
+            return new ConnectionTestResult(false, HubCertificateTrust.NotTrusted, CertificateRejected: true);
         }
         catch (HttpRequestException)
         {
@@ -235,7 +257,8 @@ public class ConnectionTester
         }
     }
 
-    internal static HttpMessageHandler CreateDefaultHandler(bool tlsSkipVerify, string? tlsCaFile = null)
+    internal static HttpMessageHandler CreateDefaultHandler(
+        bool tlsSkipVerify, string? tlsCaFile = null, string? tlsCaPem = null)
     {
         var handler = new HttpClientHandler
         {
@@ -246,10 +269,13 @@ public class ConnectionTester
             // Opt-in via AgentSettings.TlsSkipVerify — homelab self-signed mode.
             handler.ServerCertificateCustomValidationCallback = (_, _, _, _) => true;
         }
-        else if (!string.IsNullOrWhiteSpace(tlsCaFile))
+        else if (!string.IsNullOrWhiteSpace(tlsCaFile) || !string.IsNullOrWhiteSpace(tlsCaPem))
         {
             var certificates = new X509Certificate2Collection();
-            certificates.ImportFromPemFile(tlsCaFile);
+            if (!string.IsNullOrWhiteSpace(tlsCaPem))
+                certificates.ImportFromPem(tlsCaPem);
+            else
+                certificates.ImportFromPemFile(tlsCaFile!);
             var roots = certificates
                 .Where(certificate => certificate.SubjectName.RawData.AsSpan().SequenceEqual(
                     certificate.IssuerName.RawData))
@@ -258,7 +284,7 @@ public class ConnectionTester
                 throw new System.Security.Cryptography.CryptographicException(
                     "The custom CA bundle does not contain a self-signed root certificate.");
 
-            handler.ServerCertificateCustomValidationCallback = (_, certificate, _, sslErrors) =>
+            handler.ServerCertificateCustomValidationCallback = (_, certificate, presented, sslErrors) =>
             {
                 if (certificate == null
                     || (sslErrors & (SslPolicyErrors.RemoteCertificateNameMismatch
@@ -273,6 +299,10 @@ public class ConnectionTester
                 chain.ChainPolicy.DisableCertificateDownloads = true;
                 chain.ChainPolicy.CustomTrustStore.AddRange(roots);
                 chain.ChainPolicy.ExtraStore.AddRange(certificates);
+                // Intermediates the Hub sent help build the chain; only the
+                // roots above can end it.
+                if (presented != null)
+                    chain.ChainPolicy.ExtraStore.AddRange(presented.ChainPolicy.ExtraStore);
                 return chain.Build(certificate);
             };
         }
@@ -280,4 +310,5 @@ public class ConnectionTester
     }
 }
 
-public record ConnectionTestResult(bool Success, string Message);
+/// <param name="CertificateRejected">True when the only failure was a certificate Windows or the chosen CA does not accept.</param>
+public record ConnectionTestResult(bool Success, string Message, bool CertificateRejected = false);

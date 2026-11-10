@@ -27,6 +27,14 @@ public class AgentSettings
     public bool TlsSkipVerify { get; set; }
     public string TlsCaFile { get; set; } = string.Empty;
 
+    /// <summary>
+    /// SHA-256 fingerprint of the Hub CA this device's token was issued under,
+    /// recorded when setup commits. "The same Hub" means this record, never
+    /// whichever CA file is configured later. Empty when the device enrolled
+    /// without a single CA to verify against.
+    /// </summary>
+    public string EnrolledHubCaFingerprint { get; set; } = string.Empty;
+
     // Docker
     public string DockerEnabled { get; set; } = "auto";
     public string DockerEndpoint { get; set; } = @"\\.\pipe\docker_engine";
@@ -63,6 +71,37 @@ public class AgentSettings
     [JsonIgnore] public string WebRtcTurnPass { get; set; } = string.Empty;
     [JsonIgnore] public string LocalApiAuthToken { get; set; } = string.Empty;
     [JsonIgnore] internal string? PersistedAgentTokenPathOverride { get; set; }
+
+    /// <summary>
+    /// Setup only: a Hub CA the user accepted with Trust this Hub. Setup saves
+    /// it as the managed CA file when it commits; it is never read from disk.
+    /// </summary>
+    [JsonIgnore] internal string TrustedHubCaPem { get; set; } = string.Empty;
+
+    /// <summary>The app's own copy of a trusted Hub CA, beside the agent token.</summary>
+    [JsonIgnore]
+    internal string ManagedCaFilePath =>
+        Path.Combine(Location.DirectoryPath, AgentManagedState.CaCertificateFileName);
+
+    /// <summary>True when the CA file setting is the managed copy, not a file the user chose.</summary>
+    [JsonIgnore]
+    internal bool UsesManagedCaFile
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(TlsCaFile))
+                return false;
+            try
+            {
+                return string.Equals(Path.GetFullPath(TlsCaFile.Trim()), Path.GetFullPath(ManagedCaFilePath),
+                    StringComparison.OrdinalIgnoreCase);
+            }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or IOException)
+            {
+                return false;
+            }
+        }
+    }
 
     // Change tracking
     [JsonIgnore] public int SettingsVersion { get; private set; }
@@ -231,6 +270,7 @@ public class AgentSettings
         AgentPort = source.AgentPort;
         TlsSkipVerify = source.TlsSkipVerify;
         TlsCaFile = source.TlsCaFile;
+        EnrolledHubCaFingerprint = source.EnrolledHubCaFingerprint;
         DockerEnabled = source.DockerEnabled;
         DockerEndpoint = source.DockerEndpoint;
         DockerDiscoveryInterval = source.DockerDiscoveryInterval;
@@ -249,6 +289,7 @@ public class AgentSettings
         EnrollmentToken = source.EnrollmentToken;
         WebRtcTurnPass = source.WebRtcTurnPass;
         LocalApiAuthToken = source.LocalApiAuthToken;
+        TrustedHubCaPem = string.Empty;
         PersistedAgentTokenPathOverride = source.PersistedAgentTokenPathOverride;
         SettingsVersion = source.SettingsVersion;
     }

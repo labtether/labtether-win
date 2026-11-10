@@ -40,6 +40,7 @@ internal static class SnapshotRunner
             await CaptureAsync(log, outputDirectory, $"win-settings-{suffix}", theme, () => Settings(appState));
             await CaptureAsync(log, outputDirectory, $"win-onboarding-{suffix}", theme, () => Setup(appState, expand: false));
             await CaptureAsync(log, outputDirectory, $"win-onboarding-advanced-{suffix}", theme, () => Setup(appState, expand: true));
+            await CaptureAsync(log, outputDirectory, $"win-onboarding-trust-{suffix}", theme, () => SetupTrust(appState));
             await CaptureAsync(log, outputDirectory, $"win-popout-{suffix}", theme, () => PopOut(appState));
             await CaptureAsync(log, outputDirectory, $"win-logs-{suffix}", theme, () => new LogViewerWindow(appState));
         }
@@ -165,6 +166,14 @@ internal static class SnapshotRunner
         window.ViewModel.Token = "demo-enrollment-token-0000";
         window.ViewModel.AssetId = "win-desktop-01";
         window.ExpandAdvanced(expand);
+        return window;
+    }
+
+    private static OnboardingWindow SetupTrust(AppState appState)
+    {
+        var window = Setup(appState, expand: false);
+        window.ViewModel.ShowTrustPromptForSnapshot(new LabTetherAgent.Services.HubTrustOffer(
+            "", "fd44a8fbb823d34a35f0d72ced949251c15896094d449781c9600eec2de80b32"));
         return window;
     }
 

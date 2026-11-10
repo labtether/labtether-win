@@ -286,6 +286,15 @@ public partial class SettingsViewModel : ObservableObject
             return;
         }
 
+        // The token was issued over a connection verified with one CA. Another
+        // CA, or no certificate check, could hand it to a different Hub.
+        if (HasSavedCredential() && ChangesCertificateTrust(normalizedCaFile) &&
+            !KeepsEnrolledCertificate(normalizedCaFile))
+        {
+            SaveError = "This device's token works only with the Hub certificate it enrolled with. To trust a different certificate, choose Re-enroll in the tray menu.";
+            return;
+        }
+
         if (!_loginItemManager.SetEnabled(StartAtLogin))
         {
             SaveError = "Windows could not change Start at sign-in. Nothing was saved.";
@@ -311,6 +320,34 @@ public partial class SettingsViewModel : ObservableObject
         IsDirty = false;
         OnSaved?.Invoke();
         OnRestartRequired?.Invoke();
+    }
+
+    // Saving other settings never re-judges a certificate choice that is already in use.
+    private bool ChangesCertificateTrust(string caFile)
+    {
+        var saved = ConnectionTester.TryNormalizeCustomCaFile(_settings.TlsCaFile, out var normalized)
+            ? normalized
+            : _settings.TlsCaFile;
+        return TlsSkipVerify != _settings.TlsSkipVerify ||
+            !string.Equals(caFile, saved, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool KeepsEnrolledCertificate(string caFile)
+    {
+        var enrolled = _settings.EnrolledHubCaFingerprint;
+        if (enrolled.Length == 0)
+            return true;
+        if (TlsSkipVerify || caFile.Length == 0)
+            return false;
+        try
+        {
+            return string.Equals(
+                HubCertificateTrust.FingerprintOfPem(File.ReadAllText(caFile)), enrolled, StringComparison.Ordinal);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     private bool HasSavedCredential() =>

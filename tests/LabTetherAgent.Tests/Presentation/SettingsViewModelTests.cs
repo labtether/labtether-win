@@ -169,7 +169,12 @@ public class SettingsViewModelTests
     [Fact]
     public void BeforeSetupHubUrlIsEmptyAndOtherSettingsStillSave()
     {
-        var settings = new AgentSettings();
+        // Not the installed app's token: this PC may have an enrolled copy.
+        var settings = new AgentSettings
+        {
+            PersistedAgentTokenPathOverride = Path.Combine(
+                Path.GetTempPath(), "LabTetherAgentTests", Guid.NewGuid().ToString("N"), "agent-token"),
+        };
         var stored = settings.HubUrl;
         var viewModel = Create(settings, new FakeLoginItemManager(), out var persisted);
 
@@ -181,6 +186,63 @@ public class SettingsViewModelTests
         Assert.Single(persisted);
         Assert.Equal(stored, settings.HubUrl);
         Assert.True(settings.LowPowerMode);
+    }
+
+    // The token was issued under one Hub CA. Settings must not point it at
+    // another CA or switch the certificate check off; that needs Re-enroll.
+    [Fact]
+    public void SavedTokenKeepsTheHubCertificateItEnrolledWith()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "LabTetherAgentTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            using var enrolledCa = LabTetherAgent.Tests.Services.TestCertificates.Ca("Hub CA", DateTimeOffset.UtcNow);
+            using var otherCa = LabTetherAgent.Tests.Services.TestCertificates.Ca("Another CA", DateTimeOffset.UtcNow);
+            var enrolledFile = Path.Combine(root, "hub-ca.pem");
+            var otherFile = Path.Combine(root, "other-ca.pem");
+            File.WriteAllText(enrolledFile, enrolledCa.ExportCertificatePem());
+            File.WriteAllText(otherFile, otherCa.ExportCertificatePem());
+            var settings = new AgentSettings
+            {
+                HubUrl = "wss://nas01.example.com:8443/ws/agent",
+                ApiToken = "nas01-agent-token",
+                TlsCaFile = enrolledFile,
+                EnrolledHubCaFingerprint = LabTetherAgent.Services.HubCertificateTrust.Fingerprint(enrolledCa),
+            };
+            var viewModel = Create(settings, new FakeLoginItemManager(), out var persisted);
+
+            viewModel.TlsCaFile = otherFile;
+            viewModel.SaveCommand.Execute(null);
+            Assert.Contains("Re-enroll in the tray menu", viewModel.SaveError);
+            viewModel.TlsCaFile = string.Empty;
+            viewModel.TlsSkipVerify = true;
+            viewModel.SaveCommand.Execute(null);
+            Assert.Contains("Re-enroll in the tray menu", viewModel.SaveError);
+            Assert.Empty(persisted);
+            Assert.Equal(enrolledFile, settings.TlsCaFile);
+            Assert.False(settings.TlsSkipVerify);
+
+            // Other settings still save while the certificate stays the same.
+            viewModel.TlsSkipVerify = false;
+            viewModel.TlsCaFile = enrolledFile;
+            viewModel.LowPowerMode = true;
+            viewModel.SaveCommand.Execute(null);
+            Assert.Null(viewModel.SaveError);
+            Assert.Single(persisted);
+
+            // A CA file replaced in place is not a Settings change: a later
+            // save of something else is not refused over it.
+            File.WriteAllText(enrolledFile, otherCa.ExportCertificatePem());
+            viewModel.LowPowerMode = false;
+            viewModel.SaveCommand.Execute(null);
+            Assert.Null(viewModel.SaveError);
+            Assert.Equal(2, persisted.Count);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     private static SettingsViewModel Create(

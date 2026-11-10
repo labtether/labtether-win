@@ -189,12 +189,14 @@ public partial class OnboardingViewModel : ObservableObject
         AgentSettings settings,
         CredentialStore credentialStore,
         ConnectionTester connectionTester,
-        Func<AgentSettings, bool, CancellationToken, Task<AgentConnectionAttemptResult>> connectAgent)
+        Func<AgentSettings, bool, CancellationToken, Task<AgentConnectionAttemptResult>> connectAgent,
+        Func<string, CancellationToken, Task<HubTrustDecision>>? probeHubCertificate = null)
     {
         _settings = settings;
         ArgumentNullException.ThrowIfNull(credentialStore);
         _connectionTester = connectionTester;
         _connectAgent = connectAgent ?? throw new ArgumentNullException(nameof(connectAgent));
+        _probeHubCertificate = probeHubCertificate ?? new HubCertificateProbe().ProbeAsync;
         HubUrl = settings.IsEnrolled ? settings.HubUrl : "https://";
         AssetId = string.IsNullOrWhiteSpace(settings.AssetId)
             ? Environment.MachineName
@@ -206,6 +208,7 @@ public partial class OnboardingViewModel : ObservableObject
 
     private void OnHubUrlChanged(string value)
     {
+        ForgetHubTrust();
         ClearConnectionOutcome();
         IsHubUrlValid = SettingsValidator.IsValidHubUrl(value);
         // An empty field or the prefilled scheme is not an error yet.
@@ -256,14 +259,22 @@ public partial class OnboardingViewModel : ObservableObject
 
     private void OnGroupIdChanged(string value) => ClearConnectionOutcome();
 
-    private void OnTlsSkipVerifyChanged(bool value) => ClearConnectionOutcome();
+    private void OnTlsSkipVerifyChanged(bool value)
+    {
+        ForgetHubTrust();
+        ClearConnectionOutcome();
+    }
 
-    private void OnTlsCaFileChanged(string value) => ClearConnectionOutcome();
+    private void OnTlsCaFileChanged(string value)
+    {
+        ForgetHubTrust();
+        ClearConnectionOutcome();
+    }
 
     private void OnIsConnectingChanged(bool value) => OnPropertyChanged(nameof(CanConnect));
 
-    /// <summary>Connect needs a valid Hub URL and token, and no attempt already running.</summary>
-    public bool CanConnect => IsHubUrlValid && IsTokenValid && !IsConnecting;
+    /// <summary>Connect needs a valid Hub URL and token, no attempt running and no open trust question.</summary>
+    public bool CanConnect => IsHubUrlValid && IsTokenValid && !IsConnecting && !HasTrustPrompt;
 
     [RelayCommand]
     private async Task ConnectAsync()
@@ -275,15 +286,32 @@ public partial class OnboardingViewModel : ObservableObject
         ConnectionError = null;
         var connectionAttempt = new CancellationTokenSource();
         _connectionAttempt = connectionAttempt;
+        // One attempt belongs to the exact values submitted. The fields stay
+        // editable while it runs, so read them once; an edit drops the attempt.
+        var hubUrl = HubUrl;
+        var skipVerify = TlsSkipVerify;
+        var caFile = TlsCaFile;
+        var trustedHub = _trustedHub;
+        var useEnrollmentToken = UseEnrollmentToken;
+        var token = Token.Trim();
+        var assetId = AssetId.Trim();
+        var groupId = GroupId.Trim();
+        bool HubEdited() => HubUrl != hubUrl || TlsSkipVerify != skipVerify || TlsCaFile != caFile;
         try
         {
             // Reachability is only a preflight. Setup is not successful until
-            // the child subsequently reports authenticated connectivity.
-            var probeResult = await _connectionTester.TestAsync(HubUrl, TlsSkipVerify, TlsCaFile);
+            // the child subsequently reports authenticated connectivity. No
+            // token is sent here; with a CA accepted in the panel the Hub must
+            // verify against exactly that CA.
+            var probeResult = await _connectionTester.TestAsync(hubUrl, skipVerify, caFile, trustedHub?.CaPem);
             connectionAttempt.Token.ThrowIfCancellationRequested();
+            if (HubEdited())
+                return;
             if (!probeResult.Success)
             {
-                ConnectionError = probeResult.Message;
+                ConnectionError = probeResult.CertificateRejected && !skipVerify
+                    ? await AskAboutRejectedCertificateAsync(hubUrl, trustedHub, connectionAttempt.Token)
+                    : probeResult.Message;
                 return;
             }
 
@@ -293,27 +321,28 @@ public partial class OnboardingViewModel : ObservableObject
             // therefore remain untouched on rejection, cancellation, or any
             // persistence/start failure.
             var candidate = _settings.CloneForSetup();
-            candidate.HubUrl = HubUrl;
-            candidate.AssetId = AssetId.Trim();
-            candidate.GroupId = UseEnrollmentToken ? GroupId.Trim() : string.Empty;
-            candidate.TlsSkipVerify = TlsSkipVerify;
-            candidate.TlsCaFile = TlsCaFile.Trim();
+            candidate.HubUrl = hubUrl;
+            candidate.AssetId = assetId;
+            candidate.GroupId = useEnrollmentToken ? groupId : string.Empty;
+            candidate.TlsSkipVerify = skipVerify;
+            candidate.TlsCaFile = caFile.Trim();
+            candidate.TrustedHubCaPem = trustedHub?.CaPem ?? string.Empty;
             candidate.LocalApiAuthToken = string.Empty;
 
-            if (UseEnrollmentToken)
+            if (useEnrollmentToken)
             {
-                candidate.EnrollmentToken = Token.Trim();
+                candidate.EnrollmentToken = token;
                 candidate.ApiToken = string.Empty;
             }
             else
             {
-                candidate.ApiToken = Token.Trim();
+                candidate.ApiToken = token;
                 candidate.EnrollmentToken = string.Empty;
             }
 
             var connectionResult = await _connectAgent(
                 candidate,
-                UseEnrollmentToken,
+                useEnrollmentToken,
                 connectionAttempt.Token);
             if (!connectionResult.Success)
             {
@@ -354,6 +383,7 @@ public partial class OnboardingViewModel : ObservableObject
     // a retry shows only its own result.
     private void ClearConnectionOutcome()
     {
+        TrustOffer = null;
         ConnectionError = null;
         IsConnected = false;
     }
