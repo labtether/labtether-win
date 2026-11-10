@@ -230,6 +230,14 @@ public class SettingsViewModelTests
             viewModel.SaveCommand.Execute(null);
             Assert.Null(viewModel.SaveError);
             Assert.Single(persisted);
+
+            // A CA file replaced in place is not a Settings change: a later
+            // save of something else is not refused over it.
+            File.WriteAllText(enrolledFile, otherCa.ExportCertificatePem());
+            viewModel.LowPowerMode = false;
+            viewModel.SaveCommand.Execute(null);
+            Assert.Null(viewModel.SaveError);
+            Assert.Equal(2, persisted.Count);
         }
         finally
         {

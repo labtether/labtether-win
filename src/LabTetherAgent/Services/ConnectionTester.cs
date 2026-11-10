@@ -284,7 +284,7 @@ public class ConnectionTester
                 throw new System.Security.Cryptography.CryptographicException(
                     "The custom CA bundle does not contain a self-signed root certificate.");
 
-            handler.ServerCertificateCustomValidationCallback = (_, certificate, _, sslErrors) =>
+            handler.ServerCertificateCustomValidationCallback = (_, certificate, presented, sslErrors) =>
             {
                 if (certificate == null
                     || (sslErrors & (SslPolicyErrors.RemoteCertificateNameMismatch
@@ -299,6 +299,10 @@ public class ConnectionTester
                 chain.ChainPolicy.DisableCertificateDownloads = true;
                 chain.ChainPolicy.CustomTrustStore.AddRange(roots);
                 chain.ChainPolicy.ExtraStore.AddRange(certificates);
+                // Intermediates the Hub sent help build the chain; only the
+                // roots above can end it.
+                if (presented != null)
+                    chain.ChainPolicy.ExtraStore.AddRange(presented.ChainPolicy.ExtraStore);
                 return chain.Build(certificate);
             };
         }

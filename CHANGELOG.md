@@ -40,10 +40,10 @@ Changes since v1.7.1. This release matches LabTether 2.0.
   from 85%.
 - Setup is one screen: Hub URL, token type and token, with CA certificate
   file, Skip certificate check, Device ID and Group ID under Advanced.
-- While a token is saved, Settings refuses a different CA certificate or
-  Skip certificate check for a device that enrolled with a verified Hub
-  certificate. Re-enroll in the tray menu changes the Hub or its certificate
-  and always uses a new token.
+- For a device that enrolled with one Hub CA (trusted in setup, or a CA
+  file with one certificate), Settings refuses a different CA certificate or
+  Skip certificate check while its token is saved. Re-enroll in the tray
+  menu changes the Hub or its certificate and always uses a new token.
 - Settings are label-left rows under Connection, General and Docker, and
   the tray menu, Settings and setup use sentence case ("Open console",
   "Re-enroll…", "Start at sign-in").

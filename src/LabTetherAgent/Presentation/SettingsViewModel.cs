@@ -288,7 +288,8 @@ public partial class SettingsViewModel : ObservableObject
 
         // The token was issued over a connection verified with one CA. Another
         // CA, or no certificate check, could hand it to a different Hub.
-        if (HasSavedCredential() && !KeepsEnrolledCertificate(normalizedCaFile))
+        if (HasSavedCredential() && ChangesCertificateTrust(normalizedCaFile) &&
+            !KeepsEnrolledCertificate(normalizedCaFile))
         {
             SaveError = "This device's token works only with the Hub certificate it enrolled with. To trust a different certificate, choose Re-enroll in the tray menu.";
             return;
@@ -319,6 +320,16 @@ public partial class SettingsViewModel : ObservableObject
         IsDirty = false;
         OnSaved?.Invoke();
         OnRestartRequired?.Invoke();
+    }
+
+    // Saving other settings never re-judges a certificate choice that is already in use.
+    private bool ChangesCertificateTrust(string caFile)
+    {
+        var saved = ConnectionTester.TryNormalizeCustomCaFile(_settings.TlsCaFile, out var normalized)
+            ? normalized
+            : _settings.TlsCaFile;
+        return TlsSkipVerify != _settings.TlsSkipVerify ||
+            !string.Equals(caFile, saved, StringComparison.OrdinalIgnoreCase);
     }
 
     private bool KeepsEnrolledCertificate(string caFile)

@@ -18,11 +18,13 @@ public partial class OnboardingViewModel
     private readonly Func<string, CancellationToken, Task<HubTrustDecision>> _probeHubCertificate;
     private HubTrustOffer? _trustOffer;
     private HubTrustOffer? _trustedHub;
+    private bool _offerReplacesTrustedCa;
 
     /// <summary>True while the panel asks about a Hub CA; Connect waits for the answer.</summary>
     public bool HasTrustPrompt => _trustOffer != null;
 
-    public string TrustTitle => IsChangedCertificate(_trustOffer) ? CertificateChangedTitle : OwnCertificateTitle;
+    public string TrustTitle =>
+        _offerReplacesTrustedCa || IsChangedCertificate(_trustOffer) ? CertificateChangedTitle : OwnCertificateTitle;
 
     /// <summary>
     /// The CA's SHA-256 fingerprint in groups of 4, as the console shows it
@@ -41,6 +43,8 @@ public partial class OnboardingViewModel
             if (ReferenceEquals(_trustOffer, value))
                 return;
             _trustOffer = value;
+            if (value == null)
+                _offerReplacesTrustedCa = false;
             OnPropertyChanged(nameof(HasTrustPrompt));
             OnPropertyChanged(nameof(TrustTitle));
             OnPropertyChanged(nameof(TrustFingerprint));
@@ -70,15 +74,27 @@ public partial class OnboardingViewModel
     /// After Windows or the chosen CA rejected the Hub's certificate: shows the
     /// panel when the Hub's own CA can be offered, otherwise returns the error.
     /// </summary>
-    private async Task<string?> AskAboutRejectedCertificateAsync(CancellationToken cancellationToken)
+    /// <param name="hubUrl">The Hub URL this attempt was started with.</param>
+    /// <param name="rejectedTrust">The CA accepted in the panel that the Hub just failed to verify against, if any.</param>
+    private async Task<string?> AskAboutRejectedCertificateAsync(
+        string hubUrl, HubTrustOffer? rejectedTrust, CancellationToken cancellationToken)
     {
         // An accepted CA that no longer verifies the Hub is never kept quietly.
         _trustedHub = null;
-        var decision = await _probeHubCertificate(HubUrl, cancellationToken);
+        var decision = await _probeHubCertificate(hubUrl, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
+        // The answer is about the address that was submitted, not one typed since.
+        if (HubUrl != hubUrl)
+            return null;
         if (decision.Offer is not { } offer)
             return decision.Problem ?? HubCertificateTrust.NotTrusted;
+        // The same CA again cannot verify this Hub; asking once more would loop.
+        if (rejectedTrust != null && rejectedTrust.Fingerprint == offer.Fingerprint)
+            return HubCertificateTrust.TrustedCaDidNotVerify;
         TrustOffer = offer;
+        // A different CA right after one was accepted is a change, said as one.
+        _offerReplacesTrustedCa = rejectedTrust != null;
+        OnPropertyChanged(nameof(TrustTitle));
         return null;
     }
 
@@ -90,10 +106,30 @@ public partial class OnboardingViewModel
     }
 
     // "Changed" is judged against the CA recorded when this device enrolled,
-    // for the same Hub address. A CA trusted now never proves it is that Hub.
-    private bool IsChangedCertificate(HubTrustOffer? offer) =>
-        offer != null &&
-        _settings.EnrolledHubCaFingerprint.Length > 0 &&
-        SettingsValidator.IsSameHub(_settings.HubUrl, HubUrl) &&
-        !string.Equals(_settings.EnrolledHubCaFingerprint, offer.Fingerprint, StringComparison.Ordinal);
+    // for the same Hub address. A device enrolled before that record existed
+    // falls back to its saved CA file. This only words the question; a CA
+    // offered now never proves it is that Hub.
+    private bool IsChangedCertificate(HubTrustOffer? offer)
+    {
+        if (offer == null || !SettingsValidator.IsSameHub(_settings.HubUrl, HubUrl))
+            return false;
+        var enrolled = _settings.EnrolledHubCaFingerprint.Length > 0
+            ? _settings.EnrolledHubCaFingerprint
+            : SavedCaFileFingerprint();
+        return !string.IsNullOrEmpty(enrolled) && !string.Equals(enrolled, offer.Fingerprint, StringComparison.Ordinal);
+    }
+
+    private string? SavedCaFileFingerprint()
+    {
+        if (string.IsNullOrWhiteSpace(_settings.TlsCaFile))
+            return null;
+        try
+        {
+            return HubCertificateTrust.FingerprintOfPem(File.ReadAllText(_settings.TlsCaFile.Trim()));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return null;
+        }
+    }
 }

@@ -285,7 +285,10 @@ public partial class AppState
 
     private static string EnrolledCaFingerprint(AgentSettings committed, byte[]? managedCa)
     {
-        if (committed.TlsSkipVerify)
+        // Only a certificate-checked TLS connection can vouch for a CA.
+        var usesTls = SettingsValidator.DeriveApiBaseUrl(committed.HubUrl)?
+            .StartsWith("https://", StringComparison.OrdinalIgnoreCase) == true;
+        if (committed.TlsSkipVerify || !usesTls)
             return string.Empty;
         try
         {

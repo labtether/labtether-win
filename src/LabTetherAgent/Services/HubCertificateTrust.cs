@@ -35,6 +35,8 @@ public static class HubCertificateTrust
         "Enter the Hub's CA certificate file under Advanced.";
     public const string CaFileDoesNotMatch =
         "The CA certificate file under Advanced doesn't match this Hub's certificate.";
+    public const string TrustedCaDidNotVerify =
+        "This Hub could not be verified with the certificate you trusted.";
     public const string Expired = "This Hub's certificate has expired.";
     public const string NotValidYet = "This Hub's certificate is not valid yet.";
 
@@ -67,15 +69,17 @@ public static class HubCertificateTrust
         string host,
         DateTimeOffset now)
     {
-        using var ca = SingleSelfSignedCertificate(caPem);
-        if (ca == null)
-            return HubTrustDecision.Refused(NoCaOffered);
+        // A wrong address or an expired certificate is said as that, whether
+        // or not the Hub has a CA to offer; neither can be trusted away.
         if (!MatchesHost(hubCertificate, host))
             return HubTrustDecision.Refused(WrongHost(host));
         if (now.UtcDateTime > hubCertificate.NotAfter.ToUniversalTime())
             return HubTrustDecision.Refused(Expired);
         if (now.UtcDateTime < hubCertificate.NotBefore.ToUniversalTime())
             return HubTrustDecision.Refused(NotValidYet);
+        using var ca = SingleSelfSignedCertificate(caPem);
+        if (ca == null)
+            return HubTrustDecision.Refused(NoCaOffered);
 
         using var chain = new X509Chain();
         chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;

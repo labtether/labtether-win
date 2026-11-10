@@ -21,11 +21,14 @@ public class OnboardingTrustTests : IDisposable
     private readonly List<string?> _verifiedWith = [];
     private readonly List<AgentSettings> _started = [];
     private readonly HubTrustOffer _offer;
+    private Func<string, CancellationToken, Task<HubTrustDecision>> _probe;
+    private bool _hubRejectsTheTrustedCa;
 
     public OnboardingTrustTests()
     {
         using var ca = TestCertificates.Ca("Hub B CA", DateTimeOffset.UtcNow);
         _offer = new HubTrustOffer(ca.ExportCertificatePem(), HubCertificateTrust.Fingerprint(ca));
+        _probe = (_, _) => Task.FromResult(new HubTrustDecision(_offer, null));
     }
 
     public void Dispose()
@@ -140,6 +143,59 @@ public class OnboardingTrustTests : IDisposable
         Assert.Empty(_started);
     }
 
+    // Right after Trust this Hub another server answers with its own CA. That
+    // is a change and must be said as one, not offered as a first-time trust;
+    // and a CA that was accepted but does not verify the Hub is not asked twice.
+    [Fact]
+    public async Task AnotherCaRightAfterTrustIsCalledAChangeAndTheSameCaIsNotAskedTwice()
+    {
+        var settings = AgentSettings.Load(AppStateLocation.ForDirectory(Path.Combine(_root, "retry")));
+        var viewModel = Create(settings, HubB, "hub-b-enrollment-token");
+        using var otherCa = TestCertificates.Ca("Another CA", DateTimeOffset.UtcNow);
+        var other = new HubTrustOffer(otherCa.ExportCertificatePem(), HubCertificateTrust.Fingerprint(otherCa));
+
+        await viewModel.ConnectCommand.ExecuteAsync(null);
+        Assert.Equal("This Hub uses its own certificate", viewModel.TrustTitle);
+        _hubRejectsTheTrustedCa = true;
+        _probe = (_, _) => Task.FromResult(new HubTrustDecision(other, null));
+        await viewModel.TrustHubCommand.ExecuteAsync(null);
+
+        Assert.True(viewModel.HasTrustPrompt);
+        Assert.Equal("This Hub's certificate changed", viewModel.TrustTitle);
+        Assert.Empty(_started);
+
+        await viewModel.TrustHubCommand.ExecuteAsync(null);
+        Assert.False(viewModel.HasTrustPrompt);
+        Assert.Equal(HubCertificateTrust.TrustedCaDidNotVerify, viewModel.ConnectionError);
+        Assert.Empty(_started);
+    }
+
+    // The fields stay editable while Connect runs. An offer read for one
+    // address must not appear, or be trusted, for an address typed meanwhile.
+    [Fact]
+    public async Task OfferForAnAddressEditedMeanwhileIsDropped()
+    {
+        var settings = AgentSettings.Load(AppStateLocation.ForDirectory(Path.Combine(_root, "edited")));
+        var probeStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var answer = new TaskCompletionSource<HubTrustDecision>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _probe = async (_, _) =>
+        {
+            probeStarted.TrySetResult();
+            return await answer.Task;
+        };
+        var viewModel = Create(settings, HubB, "hub-b-enrollment-token");
+
+        var connect = viewModel.ConnectCommand.ExecuteAsync(null);
+        await probeStarted.Task;
+        viewModel.HubUrl = HubA;
+        answer.SetResult(new HubTrustDecision(_offer, null));
+        await connect;
+
+        Assert.False(viewModel.HasTrustPrompt);
+        Assert.Null(viewModel.ConnectionError);
+        Assert.Empty(_started);
+    }
+
     // The setup agent must verify the new Hub with the CA staged for it, not
     // with the copy saved for the Hub this device is enrolled with.
     [Fact]
@@ -164,7 +220,7 @@ public class OnboardingTrustTests : IDisposable
         var tester = new ConnectionTester((_, _, caPem) => new StubHandler(() =>
         {
             _verifiedWith.Add(caPem);
-            if (caPem == null)
+            if (caPem == null || _hubRejectsTheTrustedCa)
                 throw new HttpRequestException("TLS", new AuthenticationException("untrusted root"));
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"service\":\"labtether-hub\"}") };
         }));
@@ -177,7 +233,7 @@ public class OnboardingTrustTests : IDisposable
                 _started.Add(candidate);
                 return Task.FromResult(AgentConnectionAttemptResult.Connected());
             },
-            (_, _) => Task.FromResult(new HubTrustDecision(_offer, null)))
+            (url, cancellation) => _probe(url, cancellation))
         {
             HubUrl = hubUrl,
             Token = token,

@@ -60,6 +60,11 @@ public class HubCertificateTrustTests
             HubCertificateTrust.Evaluate(hub, none, ca.ExportCertificatePem(), "nas01.example.test", now).Problem);
         Assert.Equal(HubCertificateTrust.Expired,
             HubCertificateTrust.Evaluate(expired, none, ca.ExportCertificatePem(), "hub.example.test", now).Problem);
+        // ...also when the Hub has no CA to offer: the fault is named, not "enter a CA file".
+        Assert.Equal(HubCertificateTrust.Expired,
+            HubCertificateTrust.Evaluate(expired, none, null, "hub.example.test", now).Problem);
+        Assert.Equal(HubCertificateTrust.WrongHost("nas01.example.test"),
+            HubCertificateTrust.Evaluate(hub, none, null, "nas01.example.test", now).Problem);
         // No CA, text that is no certificate, or the Hub's own leaf offered as a CA.
         foreach (var notACa in new[] { null, "not found", hub.ExportCertificatePem() })
         {
