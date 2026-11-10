@@ -31,6 +31,27 @@ public partial class SettingsViewModel : ObservableObject
     private string _logLevel = "info";
     private bool _isDirty;
     private string? _saveError;
+    private string? _caFileNotice;
+
+    /// <summary>
+    /// Shown under the CA certificate field when the saved file was checked
+    /// with the Hub and does not sign its certificate. The device still works
+    /// as before; the person removes the file or chooses another.
+    /// </summary>
+    public string? CaFileNotice
+    {
+        get => _caFileNotice;
+        set
+        {
+            if (SetProperty(ref _caFileNotice, value))
+                OnPropertyChanged(nameof(HasCaFileNotice));
+        }
+    }
+
+    public bool HasCaFileNotice => !string.IsNullOrEmpty(CaFileNotice);
+
+    [RelayCommand]
+    private void RemoveCaFile() => TlsCaFile = string.Empty;
 
     public string HubUrl
     {
@@ -245,7 +266,12 @@ public partial class SettingsViewModel : ObservableObject
     private void OnWebRtcEnabledChanged(bool value) => IsDirty = true;
     private void OnAllowRemoteOverridesChanged(bool value) => IsDirty = true;
     private void OnTlsSkipVerifyChanged(bool value) => IsDirty = true;
-    private void OnTlsCaFileChanged(string value) => IsDirty = true;
+    private void OnTlsCaFileChanged(string value)
+    {
+        IsDirty = true;
+        // The notice is about the saved file, not one being typed.
+        CaFileNotice = null;
+    }
     private void OnLogLevelChanged(string value) => IsDirty = true;
 
     [RelayCommand]
@@ -300,30 +326,25 @@ public partial class SettingsViewModel : ObservableObject
         }
 
         // A CA file chosen here is saved only after it has verified this Hub
-        // on its own; the agent then trusts only that file for the Hub.
-        var verifiedCaFile = !keepHubUrl && !SettingsValidator.IsSameHub(_settings.HubUrl, HubUrl)
-            ? string.Empty
-            : _settings.VerifiedCaFileSha256;
-        if (ChangesCertificateTrust(normalizedCaFile))
+        // on its own. Its fingerprint is then kept with the enrollment, and
+        // the agent trusts only that CA for the Hub from then on.
+        string? verifiedCa = null;
+        if (ChangesCertificateTrust(normalizedCaFile) && HasSavedCredential() &&
+            HubCaFileCheck.Applies(HubUrl, TlsSkipVerify, normalizedCaFile, managedCaFile: false))
         {
-            verifiedCaFile = string.Empty;
-            if (HasSavedCredential() &&
-                HubCaFileCheck.Applies(HubUrl, TlsSkipVerify, normalizedCaFile, managedCaFile: false))
+            var (checkedHubUrl, checkedSkip, checkedCaFile) = (HubUrl, TlsSkipVerify, TlsCaFile);
+            var verdict = await _checkCaFile(HubUrl.Trim(), normalizedCaFile);
+            // The answer is about the values that were submitted, not ones typed since.
+            if (HubUrl != checkedHubUrl || TlsSkipVerify != checkedSkip || TlsCaFile != checkedCaFile)
+                return;
+            if (verdict != HubCaFileVerdict.Verified)
             {
-                var (checkedHubUrl, checkedSkip, checkedCaFile) = (HubUrl, TlsSkipVerify, TlsCaFile);
-                var verdict = await _checkCaFile(HubUrl.Trim(), normalizedCaFile);
-                // The answer is about the values that were submitted, not ones typed since.
-                if (HubUrl != checkedHubUrl || TlsSkipVerify != checkedSkip || TlsCaFile != checkedCaFile)
-                    return;
-                if (verdict != HubCaFileVerdict.Verified)
-                {
-                    SaveError = verdict == HubCaFileVerdict.DoesNotMatch
-                        ? HubCaFileCheck.DoesNotMatch
-                        : HubCaFileCheck.HubNotReached;
-                    return;
-                }
-                verifiedCaFile = AgentSettings.CaFileSha256(normalizedCaFile);
+                SaveError = verdict == HubCaFileVerdict.DoesNotMatch
+                    ? HubCaFileCheck.DoesNotMatch
+                    : HubCaFileCheck.HubNotReached;
+                return;
             }
+            verifiedCa = HubCaFileCheck.Fingerprint(normalizedCaFile);
         }
 
         if (!_loginItemManager.SetEnabled(StartAtLogin))
@@ -344,7 +365,8 @@ public partial class SettingsViewModel : ObservableObject
         _settings.AutoUpdateEnabled = false;
         _settings.TlsSkipVerify = TlsSkipVerify;
         _settings.TlsCaFile = normalizedCaFile;
-        _settings.VerifiedCaFileSha256 = verifiedCaFile;
+        if (!string.IsNullOrEmpty(verifiedCa) && _settings.EnrolledHubCaFingerprint.Length == 0)
+            _settings.EnrolledHubCaFingerprint = verifiedCa;
         _settings.LogLevel = LogLevel;
 
         _persistSettings(_settings, _credentialStore);
@@ -371,15 +393,7 @@ public partial class SettingsViewModel : ObservableObject
             return true;
         if (TlsSkipVerify || caFile.Length == 0)
             return false;
-        try
-        {
-            return string.Equals(
-                HubCertificateTrust.FingerprintOfPem(File.ReadAllText(caFile)), enrolled, StringComparison.Ordinal);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return false;
-        }
+        return string.Equals(HubCaFileCheck.Fingerprint(caFile), enrolled, StringComparison.Ordinal);
     }
 
     private bool HasSavedCredential() =>

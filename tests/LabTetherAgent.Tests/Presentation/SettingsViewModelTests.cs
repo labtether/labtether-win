@@ -291,7 +291,7 @@ public class SettingsViewModelTests
             Assert.Null(viewModel.SaveError);
             Assert.Single(persisted);
             Assert.Equal(caFile, settings.TlsCaFile);
-            Assert.True(settings.UsesVerifiedCaFile);
+            Assert.Equal(HubCaFileCheck.Fingerprint(caFile), settings.EnrolledHubCaFingerprint);
             Assert.All(asked, call => Assert.Equal(("wss://nas01.example.com:8443/ws/agent", caFile), call));
             Assert.Equal(3, asked.Count);
 
@@ -300,12 +300,50 @@ public class SettingsViewModelTests
             await viewModel.SaveCommand.ExecuteAsync(null);
             Assert.Null(viewModel.SaveError);
             Assert.Equal(3, asked.Count);
-            Assert.True(settings.UsesVerifiedCaFile);
+
+            // Once verified the choice is kept: the CA cannot be taken out again here.
+            viewModel.TlsCaFile = string.Empty;
+            await viewModel.SaveCommand.ExecuteAsync(null);
+            Assert.Contains("Re-enroll in the tray menu", viewModel.SaveError);
+            Assert.Equal(caFile, settings.TlsCaFile);
+            Assert.Equal(3, asked.Count);
         }
         finally
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    // A CA file from an earlier version that does not sign this Hub's
+    // certificate leaves the device working. Settings must say so and let the
+    // person take the file out.
+    [Fact]
+    public async Task MismatchNoticeLetsThePersonRemoveTheCaFile()
+    {
+        var settings = new AgentSettings
+        {
+            HubUrl = "wss://nas01.example.com:8443/ws/agent",
+            ApiToken = "nas01-agent-token",
+            TlsCaFile = @"C:\LabTether\old-ca.pem",
+        };
+        var asked = 0;
+        var viewModel = Create(settings, new FakeLoginItemManager(), out var persisted, (_, _) =>
+        {
+            asked++;
+            return Task.FromResult(HubCaFileVerdict.DoesNotMatch);
+        });
+        viewModel.CaFileNotice = HubCaFileCheck.DoesNotMatch;
+        Assert.True(viewModel.HasCaFileNotice);
+        Assert.Equal("This CA certificate does not match this Hub's certificate.", viewModel.CaFileNotice);
+
+        viewModel.RemoveCaFileCommand.Execute(null);
+        Assert.False(viewModel.HasCaFileNotice);
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.Null(viewModel.SaveError);
+        Assert.Single(persisted);
+        Assert.Empty(settings.TlsCaFile);
+        Assert.Equal(0, asked);
     }
 
     private static SettingsViewModel Create(

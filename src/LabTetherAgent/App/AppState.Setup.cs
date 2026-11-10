@@ -292,10 +292,9 @@ public partial class AppState
             return string.Empty;
         try
         {
-            var pem = managedCa != null
-                ? System.Text.Encoding.ASCII.GetString(managedCa)
-                : string.IsNullOrWhiteSpace(committed.TlsCaFile) ? null : File.ReadAllText(committed.TlsCaFile);
-            return HubCertificateTrust.FingerprintOfPem(pem) ?? string.Empty;
+            return managedCa != null
+                ? HubCertificateTrust.FingerprintOfPem(System.Text.Encoding.ASCII.GetString(managedCa)) ?? string.Empty
+                : HubCaFileCheck.Fingerprint(committed.TlsCaFile);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

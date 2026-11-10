@@ -310,34 +310,24 @@ public class AgentEnvironmentBuilderTests
         Assert.False(chosen.ContainsKey("LABTETHER_TLS_CA_ONLY"));
     }
 
-    // Once the app has seen a hand-chosen CA file verify the Hub on its own,
-    // that file is the agent's only root, but only while it is the file that
-    // was checked.
+    // From the moment a hand-chosen CA file's fingerprint is on record (the
+    // app saw it verify the Hub on its own) it is the agent's only root, and
+    // it stays so whatever happens to the file later: nothing here may bring
+    // Windows' own certificate list back.
     [Fact]
-    public void BuildEnvironment_CheckedChosenCaFileIsTheAgentsOnlyRoot()
+    public void BuildEnvironment_ChosenCaFileOnRecordIsTheAgentsOnlyRoot()
     {
-        Directory.CreateDirectory(_secretDirectory);
-        var caFile = Path.Combine(_secretDirectory, "chosen-ca.pem");
-        try
+        var settings = new AgentSettings
         {
-            File.WriteAllText(caFile, "the file that was checked");
-            var settings = new AgentSettings
-            {
-                HubUrl = "https://hub.example.com",
-                TlsCaFile = caFile,
-                VerifiedCaFileSha256 = AgentSettings.CaFileSha256(caFile),
-            };
-            var env = Build(settings, "9090", "auth");
-            Assert.Equal(caFile, env["LABTETHER_TLS_CA_FILE"]);
-            Assert.Equal("true", env["LABTETHER_TLS_CA_ONLY"]);
+            HubUrl = "https://hub.example.com",
+            TlsCaFile = @"C:\LabTether\no-longer-there.pem",
+            EnrolledHubCaFingerprint = new string('a', 64),
+        };
 
-            File.WriteAllText(caFile, "another file put in its place");
-            Assert.False(Build(settings, "9090", "auth").ContainsKey("LABTETHER_TLS_CA_ONLY"));
-        }
-        finally
-        {
-            File.Delete(caFile);
-        }
+        var env = Build(settings, "9090", "auth");
+
+        Assert.Equal(@"C:\LabTether\no-longer-there.pem", env["LABTETHER_TLS_CA_FILE"]);
+        Assert.Equal("true", env["LABTETHER_TLS_CA_ONLY"]);
     }
 
     [Fact]

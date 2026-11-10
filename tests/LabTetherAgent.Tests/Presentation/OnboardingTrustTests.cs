@@ -247,7 +247,8 @@ public class OnboardingTrustTests : IDisposable
         await viewModel.ConnectCommand.ExecuteAsync(null);
 
         var candidate = Assert.Single(_started);
-        Assert.True(candidate.UsesVerifiedCaFile);
+        Assert.Equal(HubCaFileCheck.Fingerprint(caFile), candidate.EnrolledHubCaFingerprint);
+        Assert.Equal(64, candidate.EnrolledHubCaFingerprint.Length);
         var environment = AgentEnvironmentBuilder.BuildEnvironmentForTrustedDirectory(
             candidate, "8091", "auth", Path.Combine(_root, "chosen", ".setup-test"));
         Assert.Equal(caFile, environment["LABTETHER_TLS_CA_FILE"]);

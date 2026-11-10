@@ -53,6 +53,22 @@
                                          AutomationProperties.Name="CA certificate" AutomationProperties.AutomationId="CaFileBox"
                                          Text="{x:Bind ViewModel.TlsCaFile, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             </Grid>
+                            <!-- The saved CA file does not sign this Hub's certificate: say so, with a way out. -->
+                            <Grid Style="{StaticResource LTSettingsRowStyle}"
+                                  Visibility="{x:Bind ViewModel.HasCaFileNotice, Mode=OneWay}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{x:Bind ViewModel.CaFileNotice, Mode=OneWay}"
+                                           Style="{StaticResource LTProblemTextStyle}" VerticalAlignment="Center"
+                                           AutomationProperties.AutomationId="CaFileNotice" />
+                                <Button Grid.Column="1" Content="Remove" Style="{StaticResource LTFooterButtonStyle}"
+                                        VerticalAlignment="Center"
+                                        AutomationProperties.Name="Remove the CA certificate file"
+                                        AutomationProperties.AutomationId="RemoveCaFileButton"
+                                        Command="{x:Bind ViewModel.RemoveCaFileCommand}" />
+                            </Grid>
                             <components:SwitchRow Label="Skip certificate check" AutomationId="SkipCertificateCheckSwitch"
                                                   IsOn="{x:Bind ViewModel.TlsSkipVerify, Mode=TwoWay}" />
                         </StackPanel>

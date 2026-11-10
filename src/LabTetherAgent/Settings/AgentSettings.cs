@@ -28,19 +28,14 @@ public class AgentSettings
     public string TlsCaFile { get; set; } = string.Empty;
 
     /// <summary>
-    /// SHA-256 fingerprint of the Hub CA this device's token was issued under,
-    /// recorded when setup commits. "The same Hub" means this record, never
-    /// whichever CA file is configured later. Empty when the device enrolled
-    /// without a single CA to verify against.
+    /// SHA-256 fingerprint of the CA this device's Hub was verified with:
+    /// recorded when setup commits, or when a CA file chosen under Advanced
+    /// first verifies the Hub on its own. "The same Hub" means this record,
+    /// never whichever CA file is configured later, and once it exists the
+    /// agent trusts only that CA for the Hub. Empty when the Hub was never
+    /// verified against a CA of its own.
     /// </summary>
     public string EnrolledHubCaFingerprint { get; set; } = string.Empty;
-
-    /// <summary>
-    /// SHA-256 of the CA file chosen under Advanced, recorded once the app has
-    /// seen that file alone verify this Hub's certificate. While it matches
-    /// the file, the agent trusts only that file for the Hub.
-    /// </summary>
-    public string VerifiedCaFileSha256 { get; set; } = string.Empty;
 
     // Docker
     public string DockerEnabled { get; set; } = "auto";
@@ -112,29 +107,6 @@ public class AgentSettings
 
     // Change tracking
     [JsonIgnore] public int SettingsVersion { get; private set; }
-
-    /// <summary>True when the CA file is one the user chose and the app has checked it against the Hub.</summary>
-    [JsonIgnore]
-    internal bool UsesVerifiedCaFile =>
-        !UsesManagedCaFile && VerifiedCaFileSha256.Length > 0 &&
-        string.Equals(VerifiedCaFileSha256, CaFileSha256(TlsCaFile), StringComparison.Ordinal);
-
-    /// <summary>SHA-256 of a file's bytes as lowercase hex, or empty when it cannot be read.</summary>
-    internal static string CaFileSha256(string? path)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-            return string.Empty;
-        try
-        {
-            return Convert.ToHexString(
-                System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(path.Trim()))).ToLowerInvariant();
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException
-                                   or NotSupportedException)
-        {
-            return string.Empty;
-        }
-    }
 
     [JsonIgnore]
     public bool IsEnrolled =>
@@ -301,7 +273,6 @@ public class AgentSettings
         TlsSkipVerify = source.TlsSkipVerify;
         TlsCaFile = source.TlsCaFile;
         EnrolledHubCaFingerprint = source.EnrolledHubCaFingerprint;
-        VerifiedCaFileSha256 = source.VerifiedCaFileSha256;
         DockerEnabled = source.DockerEnabled;
         DockerEndpoint = source.DockerEndpoint;
         DockerDiscoveryInterval = source.DockerDiscoveryInterval;

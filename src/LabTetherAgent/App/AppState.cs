@@ -73,6 +73,7 @@ public partial class AppState : IDisposable
         // Wire crash restart
         AgentProcess.OnOwnedExited += OnAgentExited;
         AgentProcess.OnOwnedStarted += OnAgentStarted;
+        ApiClient.OnConnectionStateChanged += OnHubConnectionChanged;
 
         // Wire network change monitoring for immediate poll on reconnect
         _networkAvailabilityChangedHandler = (_, args) =>
@@ -196,7 +197,7 @@ public partial class AppState : IDisposable
                             launchSettings, port, auth, secretDirectory);
                         lock (LifecycleGate) { if (_disposed || epoch != _launchEpoch) return; }
                         // Factory and source-path checks run outside LifecycleGate.
-                        error = AgentEnvironmentBuilder.HubCaStartProblem(env);
+                        error = AgentEnvironmentBuilder.HubCaStartProblem(launchSettings, env);
                         if (error == null) start = AgentProcess.PrepareStart(binaryPath, env, expectedGeneration);
                         lock (LifecycleGate)
                         {
@@ -548,6 +549,7 @@ public partial class AppState : IDisposable
         NetworkChange.NetworkAvailabilityChanged -= _networkAvailabilityChangedHandler;
         AgentProcess.OnOwnedExited -= OnAgentExited;
         AgentProcess.OnOwnedStarted -= OnAgentStarted;
+        ApiClient.OnConnectionStateChanged -= OnHubConnectionChanged;
         _crashRestartCancellation.Dispose();
         ApiClient.Dispose();
         AgentProcess.Dispose();

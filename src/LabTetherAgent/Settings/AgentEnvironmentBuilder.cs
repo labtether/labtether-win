@@ -14,18 +14,25 @@ public static class AgentEnvironmentBuilder
     internal const string TlsCaOnlyVariable = "LABTETHER_TLS_CA_ONLY";
 
     /// <summary>
-    /// With the managed Hub CA as the agent's only root, the agent stops at
-    /// start when that file cannot be used. Returns that fault in words before
-    /// a child is started, or null when the agent can start.
+    /// With a CA as the agent's only root, the agent stops at start when that
+    /// file cannot be used, and a file the user chose must still be the CA
+    /// that was checked. Returns the fault in words before a child is started,
+    /// or null when the agent can start. Never falls back to Windows' roots.
     /// </summary>
-    internal static string? HubCaStartProblem(IReadOnlyDictionary<string, string> environment)
+    internal static string? HubCaStartProblem(AgentSettings settings, IReadOnlyDictionary<string, string> environment)
     {
         if (!environment.ContainsKey(TlsCaOnlyVariable))
             return null;
-        return environment.TryGetValue(TlsCaFileVariable, out var caFile) &&
-               ConnectionTester.IsValidCustomCaFile(caFile)
-            ? null
-            : HubCertificateTrust.SavedCaUnusable;
+        if (!environment.TryGetValue(TlsCaFileVariable, out var caFile) ||
+            !ConnectionTester.IsValidCustomCaFile(caFile))
+        {
+            return HubCertificateTrust.SavedCaUnusable;
+        }
+
+        return !settings.UsesManagedCaFile &&
+               !string.Equals(HubCaFileCheck.Fingerprint(caFile), settings.EnrolledHubCaFingerprint, StringComparison.Ordinal)
+            ? HubCaFileCheck.FileChanged
+            : null;
     }
 
     public static Dictionary<string, string> BuildEnvironment(
@@ -177,14 +184,15 @@ public static class AgentEnvironmentBuilder
                 ? Path.Combine(secretDirectory, AgentManagedState.CaCertificateFileName)
                 : settings.TlsCaFile.Trim();
             // The managed CA is the one this Hub was verified with, and a
-            // file the user chose counts once the app has seen it verify the
-            // Hub on its own. Without this the agent also trusts Windows'
-            // roots, so a server with any publicly trusted certificate for
-            // the Hub's name could pass as the Hub and receive the agent
-            // token. Never set without a CA file: the agent then stops at
-            // start. Never set for a file not yet checked: a device that
-            // works through Windows' roots must keep working.
-            if (settings.UsesManagedCaFile || settings.UsesVerifiedCaFile)
+            // file the user chose counts from the moment the app has seen it
+            // verify the Hub on its own (the record). Without this the agent
+            // also trusts Windows' roots, so a server with any publicly
+            // trusted certificate for the Hub's name could pass as the Hub
+            // and receive the agent token. Never set without a CA file: the
+            // agent then stops at start. Not set for a chosen file that was
+            // never checked: a device that works through Windows' roots must
+            // keep working until the check has run.
+            if (settings.UsesManagedCaFile || settings.EnrolledHubCaFingerprint.Length > 0)
                 env[TlsCaOnlyVariable] = "true";
         }
 
