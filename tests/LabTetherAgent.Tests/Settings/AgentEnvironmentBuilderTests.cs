@@ -279,6 +279,35 @@ public class AgentEnvironmentBuilderTests
         Assert.False(env.ContainsKey("LABTETHER_TLS_SKIP_VERIFY"));
     }
 
+    // The managed Hub CA is the one the Hub was verified with. The agent must
+    // trust only it, or a server with a publicly trusted certificate for the
+    // Hub's name could receive the agent token. With no CA file the option
+    // must be absent: the agent stops at start when it is on without one.
+    [Fact]
+    public void BuildEnvironment_ManagedHubCaIsTheAgentsOnlyRoot()
+    {
+        var managed = new AgentSettings { HubUrl = "https://hub.example.com" };
+        managed.TlsCaFile = managed.ManagedCaFilePath;
+        var env = Build(managed, "9090", "auth");
+        Assert.Equal(Path.Combine(_secretDirectory, "ca.crt"), env["LABTETHER_TLS_CA_FILE"]);
+        Assert.Equal("true", env["LABTETHER_TLS_CA_ONLY"]);
+
+        var publicHub = Build(new AgentSettings { HubUrl = "https://hub.example.com" }, "9090", "auth");
+        Assert.False(publicHub.ContainsKey("LABTETHER_TLS_CA_FILE"));
+        Assert.False(publicHub.ContainsKey("LABTETHER_TLS_CA_ONLY"));
+
+        var skip = Build(
+            new AgentSettings { HubUrl = "https://hub.example.com", TlsSkipVerify = true }, "9090", "auth");
+        Assert.False(skip.ContainsKey("LABTETHER_TLS_CA_ONLY"));
+
+        // A CA file chosen by hand under Advanced is passed as before.
+        var chosen = Build(
+            new AgentSettings { HubUrl = "https://hub.example.com", TlsCaFile = @"C:\LabTether\ca.crt" },
+            "9090", "auth");
+        Assert.Equal(@"C:\LabTether\ca.crt", chosen["LABTETHER_TLS_CA_FILE"]);
+        Assert.False(chosen.ContainsKey("LABTETHER_TLS_CA_ONLY"));
+    }
+
     [Fact]
     public void BuildEnvironment_DisablesLogStreamByDefault()
     {

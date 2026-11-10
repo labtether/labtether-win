@@ -44,6 +44,8 @@ public partial class AgentProcess : IDisposable
     public bool IsStarting { get; private set; }
     public bool NeedsRestart { get; set; }
     public bool LastExitWasUserInitiated { get; private set; }
+    /// <summary>Why the agent could not be started, in words; null once a child runs.</summary>
+    public string? StartProblem { get; private set; }
     public long Generation { get { lock (LifecycleGate) return _generation; } }
     public CrashRestartCoordinator CrashCoordinator => _crashCoordinator;
     public event Action? OnStarted;
@@ -136,6 +138,7 @@ public partial class AgentProcess : IDisposable
             child.Process.EnableRaisingEvents = true;
             if (publish)
             {
+                StartProblem = null;
                 LogReader.AppendRaw($"Agent started (PID {child.Process.Id})");
                 OnOwnedStarted?.Invoke(child.Generation);
                 OnStarted?.Invoke();
@@ -159,6 +162,7 @@ public partial class AgentProcess : IDisposable
 
     public void ReportError(string message)
     {
+        StartProblem = message;
         LogReader.AppendRaw(message);
         OnError?.Invoke(message);
     }

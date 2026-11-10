@@ -19,6 +19,20 @@ public class AgentStatusTextTests
     public void UptimeReadsAsDaysHoursAndMinutes(string goDuration, string expected) =>
         Assert.Equal(expected, AgentStatusText.FormatUptime(goDuration));
 
+    // An agent that could not start reports no status. The flyout must then
+    // say why it is stopped, not a bare "Offline".
+    [Fact]
+    public void HeaderSaysWhyTheAgentIsStopped()
+    {
+        const string hub = "wss://hub.example.lan/ws/agent";
+        var problem = LabTetherAgent.Services.HubCertificateTrust.SavedCaUnusable;
+
+        Assert.Equal(new AgentHeader("Stopped", problem, true),
+            AgentStatusText.Header(null, hub, DateTimeOffset.Now, problem));
+        Assert.Equal("Connected",
+            AgentStatusText.Header(new AgentStatus { IsConnected = true }, hub, DateTimeOffset.Now, problem).StatusWord);
+    }
+
     [Fact]
     public void HeaderShowsHostAndUptimeOrTheProblem()
     {

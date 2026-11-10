@@ -196,7 +196,8 @@ public partial class AppState : IDisposable
                             launchSettings, port, auth, secretDirectory);
                         lock (LifecycleGate) { if (_disposed || epoch != _launchEpoch) return; }
                         // Factory and source-path checks run outside LifecycleGate.
-                        start = AgentProcess.PrepareStart(binaryPath, env, expectedGeneration);
+                        error = AgentEnvironmentBuilder.HubCaStartProblem(env);
+                        if (error == null) start = AgentProcess.PrepareStart(binaryPath, env, expectedGeneration);
                         lock (LifecycleGate)
                         {
                             if (_disposed || epoch != _launchEpoch)

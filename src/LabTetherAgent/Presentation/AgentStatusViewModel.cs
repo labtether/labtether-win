@@ -20,6 +20,7 @@ public class AgentStatusViewModel : ObservableObject, IDisposable
     private bool _apiConnected;
 
     private string _hubUrl = "";
+    private string? _startProblem;
     private AgentHeader _header = new("Offline", "", true);
     private double _cpuPercent;
     private double _memoryPercent;
@@ -32,6 +33,17 @@ public class AgentStatusViewModel : ObservableObject, IDisposable
         set
         {
             if (SetProperty(ref _hubUrl, value))
+                Refresh();
+        }
+    }
+
+    /// <summary>Why the agent could not be started; shown instead of the Hub while it is stopped.</summary>
+    public string? StartProblem
+    {
+        get => _startProblem;
+        set
+        {
+            if (SetProperty(ref _startProblem, value))
                 Refresh();
         }
     }
@@ -98,7 +110,7 @@ public class AgentStatusViewModel : ObservableObject, IDisposable
         // A failed poll reports "not connected" without a new status. The last
         // status then still says connected, so the header must not trust it.
         var current = _status is { IsConnected: true } && !_apiConnected ? null : _status;
-        _header = AgentStatusText.Header(current, HubUrl, DateTimeOffset.Now);
+        _header = AgentStatusText.Header(current, HubUrl, DateTimeOffset.Now, StartProblem);
         OnPropertyChanged(nameof(StatusWord));
         OnPropertyChanged(nameof(Detail));
         OnPropertyChanged(nameof(IsProblem));

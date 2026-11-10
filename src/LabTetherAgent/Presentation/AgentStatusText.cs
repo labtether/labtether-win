@@ -21,8 +21,14 @@ public static partial class AgentStatusText
     /// <summary>Shown instead of a Hub before the first enrollment.</summary>
     public const string NotSetUp = "Not set up";
 
-    public static AgentHeader Header(AgentStatus? status, string? hubUrl, DateTimeOffset now)
+    /// <param name="startProblem">Why the agent could not be started, when it is not running.</param>
+    public static AgentHeader Header(
+        AgentStatus? status, string? hubUrl, DateTimeOffset now, string? startProblem = null)
     {
+        // An agent that could not start reports nothing; say why it is stopped.
+        if (!string.IsNullOrWhiteSpace(startProblem) && status?.IsConnected != true)
+            return new AgentHeader("Stopped", startProblem.Trim(), true);
+
         var host = HubHost(hubUrl);
         if (status == null)
             return host.Length == 0

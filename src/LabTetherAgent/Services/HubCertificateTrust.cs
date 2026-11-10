@@ -37,6 +37,8 @@ public static class HubCertificateTrust
         "The CA certificate file under Advanced doesn't match this Hub's certificate.";
     public const string TrustedCaDidNotVerify =
         "This Hub could not be verified with the certificate you trusted.";
+    public const string SavedCaUnusable =
+        "This Hub's saved certificate is missing or can't be read. Choose Re-enroll in the tray menu.";
     public const string Expired = "This Hub's certificate has expired.";
     public const string NotValidYet = "This Hub's certificate is not valid yet.";
 
