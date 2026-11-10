@@ -235,6 +235,7 @@ public partial class OnboardingViewModel : ObservableObject
     {
         ClearConnectionOutcome();
         OnPropertyChanged(nameof(UseApiToken));
+        OnPropertyChanged(nameof(TokenTypeIndex));
         OnPropertyChanged(nameof(CanSetGroupId));
         // Group placement is a one-time enrollment request. An API token does
         // not create an asset-bound enrollment transaction, so retaining text
@@ -260,6 +261,20 @@ public partial class OnboardingViewModel : ObservableObject
     }
 
     public bool CanSetGroupId => UseEnrollmentToken;
+
+    /// <summary>
+    /// The token type as the radio group's selected index: 0 enrollment token,
+    /// 1 API token. Other values (the group passes -1 while it rebuilds) change nothing.
+    /// </summary>
+    public int TokenTypeIndex
+    {
+        get => UseEnrollmentToken ? 0 : 1;
+        set
+        {
+            if (value is 0 or 1)
+                UseEnrollmentToken = value == 0;
+        }
+    }
 
     private void OnAssetIdChanged(string value) => ClearConnectionOutcome();
 

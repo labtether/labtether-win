@@ -30,11 +30,35 @@ internal sealed class AgentChildOwnership(AppStateLocation location)
 
     internal void Forget(Record? expected)
     {
+        if (expected == null) return;
         lock (_gate)
         {
-            if (expected != null && Read() == expected)
-                SecureFile.DeleteIfExists(RecordPath);
+            try
+            {
+                if (Read() == expected)
+                    SecureFile.DeleteIfExists(RecordPath);
+            }
+            // Two owners of one state can forget the same record at once (a
+            // restarted owner, and the exit handler of the owner it replaced).
+            // Windows then refuses the second delete while the first is
+            // pending ("access denied"), or the file vanishes under the second
+            // read. A record that is gone is forgotten; one that stays is a
+            // real fault and is reported as before.
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                if (!RecordGone()) throw;
+            }
         }
+    }
+
+    private bool RecordGone()
+    {
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            if (!File.Exists(RecordPath)) return true;
+            Thread.Sleep(50);
+        }
+        return false;
     }
 
     internal void Recover(string binaryPath)

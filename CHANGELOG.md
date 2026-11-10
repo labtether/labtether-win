@@ -73,6 +73,8 @@ Changes since v1.7.1. This release matches LabTether 2.0.
   unsigned. The release notes say whether a release is code-signed.
 
 ### Fixed
+- The two token types in setup are one Tab stop; the arrow keys move between
+  them, as in any Windows radio group.
 - When setup asks about a Hub's own certificate, keyboard focus moves to the
   question's Cancel button and the title is read out. Focus used to fall back
   to the Hub URL field, four Tab presses away.
