@@ -35,9 +35,10 @@
                         <!-- One Tab stop; the arrow keys move the choice, as in every Windows radio group. -->
                         <RadioButtons MaxColumns="2" AutomationProperties.Name="Token type"
                                       SelectedIndex="{x:Bind ViewModel.TokenTypeIndex, Mode=TwoWay}">
-                            <RadioButton Content="Enrollment token" MinWidth="0"
+                            <!-- The group has no spacing of its own; keep the 24 px gap between the two. -->
+                            <RadioButton Content="Enrollment token" MinWidth="0" Margin="0,0,24,0"
                                          AutomationProperties.AutomationId="EnrollmentTokenOption" />
-                            <RadioButton Content="API token" MinWidth="0"
+                            <RadioButton Content="API token" MinWidth="0" Margin="0,0,24,0"
                                          AutomationProperties.AutomationId="ApiTokenOption" />
                         </RadioButtons>
                         <PasswordBox Margin="0,10,0,0" PlaceholderText="Paste token"
