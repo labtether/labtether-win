@@ -36,8 +36,11 @@ to edit.
 2. Extract it into a folder of its own that you will keep, for example
    `%LOCALAPPDATA%\Programs\LabTether`. No administrator rights are needed.
 3. Run `LabTetherAgent.exe` from that folder. The setup window asks for the
-   Hub URL and a token. When setup succeeds the app starts with Windows;
-   **Start at sign-in** in Settings turns that off.
+   Hub URL and a token. If the Hub uses its own certificate, setup shows the
+   certificate's fingerprint: compare it with the fingerprint in the console
+   under **Add device**, then choose **Trust this Hub**. When setup succeeds
+   the app starts with Windows; **Start at sign-in** in Settings turns that
+   off.
 
 You need Windows 10 or newer (x64), a running hub, and an enrollment token from
 the hub (**Add Device**). The .NET runtime is included.

@@ -45,9 +45,9 @@ public static class HubCertificateTrust
     public static string Fingerprint(X509Certificate2 certificate) =>
         Convert.ToHexString(SHA256.HashData(certificate.RawData)).ToLowerInvariant();
 
-    /// <summary>"ab6a2b91…" as "ab6a 2b91 …".</summary>
+    /// <summary>"fd44a8fb…" as "fd44 a8fb …".</summary>
     public static string Group(string fingerprint) =>
-        string.Join(' ', fingerprint.Chunk(4).Select(group => new string(group)));
+        string.Join(' ', fingerprint.Chunk(4).Select(part => new string(part)));
 
     /// <summary>The fingerprint of the first certificate in a PEM file, or null when it has none.</summary>
     public static string? FingerprintOfPem(string? pem)
@@ -70,7 +70,7 @@ public static class HubCertificateTrust
         using var ca = SingleSelfSignedCertificate(caPem);
         if (ca == null)
             return HubTrustDecision.Refused(NoCaOffered);
-        if (!hubCertificate.MatchesHostname(host))
+        if (!MatchesHost(hubCertificate, host))
             return HubTrustDecision.Refused(WrongHost(host));
         if (now.UtcDateTime > hubCertificate.NotAfter.ToUniversalTime())
             return HubTrustDecision.Refused(Expired);
@@ -91,6 +91,18 @@ public static class HubCertificateTrust
         }
 
         return new HubTrustDecision(new HubTrustOffer(ca.ExportCertificatePem(), Fingerprint(ca)), null);
+    }
+
+    private static bool MatchesHost(X509Certificate2 certificate, string host)
+    {
+        try
+        {
+            return certificate.MatchesHostname(host);
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
     }
 
     // The Hub serves exactly one CA certificate. A bundle, a leaf or text that
