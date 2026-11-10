@@ -61,6 +61,11 @@ public partial class OnboardingViewModel
     [RelayCommand]
     private void CancelTrust() => TrustOffer = null;
 
+#if DEBUG
+    /// <summary>Design snapshots only: shows the panel without a Hub.</summary>
+    internal void ShowTrustPromptForSnapshot(HubTrustOffer offer) => TrustOffer = offer;
+#endif
+
     /// <summary>
     /// After Windows or the chosen CA rejected the Hub's certificate: shows the
     /// panel when the Hub's own CA can be offered, otherwise returns the error.
