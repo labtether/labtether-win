@@ -183,6 +183,55 @@ public class SettingsViewModelTests
         Assert.True(settings.LowPowerMode);
     }
 
+    // The token was issued under one Hub CA. Settings must not point it at
+    // another CA or switch the certificate check off; that needs Re-enroll.
+    [Fact]
+    public void SavedTokenKeepsTheHubCertificateItEnrolledWith()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "LabTetherAgentTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            using var enrolledCa = LabTetherAgent.Tests.Services.TestCertificates.Ca("Hub CA", DateTimeOffset.UtcNow);
+            using var otherCa = LabTetherAgent.Tests.Services.TestCertificates.Ca("Another CA", DateTimeOffset.UtcNow);
+            var enrolledFile = Path.Combine(root, "hub-ca.pem");
+            var otherFile = Path.Combine(root, "other-ca.pem");
+            File.WriteAllText(enrolledFile, enrolledCa.ExportCertificatePem());
+            File.WriteAllText(otherFile, otherCa.ExportCertificatePem());
+            var settings = new AgentSettings
+            {
+                HubUrl = "wss://nas01.example.com:8443/ws/agent",
+                ApiToken = "nas01-agent-token",
+                TlsCaFile = enrolledFile,
+                EnrolledHubCaFingerprint = LabTetherAgent.Services.HubCertificateTrust.Fingerprint(enrolledCa),
+            };
+            var viewModel = Create(settings, new FakeLoginItemManager(), out var persisted);
+
+            viewModel.TlsCaFile = otherFile;
+            viewModel.SaveCommand.Execute(null);
+            Assert.Contains("Re-enroll in the tray menu", viewModel.SaveError);
+            viewModel.TlsCaFile = string.Empty;
+            viewModel.TlsSkipVerify = true;
+            viewModel.SaveCommand.Execute(null);
+            Assert.Contains("Re-enroll in the tray menu", viewModel.SaveError);
+            Assert.Empty(persisted);
+            Assert.Equal(enrolledFile, settings.TlsCaFile);
+            Assert.False(settings.TlsSkipVerify);
+
+            // Other settings still save while the certificate stays the same.
+            viewModel.TlsSkipVerify = false;
+            viewModel.TlsCaFile = enrolledFile;
+            viewModel.LowPowerMode = true;
+            viewModel.SaveCommand.Execute(null);
+            Assert.Null(viewModel.SaveError);
+            Assert.Single(persisted);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static SettingsViewModel Create(
         AgentSettings settings,
         FakeLoginItemManager loginItems,

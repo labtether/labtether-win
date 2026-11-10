@@ -17,7 +17,7 @@ public sealed class ConsoleLauncher
     private const int MaxBodyBytes = 8 * 1024;
     private readonly Func<bool, string?, HttpMessageHandler> _handlerFactory;
 
-    public ConsoleLauncher() : this(ConnectionTester.CreateDefaultHandler)
+    public ConsoleLauncher() : this((skipVerify, caFile) => ConnectionTester.CreateDefaultHandler(skipVerify, caFile))
     {
     }
 

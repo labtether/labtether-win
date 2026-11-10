@@ -5,7 +5,8 @@
     xmlns:components="using:LabTetherAgent.Components"
     Title="LabTether Agent setup">
 
-    <!-- One screen: Hub, trust and token on one sheet; device and group ID under Advanced. -->
+    <!-- One screen: Hub and token on one sheet, with the Trust this Hub panel when the Hub
+         uses its own certificate; CA file, certificate check, device and group ID under Advanced. -->
     <Grid x:Name="Root" Background="{ThemeResource LTCanvasBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -30,18 +31,6 @@
                                    Style="{StaticResource LTProblemTextStyle}" AutomationProperties.LiveSetting="Polite"
                                    Visibility="{x:Bind ViewModel.HasHubUrlError, Mode=OneWay}" />
 
-                        <TextBlock Margin="0,16,0,6" Style="{StaticResource LTFieldLabelStyle}">
-                            <Run Text="CA certificate file" />
-                            <Run Text="(optional)" FontWeight="Normal" Foreground="{ThemeResource LTText3Brush}" />
-                        </TextBlock>
-                        <TextBox Style="{StaticResource LTMonoTextBoxStyle}" PlaceholderText="C:\path\to\hub-ca.pem"
-                                 AutomationProperties.Name="CA certificate file (optional)"
-                                 AutomationProperties.AutomationId="CaFileBox"
-                                 Text="{x:Bind ViewModel.TlsCaFile, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                        <CheckBox Content="Skip certificate check" Margin="0,12,0,0"
-                                  AutomationProperties.AutomationId="SkipCertificateCheckBox"
-                                  IsChecked="{x:Bind ViewModel.TlsSkipVerify, Mode=TwoWay}" />
-
                         <TextBlock x:Name="TokenLabel" Text="Token" Margin="0,20,0,6" Style="{StaticResource LTFieldLabelStyle}" />
                         <StackPanel Orientation="Horizontal" Spacing="24"
                                     AutomationProperties.Name="Token type">
@@ -55,6 +44,34 @@
                         <PasswordBox Margin="0,10,0,0" PlaceholderText="Paste token"
                                      AutomationProperties.Name="Token" AutomationProperties.AutomationId="TokenBox"
                                      Password="{x:Bind ViewModel.Token, Mode=TwoWay}" />
+
+                        <!-- Shown when the Hub's own CA can be offered; nothing is trusted until the button. -->
+                        <Border Margin="0,16,0,0" Padding="16" CornerRadius="8" BorderThickness="1"
+                                Background="{ThemeResource LTCanvasBrush}" BorderBrush="{ThemeResource LTLineBrush}"
+                                AutomationProperties.AutomationId="TrustHubPanel"
+                                Visibility="{x:Bind ViewModel.HasTrustPrompt, Mode=OneWay}">
+                            <StackPanel>
+                                <TextBlock Text="{x:Bind ViewModel.TrustTitle, Mode=OneWay}"
+                                           Style="{StaticResource LTBodyTextStyle}" FontWeight="SemiBold"
+                                           Foreground="{ThemeResource LTTextBrush}" TextWrapping="Wrap"
+                                           AutomationProperties.AutomationId="TrustHubTitle"
+                                           AutomationProperties.HeadingLevel="Level2"
+                                           AutomationProperties.LiveSetting="Assertive" />
+                                <TextBlock Text="Fingerprint" Margin="0,12,0,4" Style="{StaticResource LTFieldLabelStyle}" />
+                                <TextBlock Text="{x:Bind ViewModel.TrustFingerprint, Mode=OneWay}"
+                                           FontFamily="{StaticResource LTMonoFontFamily}" FontSize="13"
+                                           Foreground="{ThemeResource LTTextBrush}"
+                                           AutomationProperties.AutomationId="TrustHubFingerprint" />
+                                <TextBlock Text="Compare it with the fingerprint in the console under Add device."
+                                           Margin="0,8,0,0" Style="{StaticResource LTDetailTextStyle}" TextWrapping="Wrap" />
+                                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,14,0,0">
+                                    <Button Content="Trust this Hub" AutomationProperties.AutomationId="TrustHubButton"
+                                            Command="{x:Bind ViewModel.TrustHubCommand}" />
+                                    <Button Content="Cancel" AutomationProperties.AutomationId="CancelTrustButton"
+                                            Command="{x:Bind ViewModel.CancelTrustCommand}" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
 
                         <StackPanel Margin="0,12,0,0" Spacing="8"
                                     Visibility="{x:Bind ViewModel.HasConnectionError, Mode=OneWay}">
@@ -72,11 +89,22 @@
                         <StackPanel Padding="0,9">
                             <TextBlock Text="Advanced" Style="{StaticResource LTBodyTextStyle}" FontWeight="Medium"
                                        Foreground="{ThemeResource LTTextBrush}" />
-                            <TextBlock Text="Device ID and group ID" Style="{StaticResource LTDetailTextStyle}" />
+                            <TextBlock Text="CA certificate, device ID and group ID" Style="{StaticResource LTDetailTextStyle}" />
                         </StackPanel>
                     </Expander.Header>
                     <StackPanel>
-                        <TextBlock Text="Device ID" Style="{StaticResource LTFieldLabelStyle}" />
+                        <TextBlock Margin="0,0,0,6" Style="{StaticResource LTFieldLabelStyle}">
+                            <Run Text="CA certificate file" />
+                            <Run Text="(optional)" FontWeight="Normal" Foreground="{ThemeResource LTText3Brush}" />
+                        </TextBlock>
+                        <TextBox Style="{StaticResource LTMonoTextBoxStyle}" PlaceholderText="C:\path\to\hub-ca.pem"
+                                 AutomationProperties.Name="CA certificate file (optional)"
+                                 AutomationProperties.AutomationId="CaFileBox"
+                                 Text="{x:Bind ViewModel.TlsCaFile, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <CheckBox Content="Skip certificate check" Margin="0,12,0,0"
+                                  AutomationProperties.AutomationId="SkipCertificateCheckBox"
+                                  IsChecked="{x:Bind ViewModel.TlsSkipVerify, Mode=TwoWay}" />
+                        <TextBlock Text="Device ID" Margin="0,16,0,6" Style="{StaticResource LTFieldLabelStyle}" />
                         <TextBox AutomationProperties.Name="Device ID" AutomationProperties.AutomationId="DeviceIdBox"
                                  Text="{x:Bind ViewModel.AssetId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                         <TextBlock Text="Group ID" Margin="0,16,0,6" Style="{StaticResource LTFieldLabelStyle}" />

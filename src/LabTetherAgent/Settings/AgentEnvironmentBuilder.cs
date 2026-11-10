@@ -150,8 +150,14 @@ public static class AgentEnvironmentBuilder
         // certificate verification.
         if (settings.TlsSkipVerify && !hasCustomCa)
             env["LABTETHER_TLS_SKIP_VERIFY"] = "true";
+        // The managed CA lives beside the agent token: in the state directory,
+        // or in the setup directory while setup proves a new Hub.
         if (hasCustomCa)
-            env["LABTETHER_TLS_CA_FILE"] = settings.TlsCaFile.Trim();
+        {
+            env["LABTETHER_TLS_CA_FILE"] = settings.UsesManagedCaFile
+                ? Path.Combine(secretDirectory, AgentManagedState.CaCertificateFileName)
+                : settings.TlsCaFile.Trim();
+        }
 
         // Docker
         env["LABTETHER_DOCKER_ENABLED"] = settings.DockerEnabled;

@@ -41,10 +41,13 @@ public partial class AppState
             $".setup-{Guid.NewGuid():N}");
         Dictionary<string, byte[]>? stagedArtifacts = null;
 
+        byte[]? managedCa = null;
+
         try
         {
             Directory.CreateDirectory(stagingDirectory);
             using var snapshot = SetupPersistenceSnapshot.Capture(Settings, CredentialStore);
+            managedCa = StageManagedCa(candidate, stagingDirectory);
 
             var result = await AgentSetupTransaction.ExecuteAsync(
                 attempt: async token =>
@@ -66,6 +69,10 @@ public partial class AppState
                     token.ThrowIfCancellationRequested();
 
                     stagedArtifacts = AgentManagedState.CaptureSetupArtifacts(stagingDirectory);
+                    // Keep exactly the CA the user trusted (or already had), not
+                    // one the agent may have written during enrollment.
+                    if (managedCa != null)
+                        stagedArtifacts[AgentManagedState.CaCertificateFileName] = (byte[])managedCa.Clone();
 
                     // Remove every staged copy, including the one-use token,
                     // before publishing any replacement state.
@@ -74,6 +81,10 @@ public partial class AppState
 
                     var committed = candidate.CloneForSetup();
                     committed.LocalApiAuthToken = string.Empty;
+                    committed.TrustedHubCaPem = string.Empty;
+                    // Record which CA the new token was issued under. The token
+                    // and this CA replace the previous pair together, below.
+                    committed.EnrolledHubCaFingerprint = EnrolledCaFingerprint(committed, managedCa);
                     if (requiresDurableEnrollment)
                     {
                         committed.EnrollmentToken = string.Empty;
@@ -245,6 +256,47 @@ public partial class AppState
         catch (Exception ex) when (AgentSetupTransaction.IsRecoverable(ex))
         {
             AgentProcess.LogReader.AppendRaw($"Could not save Start at sign-in: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// When the candidate uses the managed CA file, puts that CA into the setup
+    /// directory for the agent to verify the Hub with: the CA the user accepted
+    /// with Trust this Hub, or else the copy already saved. The saved copy is
+    /// replaced only when setup commits.
+    /// </summary>
+    private byte[]? StageManagedCa(AgentSettings candidate, string stagingDirectory)
+    {
+        if (!string.IsNullOrWhiteSpace(candidate.TrustedHubCaPem))
+        {
+            candidate.TlsCaFile = Settings.ManagedCaFilePath;
+            candidate.TlsSkipVerify = false;
+        }
+        if (!candidate.UsesManagedCaFile)
+            return null;
+
+        var contents = !string.IsNullOrWhiteSpace(candidate.TrustedHubCaPem)
+            ? System.Text.Encoding.ASCII.GetBytes(candidate.TrustedHubCaPem)
+            : File.ReadAllBytes(Settings.ManagedCaFilePath);
+        SecureFile.WriteAllBytes(
+            Path.Combine(stagingDirectory, AgentManagedState.CaCertificateFileName), contents);
+        return contents;
+    }
+
+    private static string EnrolledCaFingerprint(AgentSettings committed, byte[]? managedCa)
+    {
+        if (committed.TlsSkipVerify)
+            return string.Empty;
+        try
+        {
+            var pem = managedCa != null
+                ? System.Text.Encoding.ASCII.GetString(managedCa)
+                : string.IsNullOrWhiteSpace(committed.TlsCaFile) ? null : File.ReadAllText(committed.TlsCaFile);
+            return HubCertificateTrust.FingerprintOfPem(pem) ?? string.Empty;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return string.Empty;
         }
     }
 
