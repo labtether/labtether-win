@@ -32,15 +32,15 @@
                                    Visibility="{x:Bind ViewModel.HasHubUrlError, Mode=OneWay}" />
 
                         <TextBlock x:Name="TokenLabel" Text="Token" Margin="0,20,0,6" Style="{StaticResource LTFieldLabelStyle}" />
-                        <StackPanel Orientation="Horizontal" Spacing="24"
-                                    AutomationProperties.Name="Token type">
-                            <RadioButton Content="Enrollment token" GroupName="TokenType" MinWidth="0"
-                                         AutomationProperties.AutomationId="EnrollmentTokenOption"
-                                         IsChecked="{x:Bind ViewModel.UseEnrollmentToken, Mode=TwoWay}" />
-                            <RadioButton Content="API token" GroupName="TokenType" MinWidth="0"
-                                         AutomationProperties.AutomationId="ApiTokenOption"
-                                         IsChecked="{x:Bind ViewModel.UseApiToken, Mode=TwoWay}" />
-                        </StackPanel>
+                        <!-- One Tab stop; the arrow keys move the choice, as in every Windows radio group. -->
+                        <RadioButtons MaxColumns="2" AutomationProperties.Name="Token type"
+                                      SelectedIndex="{x:Bind ViewModel.TokenTypeIndex, Mode=TwoWay}">
+                            <!-- The group has no spacing of its own; keep the 24 px gap between the two. -->
+                            <RadioButton Content="Enrollment token" MinWidth="0" Margin="0,0,24,0"
+                                         AutomationProperties.AutomationId="EnrollmentTokenOption" />
+                            <RadioButton Content="API token" MinWidth="0" Margin="0,0,24,0"
+                                         AutomationProperties.AutomationId="ApiTokenOption" />
+                        </RadioButtons>
                         <PasswordBox Margin="0,10,0,0" PlaceholderText="Paste token"
                                      AutomationProperties.Name="Token" AutomationProperties.AutomationId="TokenBox"
                                      Password="{x:Bind ViewModel.Token, Mode=TwoWay}" />

@@ -49,6 +49,16 @@ public class OnboardingViewModelTests
         Assert.True(viewModel.UseEnrollmentToken);
         Assert.False(viewModel.UseApiToken);
         Assert.True(viewModel.CanSetGroupId);
+        Assert.Equal(0, viewModel.TokenTypeIndex);
+
+        // The window's radio group binds the index: 1 is an API token, and a
+        // transient -1 while the group rebuilds must not change the choice.
+        viewModel.TokenTypeIndex = 1;
+        Assert.True(viewModel.UseApiToken);
+        viewModel.TokenTypeIndex = -1;
+        Assert.True(viewModel.UseApiToken);
+        viewModel.TokenTypeIndex = 0;
+        Assert.True(viewModel.UseEnrollmentToken);
 
         viewModel.GroupId = "enrollment-placement";
 
