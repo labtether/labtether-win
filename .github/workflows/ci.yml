@@ -1,7 +1,8 @@
 name: CI
 on:
-  push:
-    branches: [main]
+  # No run on main after a merge: main requires an up-to-date branch, so the
+  # pull request run already tested the merged code. Before a release, run
+  # this workflow by hand on main; that run does every check.
   pull_request:
   workflow_dispatch:
 
@@ -147,7 +148,9 @@ jobs:
           }
 
   installed-product-contract:
-    needs: [qa-plan, build-and-test]
+    # Runs beside build-and-test, not after it: it builds its own payload
+    # and uses nothing from that job.
+    needs: [qa-plan]
     if: needs.qa-plan.outputs.native_build != 'false' && needs.qa-plan.outputs.installed == 'true'
     runs-on: windows-2025-vs2026
     timeout-minutes: 40
