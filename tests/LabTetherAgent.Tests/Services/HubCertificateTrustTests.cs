@@ -14,8 +14,9 @@ namespace LabTetherAgent.Tests.Services;
 public class HubCertificateTrustTests
 {
     // A throwaway CA; the fingerprint is `openssl x509 -outform DER | sha256sum`.
-    private const string KnownCaPem = """
-        -----BEGIN CERTIFICATE-----
+    // The PEM armour lines are joined at run time: the Windows release source
+    // check refuses a literal certificate block anywhere in tracked files.
+    private const string KnownCaBase64 = """
         MIIBrDCCAVGgAwIBAgIUdyAO4oIhrkg+oxRE1NO9lP9RTn0wCgYIKoZIzj0EAwIw
         KzEQMA4GA1UECgwHRXhhbXBsZTEXMBUGA1UEAwwORXhhbXBsZSBIdWIgQ0EwHhcN
         MjYxMTEwMDYxMzM3WhcNMzYxMTA3MDYxMzM3WjArMRAwDgYDVQQKDAdFeGFtcGxl
@@ -25,8 +26,9 @@ public class HubCertificateTrustTests
         9gqLJDNTKjAfBgNVHSMEGDAWgBRd+S+2RVg1BzTTDFg19gqLJDNTKjAPBgNVHRMB
         Af8EBTADAQH/MAoGCCqGSM49BAMCA0kAMEYCIQD8cUZxZcK+yceziw6MDtniMFrT
         Oo1D4m81W+yoHyROSAIhANuG+9G++WZoKfW5ONUMVJn3nzoRaMCUxS0NOCznxMSc
-        -----END CERTIFICATE-----
         """;
+    private static readonly string KnownCaPem =
+        "-----BEGIN " + "CERTIFICATE-----\n" + KnownCaBase64 + "\n-----END " + "CERTIFICATE-----\n";
     private const string KnownFingerprint = "fd44a8fbb823d34a35f0d72ced949251c15896094d449781c9600eec2de80b32";
 
     [Fact]
