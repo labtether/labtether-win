@@ -33,6 +33,18 @@ public class ToastNotificationServiceTests
         Assert.True(service.ShouldNotifyAlert(alert with { Since = started.AddMinutes(30) }));
     }
 
+    // The app now checks for updates every 12 hours while it runs; one release
+    // must not toast twice a day until it is installed.
+    [Fact]
+    public void AnUpdateToastsOncePerVersion()
+    {
+        var service = new ToastNotificationService();
+
+        Assert.True(service.ShouldNotifyUpdate("2.0.1"));
+        Assert.False(service.ShouldNotifyUpdate("2.0.1"));
+        Assert.True(service.ShouldNotifyUpdate("2.0.2"));
+    }
+
     [Fact]
     public void BuildXmlLeavesOutAnEmptySecondLine()
     {

@@ -8,7 +8,7 @@ namespace LabTetherAgent.Services;
 internal static class AgentSetupTransaction
 {
     private const string PersistenceFailureMessage =
-        "LabTether could not securely commit the new setup. The previous setup was restored. Check Windows permissions and try again.";
+        "LabTether could not save the new setup. The previous setup is back in place. Check the permissions of your LabTether folder, then try again.";
 
     public static async Task<AgentConnectionAttemptResult> ExecuteAsync(
         Func<CancellationToken, Task<AgentConnectionAttemptResult>> attempt,
@@ -43,7 +43,7 @@ internal static class AgentSetupTransaction
             return AgentConnectionAttemptResult.Failed(
                 rollbackSucceeded
                     ? PersistenceFailureMessage
-                    : "LabTether could not securely commit the new setup or fully restore the previous setup. Quit the app and check Windows permissions before trying again.");
+                    : "LabTether could not save the new setup or fully put back the previous one. Quit LabTether and check the permissions of your LabTether folder before you try again.");
         }
     }
 
@@ -55,7 +55,7 @@ internal static class AgentSetupTransaction
             return result;
 
         return AgentConnectionAttemptResult.Failed(
-            $"{result.Message} The previous setup could not be fully restored; quit the app and check Windows permissions before trying again.");
+            $"{result.Message} The previous setup could not be fully put back. Quit LabTether and check the permissions of your LabTether folder before you try again.");
     }
 
     private static async Task<bool> TryRollbackAsync(Func<Task> rollback)

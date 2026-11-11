@@ -73,6 +73,16 @@ Changes since v1.7.1. This release matches LabTether 2.0.
   unsigned. The release notes say whether a release is code-signed.
 
 ### Fixed
+- Pop out says "Stopped" and why when the agent can't start, as the flyout
+  does; it used to read "Offline" with the Hub's name. Both follow a later
+  start error or start while they stay open.
+- Settings opens one window. Each click on Settings used to open another,
+  and saving the second put back what the first had just saved.
+- The app looks for a new release every 12 hours while it runs, not only
+  when it starts, and shows each new version once.
+- Setup and connection messages use the words on screen ("CA certificate
+  file", "Skip certificate check", "Hub") and no longer show a bare HTTP code
+  or internal terms; an address that is not a LabTether Hub says so.
 - The two token types in setup are one Tab stop; the arrow keys move between
   them, as in any Windows radio group.
 - When setup asks about a Hub's own certificate, keyboard focus moves to the

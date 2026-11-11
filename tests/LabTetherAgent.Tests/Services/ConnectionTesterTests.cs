@@ -80,7 +80,7 @@ public class ConnectionTesterTests
         var result = await tester.TestAsync("https://hub.example.test", false, missing);
 
         Assert.False(result.Success);
-        Assert.Contains("unavailable", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("can't be read", result.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(0, dispatchCount);
     }
 
@@ -115,7 +115,7 @@ public class ConnectionTesterTests
         var result = await tester.TestAsync("https://hub.example.test/ws/agent");
 
         Assert.True(result.Success);
-        Assert.Equal("Verified LabTether hub.", result.Message);
+        Assert.Equal("Verified LabTether Hub.", result.Message);
     }
 
     [Fact]
@@ -191,7 +191,7 @@ public class ConnectionTesterTests
         var result = await tester.TestAsync("https://hub.example.test");
 
         Assert.False(result.Success);
-        Assert.Contains($"HTTP {(int)status}", result.Message);
+        Assert.Equal("No LabTether Hub answers at this address.", result.Message);
     }
 
     [Theory]
@@ -224,7 +224,7 @@ public class ConnectionTesterTests
         var result = await tester.TestAsync("https://hub.example.test");
 
         Assert.False(result.Success);
-        Assert.Contains("too large", result.Message);
+        Assert.Equal("No LabTether Hub answers at this address.", result.Message);
     }
 
     private static ConnectionTester CreateTester(

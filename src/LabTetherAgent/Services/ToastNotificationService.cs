@@ -27,6 +27,7 @@ public class ToastNotificationService
 
     private readonly Dictionary<string, DateTime> _throttle = new();
     private readonly HashSet<string> _alertsShown = new();
+    private string? _updateShown;
     private static readonly TimeSpan ThrottleInterval = TimeSpan.FromMinutes(5);
     private readonly Action<string>? _log;
     private ToastNotifier? _notifier;
@@ -80,8 +81,17 @@ public class ToastNotificationService
 
     public void NotifyUpdateAvailable(string version)
     {
-        if (!ShouldNotify("update")) return;
+        if (!ShouldNotifyUpdate(version)) return;
         TryShow(ToastText.UpdateAvailable(version), ("View release", ViewUpdateArgument));
+    }
+
+    // The app checks for an update every 12 hours while it runs; each new
+    // version is announced once, not again at every check.
+    internal bool ShouldNotifyUpdate(string version)
+    {
+        if (string.Equals(_updateShown, version, StringComparison.OrdinalIgnoreCase)) return false;
+        _updateShown = version;
+        return true;
     }
 
     /// <summary>Once per firing alert: the agent reports it again on every status poll.</summary>

@@ -15,7 +15,7 @@ public class OnboardingConnectionTests
         });
 
         Assert.NotNull(message);
-        Assert.Contains("new one-use token", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Make a new one", message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -27,7 +27,7 @@ public class OnboardingConnectionTests
             LastError = "auth_failed",
         });
 
-        Assert.Equal("The Hub rejected the configured credential. Check the token and try again.", message);
+        Assert.Equal("The Hub refused this token. Check that it was copied whole.", message);
     }
 
     // Re-enrolling a device ID the Hub already has failed with fixed text that
@@ -68,6 +68,6 @@ public class OnboardingConnectionTests
         });
 
         Assert.NotNull(message);
-        Assert.Contains("could not securely save", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("could not save its agent token", message, StringComparison.OrdinalIgnoreCase);
     }
 }

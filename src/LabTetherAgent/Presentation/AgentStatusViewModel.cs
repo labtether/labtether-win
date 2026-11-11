@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using LabTetherAgent.Api;
+using LabTetherAgent.Process;
 using LabTetherAgent.State;
 
 namespace LabTetherAgent.Presentation;
@@ -15,6 +16,9 @@ public class AgentStatusViewModel : ObservableObject, IDisposable
     private readonly Action<AgentStatus> _statusUpdatedHandler;
     private readonly Action<bool> _connectionStateHandler;
     private IDisposable? _visibleScope;
+    private AgentProcess? _agentProcess;
+    private Action<string>? _agentErrorHandler;
+    private Action? _agentStartedHandler;
     private bool _disposed;
     private AgentStatus? _status;
     private bool _apiConnected;
@@ -97,6 +101,21 @@ public class AgentStatusViewModel : ObservableObject, IDisposable
         Refresh();
     });
 
+    /// <summary>
+    /// Shows why the agent could not start, and follows later start errors and
+    /// starts while the window stays open (the pop-out can stay open for days).
+    /// </summary>
+    public void FollowAgentProcess(AgentProcess process)
+    {
+        if (_disposed || _agentProcess != null) return;
+        _agentProcess = process;
+        _agentErrorHandler = _ => RunOnUiThread(() => StartProblem = process.StartProblem);
+        _agentStartedHandler = () => RunOnUiThread(() => StartProblem = null);
+        process.OnError += _agentErrorHandler;
+        process.OnStarted += _agentStartedHandler;
+        StartProblem = process.StartProblem;
+    }
+
     public void OnWindowOpened()
     {
         if (_disposed) return;
@@ -140,5 +159,11 @@ public class AgentStatusViewModel : ObservableObject, IDisposable
         _visibleScope = null;
         _apiClient.OnStatusUpdated -= _statusUpdatedHandler;
         _apiClient.OnConnectionStateChanged -= _connectionStateHandler;
+        if (_agentProcess != null)
+        {
+            _agentProcess.OnError -= _agentErrorHandler;
+            _agentProcess.OnStarted -= _agentStartedHandler;
+            _agentProcess = null;
+        }
     }
 }

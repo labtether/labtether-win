@@ -27,6 +27,7 @@ public class TrayIconManager : IDisposable
     private FlyoutWindow? _flyoutWindow;
     private DateTimeOffset _flyoutDismissedAt;
     private OnboardingWindow? _onboardingWindow;
+    private Settings.SettingsWindow? _settingsWindow;
     private SynchronizationContext? _uiContext;
     private Windows.UI.ViewManagement.UISettings? _uiSettings;
     private Action<bool>? _connectionStateHandler;
@@ -148,6 +149,21 @@ public class TrayIconManager : IDisposable
         _onboardingWindow.Activate();
     }
 
+    // One Settings window. Each click used to open another; with two open,
+    // saving the second put back what the first had just saved.
+    private void ShowSettings()
+    {
+        if (_settingsWindow != null)
+        {
+            _settingsWindow.Activate();
+            return;
+        }
+
+        _settingsWindow = new Settings.SettingsWindow(_appState);
+        _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+        _settingsWindow.Activate();
+    }
+
     private void OnOnboardingClosed(object sender, WindowEventArgs args)
     {
         if (_onboardingWindow == null)
@@ -226,11 +242,7 @@ public class TrayIconManager : IDisposable
         var settings = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem
         {
             Text = "Settings",
-            Command = new RelayCommand(() =>
-            {
-                var win = new Settings.SettingsWindow(_appState);
-                win.Activate();
-            }),
+            Command = new RelayCommand(ShowSettings),
         };
         menu.Items.Add(settings);
 

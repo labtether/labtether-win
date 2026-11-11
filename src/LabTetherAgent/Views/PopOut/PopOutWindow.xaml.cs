@@ -14,6 +14,8 @@ public sealed partial class PopOutWindow : Window
     {
         this.InitializeComponent();
         ViewModel = new PopOutViewModel(appState.ApiClient) { HubUrl = appState.Settings.IsEnrolled ? appState.Settings.HubUrl : "" };
+        // Like the flyout: a stopped agent reads "Stopped" and says why.
+        ViewModel.FollowAgentProcess(appState.AgentProcess);
         WindowChrome.Apply(this, Root, TitleBar);
         WindowChrome.SizeContent(this, Root, 320, 204);
 

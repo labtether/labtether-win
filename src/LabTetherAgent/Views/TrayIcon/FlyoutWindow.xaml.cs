@@ -34,8 +34,8 @@ public sealed partial class FlyoutWindow : Window
         {
             HubUrl = appState.Settings.IsEnrolled ? appState.Settings.HubUrl : "",
             HubSettings = appState.Settings,
-            StartProblem = appState.AgentProcess.StartProblem,
         };
+        ViewModel.FollowAgentProcess(appState.AgentProcess);
 
         ExtendsContentIntoTitleBar = true;
         AppWindow.IsShownInSwitchers = false;

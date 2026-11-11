@@ -129,7 +129,7 @@ public class OnboardingViewModelTests
                 stagedCandidate = candidate;
                 requiredDurableEnrollment = requiresDurable;
                 return Task.FromResult(AgentConnectionAttemptResult.Failed(
-                    "The enrollment token was rejected. Generate a new one-use token in the Hub and try again."));
+                    "The Hub refused this enrollment token. Make a new one in Devices, Add device."));
             })
         {
             HubUrl = "https://hub.example.test:8443",
@@ -150,7 +150,7 @@ public class OnboardingViewModelTests
         Assert.False(viewModel.IsConnected);
         Assert.False(viewModel.IsConnecting);
         Assert.True(viewModel.CanConnect);
-        Assert.Contains("token was rejected", viewModel.ConnectionError, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("refused this enrollment token", viewModel.ConnectionError, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

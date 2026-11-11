@@ -121,7 +121,7 @@ public class AgentSetupTransactionTests
             CancellationToken.None);
 
         Assert.False(result.Success);
-        Assert.Contains("previous setup was restored", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("previous setup is back in place", result.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(1, rollbackCalls);
         Assert.Equal("prior", activeIdentity);
     }

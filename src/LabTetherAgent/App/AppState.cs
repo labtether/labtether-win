@@ -129,7 +129,7 @@ public partial class AppState : IDisposable
             if (!Settings.Location.IsIsolated && AgentManagedState.MigrateLegacyDeviceIdentityIfNeeded(settingsDirectory))
             {
                 AgentProcess.LogReader.AppendRaw(
-                    "Migrated the enrolled native agent identity out of machine-wide service storage.");
+                    "Moved this device's identity from the shared ProgramData folder to your LabTether folder.");
             }
         }
         catch (Exception ex) when (
@@ -371,10 +371,10 @@ public partial class AppState : IDisposable
             }
             if (diagnostic != null) AgentProcess.LogReader.AppendRaw(diagnostic);
             if (removedEnrollmentToken)
-                AgentProcess.LogReader.AppendRaw("Removed consumed enrollment credential after durable agent-token persistence.");
+                AgentProcess.LogReader.AppendRaw("Enrollment finished. The used enrollment token was removed.");
             if (removedGroupIntent)
             {
-                AgentProcess.LogReader.AppendRaw("Removed one-time enrollment group intent; restarting against the Hub's canonical placement.");
+                AgentProcess.LogReader.AppendRaw("Enrollment finished. The group ID is used only once, so it was removed; restarting the agent.");
                 await RestartLaunchIfCurrentAsync(generation);
             }
             if (completed) return;
