@@ -99,6 +99,22 @@ Read user-facing text once against this list before you ship it.
   spend cap and name what the run proves. Do not rerun for another green.
 - Report what actually passed. A build does not prove runtime behavior, a mock
   does not prove a live result, and a backup is not a restore.
+- CI runs on pull requests only. It does not run again on `main` after a
+  merge, so do not wait for one. Before a release, run `ci.yml` by hand on
+  `main`; that run does every check.
+- These checks fail most often in CI. Run the ones your change touches before
+  you push:
+  - `python3 scripts/ci/check-private-info.py` for any change.
+  - `python3 -B scripts/release/test_safe_extract_windows_release.py` and
+    `bash scripts/release/test-source-only-workflows.sh` for changes under
+    `scripts/` or `.github/`. The release archive policy step is this repo's
+    most common CI failure.
+  - `./scripts/release/test-windows-release-policy.ps1` on the Windows lab
+    machine for release script changes.
+- Read a red run with `gh run view <run-id> --log-failed` and fix every failure
+  in one push. A new push cancels the run in progress.
+- Put related small fixes in one pull request. `main` requires an up-to-date
+  branch, so each merge sends every other open pull request through CI again.
 
 ## This repo
 
