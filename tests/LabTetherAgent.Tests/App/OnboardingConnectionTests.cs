@@ -15,7 +15,7 @@ public class OnboardingConnectionTests
         });
 
         Assert.NotNull(message);
-        Assert.Contains("new one-use token", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Make a new one", message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
