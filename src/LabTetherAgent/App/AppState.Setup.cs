@@ -126,7 +126,7 @@ public partial class AppState
         catch (Exception ex) when (AgentSetupTransaction.IsRecoverable(ex))
         {
             return AgentConnectionAttemptResult.Failed(
-                "The staged setup could not be prepared securely. The active setup was not replaced. Check Windows permissions and try again.");
+                "LabTether could not prepare the new setup. The current setup is unchanged. Check the permissions of your LabTether folder, then try again.");
         }
         finally
         {
@@ -188,7 +188,7 @@ public partial class AppState
                 if (!AgentProcess.IsRunning && !AgentProcess.IsStarting)
                 {
                     return AgentConnectionAttemptResult.Failed(
-                        "The agent core exited before setup established an authenticated Hub connection. Check the agent logs and try again.");
+                        "The agent stopped before it connected to the Hub. View logs shows why.");
                 }
 
                 try

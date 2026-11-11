@@ -26,6 +26,7 @@ public partial class App : Application, IXamlMetadataProvider
     private Action<AgentStatus>? _notificationStatusHandler;
     private Action<string>? _notificationAgentErrorHandler;
     private ConnectionToastGate? _connectionToasts;
+    private DispatcherQueueTimer? _updateCheckTimer;
     private IXamlMetadataProvider? _xamlMetadataProvider;
     private Action? _redirectedActivationHandler;
     private static event Action? RedirectedActivation;
@@ -112,6 +113,13 @@ public partial class App : Application, IXamlMetadataProvider
             _appState.ApiClient.OnStatusUpdated += _notificationStatusHandler;
             _appState.AgentProcess.OnError += _notificationAgentErrorHandler;
             _ = _appState.UpdateChecker.CheckIfDueAsync();
+            // The tray app runs for weeks; look again while it runs. The
+            // checker itself asks GitHub at most every 12 hours.
+            var updateChecker = _appState.UpdateChecker;
+            _updateCheckTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+            _updateCheckTimer.Interval = TimeSpan.FromHours(1);
+            _updateCheckTimer.Tick += (_, _) => _ = updateChecker.CheckIfDueAsync();
+            _updateCheckTimer.Start();
         }
 
         // Set up the system tray icon (no main window)
@@ -179,6 +187,7 @@ public partial class App : Application, IXamlMetadataProvider
         // Detach notifications before StopAgentAsync invalidates the last
         // connected status. An intentional Quit must not emit a misleading
         // "Offline since …" toast on the way out.
+        _updateCheckTimer?.Stop();
         if (_appState != null && _updateAvailableHandler != null)
             _appState.UpdateChecker.OnUpdateAvailable -= _updateAvailableHandler;
         if (_appState != null && _notificationConnectionHandler != null)

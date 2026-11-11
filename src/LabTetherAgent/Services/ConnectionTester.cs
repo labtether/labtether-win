@@ -55,13 +55,13 @@ public class ConnectionTester
         string? trustedCaPem = null)
     {
         if (string.IsNullOrWhiteSpace(hubUrl))
-            return new ConnectionTestResult(false, "Hub URL is empty.");
+            return new ConnectionTestResult(false, "Enter the Hub URL.");
 
         // Reuse the strict settings parser so user information, queries,
         // fragments, and unsupported schemes cannot leak into the probe.
         var identityUrl = HubIdentityUrl(hubUrl);
         if (identityUrl is null)
-            return new ConnectionTestResult(false, "Invalid URL format.");
+            return new ConnectionTestResult(false, "This is not a valid Hub URL.");
         if (!string.IsNullOrWhiteSpace(trustedCaPem))
         {
             tlsSkipVerify = false;
@@ -71,13 +71,13 @@ public class ConnectionTester
         {
             return new ConnectionTestResult(
                 false,
-                "Choose either a custom CA certificate or skip certificate verification, not both.");
+                "Use a CA certificate file or Skip certificate check, not both.");
         }
         if (!TryNormalizeCustomCaFile(tlsCaFile, out var normalizedCaFile))
-            return new ConnectionTestResult(false, "Custom CA certificate file is unavailable.");
+            return new ConnectionTestResult(false, "The CA certificate file can't be read.");
         tlsCaFile = normalizedCaFile.Length == 0 ? null : normalizedCaFile;
         if (tlsCaFile != null && !IsUsableCustomCaFile(tlsCaFile))
-            return new ConnectionTestResult(false, "Custom CA certificate file is unavailable.");
+            return new ConnectionTestResult(false, "The CA certificate file can't be read.");
 
         try
         {
@@ -93,11 +93,11 @@ public class ConnectionTester
             {
                 return new ConnectionTestResult(
                     false,
-                    $"Hub verification failed (HTTP {(int)response.StatusCode}).");
+                    "No LabTether Hub answers at this address.");
             }
 
             if (response.Content.Headers.ContentLength is > MaxProbeBodyBytes)
-                return new ConnectionTestResult(false, "Hub verification response is too large.");
+                return new ConnectionTestResult(false, "No LabTether Hub answers at this address.");
 
             await using var body = await response.Content.ReadAsStreamAsync(timeout.Token);
             var buffer = new byte[MaxProbeBodyBytes + 1];
@@ -111,22 +111,22 @@ public class ConnectionTester
             }
 
             if (total > MaxProbeBodyBytes)
-                return new ConnectionTestResult(false, "Hub verification response is too large.");
+                return new ConnectionTestResult(false, "No LabTether Hub answers at this address.");
 
             try
             {
                 using var document = JsonDocument.Parse(buffer.AsMemory(0, total));
                 if (!IsCanonicalHubIdentity(document.RootElement))
                 {
-                    return new ConnectionTestResult(false, "The endpoint is not a LabTether hub.");
+                    return new ConnectionTestResult(false, "No LabTether Hub answers at this address.");
                 }
             }
             catch (JsonException)
             {
-                return new ConnectionTestResult(false, "The endpoint returned an invalid hub response.");
+                return new ConnectionTestResult(false, "No LabTether Hub answers at this address.");
             }
 
-            return new ConnectionTestResult(true, "Verified LabTether hub.");
+            return new ConnectionTestResult(true, "Verified LabTether Hub.");
         }
         catch (OperationCanceledException)
         {
@@ -144,11 +144,11 @@ public class ConnectionTester
         }
         catch (System.Security.Cryptography.CryptographicException)
         {
-            return new ConnectionTestResult(false, "Custom CA certificate is invalid.");
+            return new ConnectionTestResult(false, "The CA certificate file is not a valid certificate.");
         }
         catch (Exception)
         {
-            return new ConnectionTestResult(false, "Unexpected connection error.");
+            return new ConnectionTestResult(false, "Could not connect to the Hub.");
         }
     }
 

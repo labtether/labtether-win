@@ -115,7 +115,7 @@ public class ConnectionTesterTests
         var result = await tester.TestAsync("https://hub.example.test/ws/agent");
 
         Assert.True(result.Success);
-        Assert.Equal("Verified LabTether hub.", result.Message);
+        Assert.Equal("Verified LabTether Hub.", result.Message);
     }
 
     [Fact]

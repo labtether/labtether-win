@@ -263,7 +263,7 @@ public partial class AgentProcess : IDisposable
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or Win32Exception)
         {
-            LogReader.AppendRaw("Could not clear the retired child ownership record; recovery will recheck its identity.");
+            LogReader.AppendRaw("Could not remove the record of the stopped agent. It is checked again at the next start.");
         }
     }
 
