@@ -42,8 +42,8 @@ to edit.
    **Trust this Hub**. When setup succeeds the app starts with Windows;
    **Start at sign-in** in Settings turns that off.
 
-Release 2.0.0 has no installer. Use the ZIP, as described under
-[Install from the ZIP](#install-from-the-zip).
+If the release has no installer, use the ZIP, as described under
+[Install from the ZIP](#install-from-the-zip). Release 2.0.0 is one of these.
 
 You need Windows 10 or newer (x64), a running hub, and an enrollment token from
 the hub (**Add Device**). The .NET runtime is included.

@@ -13,8 +13,8 @@ $actual = (Get-FileHash ".\$file" -Algorithm SHA256).Hash
 if ($actual -ne $expected) { throw "Checksum mismatch" }
 ```
 
-For the ZIP, set `$file` to `labtether-agent-win-x64.zip`. Release 2.0.0 has
-only the ZIP.
+For the ZIP, set `$file` to `labtether-agent-win-x64.zip`. A release without
+an installer, such as 2.0.0, has only the ZIP.
 
 ## Signatures
 
