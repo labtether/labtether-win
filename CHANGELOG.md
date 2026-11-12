@@ -3,6 +3,12 @@
 All notable changes to the LabTether Windows Agent are listed here. Versions
 follow [Semantic Versioning](https://semver.org/).
 
+## [2.0.1]
+
+No change to the app since 2.0.0. It is released again so that every part of
+LabTether 2.0.1 carries the same version. The bundled agent is
+`labtether-agent v2.0.1`, which is the same code as v2.0.0.
+
 ## [2.0.0] - unreleased
 
 Changes since v1.7.1. This release matches LabTether 2.0.
