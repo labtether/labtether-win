@@ -2,23 +2,38 @@
 
 ## Checksum
 
-Download `labtether-agent-win-x64.zip` and its `.sha256` file from
+Download `labtether-agent-win-x64.msi` and its `.sha256` file from
 [Releases](https://github.com/labtether/labtether-win/releases/latest). In
 PowerShell, in the download folder:
 
 ```powershell
-$expected = ((Get-Content .\labtether-agent-win-x64.zip.sha256 -Raw).Trim() -split '\s+')[0]
-$actual = (Get-FileHash .\labtether-agent-win-x64.zip -Algorithm SHA256).Hash
+$file = "labtether-agent-win-x64.msi"
+$expected = ((Get-Content ".\$file.sha256" -Raw).Trim() -split '\s+')[0]
+$actual = (Get-FileHash ".\$file" -Algorithm SHA256).Hash
 if ($actual -ne $expected) { throw "Checksum mismatch" }
 ```
+
+For the ZIP, set `$file` to `labtether-agent-win-x64.zip`. Release 2.0.0 has
+only the ZIP.
 
 ## Signatures
 
 The release notes say whether a release is code-signed. An unsigned release
 has no signatures to check.
 
-For a signed release, extract the app and check that all three LabTether
-programs carry the same valid, timestamped signature:
+For a signed release, check that the installer carries a valid, timestamped
+signature:
+
+```powershell
+$signature = Get-AuthenticodeSignature .\labtether-agent-win-x64.msi
+if ($signature.Status -ne "Valid" -or $null -eq $signature.TimeStamperCertificate) {
+  throw "Invalid or untimestamped Authenticode signature on the installer"
+}
+$signature.SignerCertificate.Subject
+```
+
+For the ZIP of a signed release, extract the app and check that all three
+LabTether programs carry the same valid, timestamped signature:
 
 ```powershell
 Expand-Archive .\labtether-agent-win-x64.zip .\LabTetherAgent
@@ -38,4 +53,5 @@ foreach ($payload in $payloads) {
 }
 ```
 
-If the checks pass, run `LabTetherAgent.exe` from the extracted folder.
+If the checks pass, open the installer, or run `LabTetherAgent.exe` from the
+extracted folder.

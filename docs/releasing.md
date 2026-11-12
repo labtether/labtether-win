@@ -72,11 +72,15 @@ Windows runner instead of steps 1 to 5. Start
 tags, checks that they match the tags on GitHub, and runs
 `scripts/release/prepare-unsigned-windows-release.ps1` with all of its release
 tests. It then copies the unsigned archive unchanged to
-`labtether-agent-win-x64.zip`, writes `labtether-agent-win-x64.zip.sha256` in
-the one-line form the Hub's agent manifest reads, and keeps both with
-`build-record.json` as a run artifact for one day.
+`labtether-agent-win-x64.zip` and writes `labtether-agent-win-x64.zip.sha256`
+in the one-line form the Hub's agent manifest reads. It then builds the
+per-user installer `labtether-agent-win-x64.msi` from that ZIP's files with
+`scripts/build-msi.ps1`, which checks the installer holds exactly those
+files, and writes `labtether-agent-win-x64.msi.sha256`. All four files and
+`build-record.json` are kept as one run artifact for one day. Publish all
+four; the installer is what people download.
 
 The workflow signs nothing and never creates or uploads a GitHub release;
-publishing stays a maintainer step. It builds no MSI.
+publishing stays a maintainer step.
 `scripts/release/test-source-only-workflows.sh` allows this one workflow and
 refuses any wider version of it.
