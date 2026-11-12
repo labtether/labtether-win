@@ -2,12 +2,15 @@ name: Unsigned Windows release build
 
 # Builds the unsigned Windows release ZIP from exact tags with the tagged
 # scripts/release/prepare-unsigned-windows-release.ps1, including every release
-# test it runs. Hosted Windows runners have a real user profile, so the tests
-# that need Windows data protection pass here. Started by hand only.
+# test it runs, then the per-user installer (MSI) from that ZIP's files with
+# the tagged scripts/build-msi.ps1. Hosted Windows runners have a real user
+# profile, so the tests that need Windows data protection pass here. Started
+# by hand only.
 #
 # It does not sign anything, create or change a GitHub release, or upload to
-# one. The ZIP, its .sha256 and a build record are kept as a run artifact for
-# one day, for a maintainer to download and publish by hand.
+# one. The ZIP, the installer, their .sha256 files and a build record are kept
+# as a run artifact for one day, for a maintainer to download and publish by
+# hand.
 on:
   workflow_dispatch:
     inputs:
@@ -40,6 +43,7 @@ jobs:
       AGENT_TAG: ${{ inputs.agent_tag }}
       CONFIRM: ${{ inputs.confirm }}
       ASSET: labtether-agent-win-x64.zip
+      INSTALLER: labtether-agent-win-x64.msi
     steps:
       - name: Check the inputs
         shell: bash
@@ -161,7 +165,28 @@ jobs:
             run = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
           } | ConvertTo-Json | Set-Content -LiteralPath "$out\build-record.json" -Encoding ASCII
 
-      - name: Name the asset and write its checksum
+      # The installer holds exactly the files of the ZIP built above, without
+      # its two build-record files. build-msi.ps1 runs the WiX checks and
+      # compares an extracted copy of the installer with that folder.
+      - name: Build the per-user installer from the ZIP's files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $env:UseSharedCompilation = "false"; $env:MSBUILDDISABLENODEREUSE = "1"; $env:DOTNET_CLI_TELEMETRY_OPTOUT = "1"
+          $out = Join-Path $env:RUNNER_TEMP "release-assets"
+          $msi = Join-Path $out $env:INSTALLER
+          & "$env:GITHUB_WORKSPACE\wrapper\scripts\build-msi.ps1" `
+            -PayloadDir (Join-Path $env:RUNNER_TEMP "readback") -Version $env:TAG.Substring(1) -OutputPath $msi
+          if (-not (Test-Path -LiteralPath $msi -PathType Leaf)) { throw "the installer was not built" }
+          if ((Get-AuthenticodeSignature -LiteralPath $msi).Status -ne [Management.Automation.SignatureStatus]::NotSigned) {
+            throw "the installer is signed"
+          }
+          $record = Get-Content -LiteralPath "$out\build-record.json" -Raw | ConvertFrom-Json
+          $record | Add-Member -NotePropertyName installer -NotePropertyValue $env:INSTALLER
+          $record | Add-Member -NotePropertyName installer_sha256 -NotePropertyValue (Get-FileHash -LiteralPath $msi -Algorithm SHA256).Hash.ToLowerInvariant()
+          $record | ConvertTo-Json | Set-Content -LiteralPath "$out\build-record.json" -Encoding ASCII
+
+      - name: Name the assets and write their checksums
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -169,23 +194,26 @@ jobs:
           out="$RUNNER_TEMP/release-assets"
           cp -- "$src" "$out/$ASSET"
           cmp -- "$src" "$out/$ASSET"
-          # Hash stdin: given a path with backslashes, GNU sha256sum starts its
-          # line with a backslash, which would end up in the hash field.
-          hash="$(sha256sum < "$out/$ASSET" | awk '{print $1}')"
-          printf '%s  %s\n' "$hash" "$ASSET" > "$out/$ASSET.sha256"
-          # The same parsing as read_single_checksum in the Hub's
-          # scripts/release/generate-agent-manifest.sh, which reads this file.
-          [[ "$(awk 'NF { count++ } END { print count + 0 }' "$out/$ASSET.sha256")" == 1 ]] || { echo "::error::checksum file must hold one entry"; exit 1; }
-          read -r digest filename extra < <(awk 'NF { print; exit }' "$out/$ASSET.sha256")
-          filename="${filename#\*}"
-          digest="$(printf '%s' "$digest" | tr '[:upper:]' '[:lower:]')"
-          [[ -z "${extra:-}" && "$filename" == "$ASSET" && "$digest" =~ ^[0-9a-f]{64}$ && "$digest" == "$hash" ]] || {
-            echo "::error::checksum entry is not in the form the Hub manifest generator reads"; exit 1; }
-          [[ "$(tr -cd '\r' < "$out/$ASSET.sha256" | wc -c)" -eq 0 ]] || { echo "::error::checksum file has a CR"; exit 1; }
+          for asset in "$ASSET" "$INSTALLER"; do
+            [[ -f "$out/$asset" ]] || { echo "::error::$asset is missing"; exit 1; }
+            # Hash stdin: given a path with backslashes, GNU sha256sum starts its
+            # line with a backslash, which would end up in the hash field.
+            hash="$(sha256sum < "$out/$asset" | awk '{print $1}')"
+            printf '%s  %s\n' "$hash" "$asset" > "$out/$asset.sha256"
+            # The same parsing as read_single_checksum in the Hub's
+            # scripts/release/generate-agent-manifest.sh, which reads the ZIP's file.
+            [[ "$(awk 'NF { count++ } END { print count + 0 }' "$out/$asset.sha256")" == 1 ]] || { echo "::error::checksum file must hold one entry"; exit 1; }
+            read -r digest filename extra < <(awk 'NF { print; exit }' "$out/$asset.sha256")
+            filename="${filename#\*}"
+            digest="$(printf '%s' "$digest" | tr '[:upper:]' '[:lower:]')"
+            [[ -z "${extra:-}" && "$filename" == "$asset" && "$digest" =~ ^[0-9a-f]{64}$ && "$digest" == "$hash" ]] || {
+              echo "::error::checksum entry is not in the form the Hub manifest generator reads"; exit 1; }
+            [[ "$(tr -cd '\r' < "$out/$asset.sha256" | wc -c)" -eq 0 ]] || { echo "::error::checksum file has a CR"; exit 1; }
+            cat "$out/$asset.sha256"
+          done
           ls -l "$out"
-          cat "$out/$ASSET.sha256"
 
-      - name: Keep the unsigned ZIP, checksum and build record for one day
+      - name: Keep the unsigned ZIP, installer, checksums and build record for one day
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: labtether-agent-win-x64-${{ inputs.tag }}-unsigned

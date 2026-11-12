@@ -2,8 +2,8 @@
 # Hosted workflows may build and test, but never sign, read secrets, attest,
 # or create or upload GitHub releases. One exception is allowed:
 # unsigned-release-build.yml, started by hand only, may run the tagged
-# prepare-unsigned-windows-release.ps1 and keep its unsigned ZIP as a one-day
-# run artifact. After checking the real workflows, a self-test checks that the
+# prepare-unsigned-windows-release.ps1 and build-msi.ps1 and keep the unsigned
+# ZIP and installer as a one-day run artifact. After checking the real workflows, a self-test checks that the
 # policy refuses each way that exception could be widened.
 set -Eeuo pipefail
 
@@ -33,6 +33,8 @@ check_unsigned_build() {
     fail "$UNSIGNED_BUILD may only have contents: read"
   grep -Eq '^[[:space:]]+permissions:' "$workflow" && fail "$UNSIGNED_BUILD must not widen permissions per job"
   grep -Fq 'scripts\release\prepare-unsigned-windows-release.ps1' "$workflow" || fail "$UNSIGNED_BUILD must run the tagged prepare script"
+  # An unsigned release still ships the installer people expect.
+  grep -Fq 'wrapper\scripts\build-msi.ps1' "$workflow" || fail "$UNSIGNED_BUILD must build the installer with the tagged build-msi.ps1"
   # Exactly one artifact upload, pinned, kept for one day.
   [[ "$(grep -Ec 'uses:[[:space:]]+actions/upload-artifact@' "$workflow")" == 1 ]] || fail "$UNSIGNED_BUILD must upload exactly one artifact"
   grep -Eq 'uses:[[:space:]]+actions/upload-artifact@[0-9a-f]{40}([[:space:]]|$)' "$workflow" || fail "$UNSIGNED_BUILD must pin upload-artifact to a commit"
@@ -121,6 +123,7 @@ self_test() {
   # shellcheck disable=SC2016 # literal workflow text, not shell expansion
   expect_refused no-confirm "$u" sub '^.*"\$CONFIRM" == "\$TAG".*\n' ''
   expect_refused signing-script "$u" append '      - run: bash scripts/release/sign-windows-release.sh'
+  expect_refused no-installer "$u" sub 'wrapper\\scripts\\build-msi\.ps1' 'wrapper\\scripts\\none.ps1'
   printf 'Workflow policy refused all %d widening cases.\n' "$CASES_REFUSED"
 }
 

@@ -31,16 +31,19 @@ to edit.
 
 ## Install
 
-1. Download `labtether-agent-win-x64.zip` from
+1. Download `labtether-agent-win-x64.msi` from
    [Releases](https://github.com/labtether/labtether-win/releases/latest).
-2. Extract it into a folder of its own that you will keep, for example
-   `%LOCALAPPDATA%\Programs\LabTether`. No administrator rights are needed.
-3. Run `LabTetherAgent.exe` from that folder. The setup window asks for the
-   Hub URL and a token. If the Hub uses its own certificate, setup shows the
-   certificate's fingerprint: compare it with the fingerprint in the console
-   under **Add device**, then choose **Trust this Hub**. When setup succeeds
-   the app starts with Windows; **Start at sign-in** in Settings turns that
-   off.
+2. Open it. It installs for your user only, in
+   `%LOCALAPPDATA%\Programs\LabTether`, adds **LabTether Agent** to the Start
+   menu and starts the app. No administrator rights are needed.
+3. The setup window asks for the Hub URL and a token. If the Hub uses its own
+   certificate, setup shows the certificate's fingerprint: compare it with the
+   fingerprint in the console under **Add device**, then choose
+   **Trust this Hub**. When setup succeeds the app starts with Windows;
+   **Start at sign-in** in Settings turns that off.
+
+If the release has no installer, use the ZIP, as described under
+[Install from the ZIP](#install-from-the-zip). Release 2.0.0 is one of these.
 
 You need Windows 10 or newer (x64), a running hub, and an enrollment token from
 the hub (**Add Device**). The .NET runtime is included.
@@ -50,10 +53,30 @@ release, Windows may show "Windows protected your PC". Choose **More info**,
 then **Run anyway**. To check the download first, see
 [docs/verify-download.md](docs/verify-download.md).
 
+To upgrade, open the newer installer. Your settings and enrollment are stored
+in `%LOCALAPPDATA%\LabTether`, so they stay.
+
+### Install from the ZIP
+
+1. Download `labtether-agent-win-x64.zip` from
+   [Releases](https://github.com/labtether/labtether-win/releases/latest).
+2. Extract it into a folder of its own that you will keep. No administrator
+   rights are needed.
+3. Run `LabTetherAgent.exe` from that folder and follow step 3 above.
+
 To upgrade, quit the tray app, empty the folder and extract the newer ZIP into
-it. Your settings and enrollment are stored outside the folder, so they stay.
+it. To move to the installer, quit the tray app, delete that folder, then open
+the installer.
 
 ## Uninstall
+
+Installed with the installer: open Windows Settings › Apps › Installed apps,
+find **LabTether Agent** and choose **Uninstall**. It removes the app, the
+Start menu entry, the start at sign-in entry and the hub's SSH key line the
+agent added to `%USERPROFILE%\.ssh\authorized_keys`. Then remove the device
+in the hub.
+
+Installed from the ZIP:
 
 1. Turn off **Start at sign-in** in Settings, then quit the tray app.
 2. Remove the hub's SSH key line that the agent added to

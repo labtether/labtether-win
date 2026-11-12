@@ -3,6 +3,19 @@
 All notable changes to the LabTether Windows Agent are listed here. Versions
 follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- An unsigned release now also ships the per-user installer,
+  `labtether-agent-win-x64.msi`, with its own `.sha256` file. The hand-started
+  `unsigned-release-build.yml` workflow builds it from the ZIP's files. It
+  installs without administrator rights in `%LOCALAPPDATA%\Programs\LabTether`
+  and adds a Start menu entry and an entry under Installed apps. The ZIP
+  stays under the same name. Release 2.0.0 shipped the ZIP only.
+
+### Changed
+- The README's install steps use the installer first and keep the ZIP steps.
+
 ## [2.0.1]
 
 No change to the app since 2.0.0. It is released again so that every part of
