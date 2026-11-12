@@ -28,6 +28,11 @@ jobs:
         run: python3 scripts/ci/check-line-limit.py
       - name: Block personal details
         run: python3 scripts/ci/check-private-info.py
+      # The release scripts refuse a tag whose tracked files hold a
+      # certificate, a key or a local secret path. Fail the pull request
+      # instead: v2.0.0 was tagged once with a literal test certificate.
+      - name: Check release tracked-source policy
+        run: bash scripts/release/check-tracked-source-policy.sh
 
   qa-plan:
     runs-on: ubuntu-latest

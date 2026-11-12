@@ -105,6 +105,9 @@ Read user-facing text once against this list before you ship it.
 - These checks fail most often in CI. Run the ones your change touches before
   you push:
   - `python3 scripts/ci/check-private-info.py` for any change.
+  - `bash scripts/release/check-tracked-source-policy.sh` for any change. It
+    refuses a certificate, a key or a local secret path in tracked files,
+    the same rule the release scripts apply to a tag.
   - `python3 -B scripts/release/test_safe_extract_windows_release.py` and
     `bash scripts/release/test-source-only-workflows.sh` for changes under
     `scripts/` or `.github/`. The release archive policy step is this repo's
