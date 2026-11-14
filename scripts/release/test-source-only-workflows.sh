@@ -84,6 +84,8 @@ check_signed_release() {
   # only the two Certum values.
   env_jobs="$(job_lines "$workflow" | awk -F'\t' '$2 ~ /^    environment:/{print $1}' | sort | tr '\n' ' ')"
   [[ "$env_jobs" == "sign-archive sign-msi " ]] || fail "$s may use an environment only in sign-archive and sign-msi"
+  [[ "$(job_lines "$workflow" | awk -F'\t' '$2 ~ /^    if: github\.ref == .refs\/heads\/main.[[:space:]]*$/{print $1}' | sort | tr '\n' ' ')" == "sign-archive sign-msi " ]] ||
+    fail "$s sign jobs must run only from main"
   [[ "$(job_lines "$workflow" | awk -F'\t' '$2 ~ /^    environment:/{print $2}' | sort -u)" =~ ^[[:space:]]+environment:[[:space:]]+${SIGNING_ENVIRONMENT}[[:space:]]*$ ]] ||
     fail "$s sign jobs must use the $SIGNING_ENVIRONMENT environment"
   grep -Eq '^[[:space:]]+environment:' <(awk '/^jobs:/{exit} {print}' "$workflow") && fail "$s must not set an environment for every job"
@@ -218,6 +220,7 @@ self_test() {
   expect_refused signed-write-everywhere "$r" sub '^  contents: read$' '  contents: write'
   expect_refused signed-debug "$r" append '      - run: set -x'
   expect_refused signed-signtool "$r" append '      - run: signtool sign /f x.pfx app.exe'
+  expect_refused signed-any-branch "$r" sub "^    if: github\\.ref == 'refs/heads/main'\\n" ''
   printf 'Workflow policy refused all %d widening cases.\n' "$CASES_REFUSED"
 }
 

@@ -54,6 +54,9 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          # Only the workflow on main may sign; the signing environment also
+          # admits main only, so a copy edited on another branch is refused.
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || { echo "::error::signed releases run only from main"; exit 1; }
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::tag must look like v1.2.3"; exit 1; }
           [[ "$AGENT_TAG" == "$TAG" ]] || { echo "::error::agent_tag must equal tag"; exit 1; }
           [[ "$CONFIRM" == "$TAG" ]] || { echo "::error::confirm must repeat the tag"; exit 1; }
@@ -158,6 +161,7 @@ jobs:
   sign-archive:
     # Step 2: sign the three authored PE files and emit the release ZIP.
     needs: [signer, prepare]
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment: windows-release-signing
@@ -301,6 +305,7 @@ jobs:
   sign-msi:
     # Step 4: sign the MSI with the same certificate and emit the four assets.
     needs: [signer, sign-archive, verify-archive]
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment: windows-release-signing

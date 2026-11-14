@@ -133,8 +133,14 @@ assert_safe_manifest_path() {
   esac
 }
 
+# Reads the file on stdin: GNU sha256sum starts its line with a backslash
+# for a path that holds one. Git Bash on Windows has sha256sum, not shasum.
 sha256_file() {
-  shasum -a 256 -- "$1" | awk '{print tolower($1)}'
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 < "$1"
+  else
+    sha256sum < "$1"
+  fi | awk '{print tolower($1)}'
 }
 
 # Size in bytes and permission bits, with BSD stat (macOS) or GNU stat (the
