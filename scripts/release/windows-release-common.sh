@@ -137,11 +137,28 @@ sha256_file() {
   shasum -a 256 -- "$1" | awk '{print tolower($1)}'
 }
 
+# Size in bytes and permission bits, with BSD stat (macOS) or GNU stat (the
+# hosted Linux signing runner). GNU stat also has -f, with another meaning, so
+# pick by which stat this is rather than by trying one form after the other.
+if stat --version >/dev/null 2>&1; then
+  RELEASE_STAT_IS_GNU=1
+else
+  RELEASE_STAT_IS_GNU=""
+fi
+
+file_size() {
+  if [[ -n "$RELEASE_STAT_IS_GNU" ]]; then stat -c '%s' -- "$1"; else stat -f '%z' -- "$1"; fi
+}
+
+file_mode() {
+  if [[ -n "$RELEASE_STAT_IS_GNU" ]]; then stat -c '%a' -- "$1"; else stat -f '%Lp' -- "$1"; fi
+}
+
 assert_private_directory() {
   local directory="$1"
   local mode
   [[ -d "$directory" && ! -L "$directory" ]] || die "private release directory is unavailable"
-  mode="$(stat -f '%Lp' -- "$directory")"
+  mode="$(file_mode "$directory")"
   [[ "$mode" == "700" ]] || die "private release directory must have mode 0700"
 }
 
@@ -238,7 +255,7 @@ validate_unsigned_payload_tree() {
     expected_hash="$(printf '%s' "$record" | jq -r '.sha256')"
     assert_safe_manifest_path "$path"
     [[ -f "$payload_root/$path" && ! -L "$payload_root/$path" ]] || die "unsigned payload is missing a provenance file"
-    [[ "$(stat -f '%z' -- "$payload_root/$path")" == "$expected_size" ]] || die "unsigned payload size differs from provenance"
+    [[ "$(file_size "$payload_root/$path")" == "$expected_size" ]] || die "unsigned payload size differs from provenance"
     [[ "$(sha256_file "$payload_root/$path")" == "$expected_hash" ]] || die "unsigned payload hash differs from provenance"
   done < <(jq -c '.published_files[]' "$provenance")
   if find "$payload_root" -mindepth 1 -type d -empty -print -quit | grep -q .; then
@@ -307,7 +324,7 @@ expected_release_assets_json() {
   for name in "$FINAL_ARCHIVE_NAME" "$FINAL_CHECKSUM_NAME" "$FINAL_MSI_NAME" "$FINAL_MSI_CHECKSUM_NAME"; do
     entries="$(jq -c \
       --arg name "$name" \
-      --argjson size "$(stat -f '%z' -- "$directory/$name")" \
+      --argjson size "$(file_size "$directory/$name")" \
       --arg digest "sha256:$(sha256_file "$directory/$name")" \
       '. + [{name: $name, size: $size, digest: $digest}]' <<<"$entries")" || die "unable to describe release assets"
   done
@@ -387,7 +404,7 @@ validate_final_payload_tree() {
     expected_size="$(printf '%s' "$record" | jq -r '.size')"
     expected_hash="$(printf '%s' "$record" | jq -r '.sha256')"
     [[ -f "$payload_root/$path" && ! -L "$payload_root/$path" ]] || die "signed payload is missing a provenance file"
-    [[ "$(stat -f '%z' -- "$payload_root/$path")" == "$expected_size" ]] || die "signed payload changed a non-authored file size"
+    [[ "$(file_size "$payload_root/$path")" == "$expected_size" ]] || die "signed payload changed a non-authored file size"
     [[ "$(sha256_file "$payload_root/$path")" == "$expected_hash" ]] || die "signed payload changed a non-authored file hash"
   done < <(jq -c '.published_files[]' "$provenance")
   while IFS= read -r record; do
@@ -396,7 +413,7 @@ validate_final_payload_tree() {
     expected_size="$(printf '%s' "$record" | jq -r '.size')"
     expected_hash="$(printf '%s' "$record" | jq -r '.sha256')"
     [[ -f "$payload_root/$path" && ! -L "$payload_root/$path" ]] || die "signed payload is missing an authored file"
-    [[ "$(stat -f '%z' -- "$payload_root/$path")" == "$expected_size" ]] || die "signed authored payload size differs from its manifest"
+    [[ "$(file_size "$payload_root/$path")" == "$expected_size" ]] || die "signed authored payload size differs from its manifest"
     [[ "$(sha256_file "$payload_root/$path")" == "$expected_hash" ]] || die "signed authored payload hash differs from its manifest"
   done < <(jq -c '.payloads[]' "$signed_manifest")
   if find "$payload_root" -mindepth 1 -type d -empty -print -quit | grep -q .; then

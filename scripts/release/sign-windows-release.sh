@@ -7,6 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
 # shellcheck source=scripts/release/windows-release-common.sh
 source "$SCRIPT_DIR/windows-release-common.sh"
+# shellcheck source=scripts/release/certum-signing.sh
+source "$SCRIPT_DIR/certum-signing.sh"
 
 TAG=""
 AGENT_REPO=""
@@ -22,14 +24,19 @@ Usage: scripts/release/sign-windows-release.sh \
   --tag TAG --agent-repo PATH --output-directory PATH --confirm-sign TAG \
   (--unsigned-archive PATH | --signed-assets PATH --unsigned-msi PATH)
 
-Signs a Windows release on this Mac in two separate invocations:
+Signs a Windows release in two separate invocations (the hosted signing
+runner, or this Mac):
   --unsigned-archive  signs the three authored PE files and emits the
                       release ZIP and its checksum.
   --signed-assets with --unsigned-msi
                       signs the MSI that Windows verification built from
                       that signed ZIP and emits all four release assets.
-The certificate path and password are read silently from /dev/tty and are
-never accepted through arguments or environment variables.
+Signing uses the Certum cloud certificate through osslsigncode and the
+reviewed ssign PKCS#11 module. It reads CERTUM_EMAIL and CERTUM_OTP (the
+SimplySign seed) from the environment, never from arguments, and needs
+SSIGN_PKCS11_MODULE with its SSIGN_PKCS11_MODULE_SHA256 and CERTUM_CHAIN_PEM.
+OSSL_PKCS11_ENGINE optionally names the libp11 engine. See
+docs/releasing.md.
 USAGE
 }
 
@@ -101,49 +108,13 @@ scratch_root="$(cd "$scratch_root" && pwd -P)"
 assert_external_path "$scratch_root" "$REPO_ROOT" "$AGENT_REPO"
 assert_private_directory "$scratch_root"
 cleanup() {
-  unset certificate_password
+  forget_signing_identity
   if [[ -n "${scratch_root:-}" && -d "$scratch_root" ]]; then
     assert_external_path "$scratch_root" "$REPO_ROOT" "$AGENT_REPO"
     rm -rf -- "$scratch_root"
   fi
 }
 trap cleanup EXIT
-
-read_signing_identity() {
-  IFS= read -r -s -p "Local code-signing certificate path: " certificate_path </dev/tty
-  printf '\n' >/dev/tty
-  [[ -f "$certificate_path" && ! -L "$certificate_path" ]] || die "local code-signing certificate is unavailable"
-  certificate_path="$(canonical_existing_path "$certificate_path")"
-  assert_external_path "$certificate_path" "$REPO_ROOT" "$AGENT_REPO"
-  IFS= read -r -s -p "Local code-signing certificate password: " certificate_password </dev/tty
-  printf '\n' >/dev/tty
-  [[ -n "$certificate_password" ]] || die "local code-signing certificate password is required"
-}
-
-forget_signing_identity() {
-  unset certificate_password
-  unset certificate_path
-}
-
-# Writes a signed copy of a PE or MSI file and checks the signature.
-authenticode_sign() {
-  local input_path="$1"
-  local output_path="$2"
-  { exec 9<"$certificate_path"; } 2>/dev/null || die "unable to open the local code-signing certificate"
-  if ! printf '%s\n' "$certificate_password" | osslsigncode sign \
-      -pkcs12 /dev/fd/9 \
-      -readpass - \
-      -h sha256 \
-      -ts "http://timestamp.digicert.com" \
-      -n "LabTether Agent" \
-      -in "$input_path" \
-      -out "$output_path" >/dev/null 2>&1; then
-    exec 9<&-
-    die "Authenticode signing failed"
-  fi
-  exec 9<&-
-  osslsigncode verify -in "$output_path" >/dev/null 2>&1 || die "Authenticode verification failed after signing"
-}
 
 sign_archive_stage() {
   local payload_root="$scratch_root/payload"
@@ -173,9 +144,9 @@ sign_archive_stage() {
   forget_signing_identity
 
   local p1_size p2_size p3_size p1_hash p2_hash p3_hash
-  p1_size="$(stat -f '%z' -- "$payload_root/$AUTHORED_PAYLOAD_1")"
-  p2_size="$(stat -f '%z' -- "$payload_root/$AUTHORED_PAYLOAD_2")"
-  p3_size="$(stat -f '%z' -- "$payload_root/$AUTHORED_PAYLOAD_3")"
+  p1_size="$(file_size "$payload_root/$AUTHORED_PAYLOAD_1")"
+  p2_size="$(file_size "$payload_root/$AUTHORED_PAYLOAD_2")"
+  p3_size="$(file_size "$payload_root/$AUTHORED_PAYLOAD_3")"
   p1_hash="$(sha256_file "$payload_root/$AUTHORED_PAYLOAD_1")"
   p2_hash="$(sha256_file "$payload_root/$AUTHORED_PAYLOAD_2")"
   p3_hash="$(sha256_file "$payload_root/$AUTHORED_PAYLOAD_3")"

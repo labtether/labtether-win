@@ -32,6 +32,9 @@ if ($signature.Status -ne "Valid" -or $null -eq $signature.TimeStamperCertificat
 $signature.SignerCertificate.Subject
 ```
 
+Releases from 2.0.1 on are signed by `CN=Watari Labs Pty Ltd` with a
+certificate from `Certum Code Signing 2021 CA`, timestamped by Certum.
+
 For the ZIP of a signed release, extract the app and check that all three
 LabTether programs carry the same valid, timestamped signature:
 

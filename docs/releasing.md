@@ -2,18 +2,47 @@
 
 This is for maintainers. To install the app, see the [README](../README.md).
 
-For a locally configured SSL.com eSigner CKA certificate, use the
-[manual Windows signing flow](../scripts/release/README-esigner.md). It prepares
-the same assets with four paid signatures at most per exact source candidate.
-The PFX flow below remains available. Neither flow runs from CI.
+Windows releases are signed by Watari Labs Pty Ltd with a Certum Standard
+Code Signing certificate whose key stays in Certum's SimplySign cloud. The
+usual way to release is the [signed release workflow](#signed-release-workflow)
+below, started by hand; it leaves a draft release that a maintainer publishes.
+The same seven steps can also run by hand, below. The SSL.com eSigner
+[manual flow](../scripts/release/README-esigner.md) stays as a fallback until a
+Certum-signed release has shipped.
 
-The tag-triggered GitHub workflow verifies clean matching wrapper and agent
-tags, tests, publishes, builds and checks the MSI, and validates the payload.
-It intentionally has read-only permissions: it does not receive signing
-material, sign bytes, keep a release archive or installer, attest an archive,
-or upload a release.
+The tag-triggered GitHub workflow (`release.yml`) verifies clean matching
+wrapper and agent tags, tests, publishes, builds and checks the MSI, and
+validates the payload. It has read-only permissions and never signs.
 
-Official Windows releases use a split local process:
+## Signed release workflow
+
+Start `.github/workflows/signed-release.yml` by hand with `tag`, `agent_tag`
+(the same tag) and `confirm` (the tag again). It runs steps 1 to 6 below on
+GitHub's machines: Windows builds and checks, Linux signs.
+
+- `signer` builds the ssign PKCS#11 module from the reviewed ssign commit
+  (`SSIGN_COMMIT`, review notes in the MetaTana repo's
+  `docs/reference/windows-code-signing.md`) with no secrets in the job.
+- `sign-archive` and `sign-msi` are the only jobs in the
+  `windows-release-signing` environment, whose secrets `CERTUM_EMAIL` and
+  `CERTUM_OTP` (the SimplySign seed, the whole `otpauth://` text) only those
+  two jobs can read. They mask every form of the seed first, check the
+  module's SHA-256 against the `signer` job, and run `sign-windows-release.sh`.
+- `draft` uploads exactly the four checked assets to a draft release. Publish
+  it on GitHub after looking at it.
+
+The logs are public. `certum-signing.sh` gives `osslsigncode` and the module
+only `PATH`, the locale, `TMPDIR`, `CERTUM_EMAIL` and `CERTUM_OTP`, with the
+module's logging off, never prints signer output (a failed login can print
+login URLs), and deletes the module's login token with the run's scratch
+folder. `test-certum-secret-transport.sh` checks this on every pull request,
+and `test-source-only-workflows.sh` refuses any wider version of the workflow.
+
+Certum allows 5,000 signatures a month across Watari Labs' products; a
+release uses four. Each one-time code works once, so two signing jobs that log
+in inside the same 30 seconds collide; run releases one at a time.
+
+## Release steps
 
 1. On Windows, run `scripts/release/prepare-unsigned-windows-release.ps1` from
    clean matching tagged wrapper and agent checkouts. It builds into an
@@ -22,11 +51,14 @@ Official Windows releases use a split local process:
 2. Transfer only that unsigned archive to the Mac and run
    `scripts/release/sign-windows-release.sh --unsigned-archive PATH
    --confirm-sign TAG`, where `TAG`
-   is the same strict `vX.Y.Z` tag. The script reads the local
-   certificate path and password silently from `/dev/tty`, consumes the
-   certificate in place through a file descriptor, Authenticode-signs the three
-   authored PE files with `osslsigncode`, and emits exactly the release ZIP and
-   its checksum in a mode-0700 external directory.
+   is the same strict `vX.Y.Z` tag. It signs with the Certum cloud key
+   through `osslsigncode` and the ssign PKCS#11 module, using
+   `CERTUM_EMAIL`, `CERTUM_OTP`, `SSIGN_PKCS11_MODULE`,
+   `SSIGN_PKCS11_MODULE_SHA256` and `CERTUM_CHAIN_PEM` from the environment
+   (`OSSL_PKCS11_ENGINE` names the libp11 engine where it is not found by
+   itself). It Authenticode-signs the three authored PE files with a Certum
+   timestamp and emits exactly the release ZIP and its checksum in a mode-0700
+   external directory.
 3. Transfer only those two signed assets to Windows and run
    `scripts/release/verify-signed-windows-release.ps1` with
    `-UnsignedMsiOutputPath <external dir>\labtether-agent-win-x64-unsigned.msi`.
@@ -57,11 +89,11 @@ Official Windows releases use a split local process:
    existing draft before publishing it. The script rejects both confirmations
    in one invocation, so no command can create and publish a release together.
 
-No signing file, private key, password, encoded secret, local certificate path,
-or Windows verification proof belongs in Git, GitHub Actions, build artifacts,
-caches, or release uploads. Only the public signer information inherently
-embedded in the verified signed PE and MSI files leaves the local signing
-lane.
+No private key, password, seed, encoded secret or Windows verification proof
+belongs in Git, build artifacts, caches or release uploads. On GitHub the
+Certum seed lives only in the `windows-release-signing` environment. Only the
+public signer information embedded in the signed PE and MSI files leaves the
+signing steps.
 
 ## Unsigned release build
 

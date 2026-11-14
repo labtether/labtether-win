@@ -87,7 +87,9 @@ jobs:
           persist-credentials: false
       - name: Enforce hosted workflow release boundary
         shell: bash
-        run: bash scripts/release/test-source-only-workflows.sh
+        run: |
+          bash scripts/release/test-source-only-workflows.sh
+          bash scripts/release/test-certum-secret-transport.sh
       - name: Test cross-platform release archive policy
         shell: pwsh
         run: |

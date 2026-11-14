@@ -1,0 +1,489 @@
+name: Signed Windows release
+
+# Builds, signs and verifies the Windows release from exact tags, the same
+# seven steps as the local release flow in docs/releasing.md, and leaves a
+# draft GitHub release for a maintainer to inspect and publish. Started by
+# hand only; it never publishes.
+#
+# Signing uses the Certum cloud certificate through osslsigncode and the ssign
+# PKCS#11 module built here from one reviewed commit. Only the two sign jobs
+# use the windows-release-signing environment, whose CERTUM_EMAIL and
+# CERTUM_OTP secrets reach the sign script's environment and nothing else.
+# Logs are public: the seed and its parts are masked, signer output is never
+# printed, the module's logging is off, and its login token is deleted.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "labtether-win tag to release, for example v2.0.1"
+        required: true
+        type: string
+      agent_tag:
+        description: "labtether-agent tag to bundle; must equal tag"
+        required: true
+        type: string
+      confirm:
+        description: "Type the tag again to confirm signing"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: signed-windows-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ inputs.tag }}
+  AGENT_TAG: ${{ inputs.agent_tag }}
+  CONFIRM: ${{ inputs.confirm }}
+  SSIGN_COMMIT: 367bf7d3da14d5041d5e47f855ae2397b8028e33
+  SSIGN_RUST: 1.97.0
+
+jobs:
+  signer:
+    # The PKCS#11 module, built from the reviewed ssign commit. Nothing secret
+    # reaches this job.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      module_sha256: ${{ steps.build.outputs.module_sha256 }}
+    steps:
+      - name: Check the inputs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::tag must look like v1.2.3"; exit 1; }
+          [[ "$AGENT_TAG" == "$TAG" ]] || { echo "::error::agent_tag must equal tag"; exit 1; }
+          [[ "$CONFIRM" == "$TAG" ]] || { echo "::error::confirm must repeat the tag"; exit 1; }
+
+      - name: Build the ssign PKCS#11 module from the reviewed commit
+        id: build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          src="$RUNNER_TEMP/ssign-src"
+          git -c core.hooksPath=/dev/null clone --quiet --no-checkout https://github.com/Le-Syl21/ssign.git "$src"
+          git -C "$src" -c core.hooksPath=/dev/null checkout --quiet "$SSIGN_COMMIT"
+          [[ "$(git -C "$src" rev-parse HEAD)" == "$SSIGN_COMMIT" ]] || { echo "::error::ssign checkout is not the reviewed commit"; exit 1; }
+          rustup toolchain install "$SSIGN_RUST" --profile minimal --no-self-update
+          (cd "$src" && cargo "+$SSIGN_RUST" build --quiet --locked --release -p ssign-pkcs11)
+          out="$RUNNER_TEMP/signer"
+          mkdir -p "$out"
+          cp -- "$src/target/release/libssign_pkcs11.so" "$out/"
+          # The Certum intermediate, from the reviewed source, for the signature chain.
+          openssl x509 -inform der -in "$src/ssign-core/src/certs/ccsca2021.der" -out "$out/certum-code-signing-2021-ca.pem"
+          openssl x509 -in "$out/certum-code-signing-2021-ca.pem" -noout -subject | grep -Fq "CN=Certum Code Signing 2021 CA" \
+            || { echo "::error::unexpected Certum intermediate"; exit 1; }
+          hash="$(sha256sum < "$out/libssign_pkcs11.so" | awk '{print $1}')"
+          echo "module sha256 $hash"
+          echo "module_sha256=$hash" >> "$GITHUB_OUTPUT"
+
+      - name: Keep the module for this run
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: signer
+          path: ${{ runner.temp }}/signer/
+          if-no-files-found: error
+          retention-days: 1
+
+  prepare:
+    # Step 1: the unsigned archive, as unsigned-release-build.yml makes it.
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 50
+    steps:
+      - name: Check the inputs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && "$AGENT_TAG" == "$TAG" && "$CONFIRM" == "$TAG" ]] || { echo "::error::bad inputs"; exit 1; }
+
+      - name: Check out the labtether-win tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          path: wrapper
+          persist-credentials: false
+
+      - name: Check out the labtether-agent tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: labtether/labtether-agent
+          ref: refs/tags/${{ inputs.agent_tag }}
+          path: agent
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.3"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: "10.0.403"
+
+      - name: Add msbuild to PATH
+        uses: microsoft/setup-msbuild@30375c66a4eea26614e0d39710365f22f8b0af57 # v3.0.0
+
+      - name: Run the tagged prepare-unsigned-windows-release.ps1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $env:UseSharedCompilation = "false"; $env:MSBUILDDISABLENODEREUSE = "1"; $env:DOTNET_CLI_TELEMETRY_OPTOUT = "1"
+          [Console]::InputEncoding = New-Object Text.UTF8Encoding $false
+          # A short private temp folder, as in unsigned-release-build.yml.
+          $short = Join-Path $env:RUNNER_TEMP "t"
+          New-Item -ItemType Directory -Path $short | Out-Null
+          $me = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+          icacls.exe $short /inheritance:r /grant:r "*${me}:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "Could not make the short temp folder private." }
+          $env:TEMP = $short; $env:TMP = $short
+          $log = Join-Path $env:RUNNER_TEMP "prepare.log"
+          & "$env:GITHUB_WORKSPACE\wrapper\scripts\release\prepare-unsigned-windows-release.ps1" `
+            -Tag $env:TAG -AgentRepo "$env:GITHUB_WORKSPACE\agent" -OutputDirectory "$env:RUNNER_TEMP\win-unsigned" |
+            Tee-Object -FilePath $log
+          if (-not (Select-String -LiteralPath $log -SimpleMatch "Unsigned Windows release preparation passed." -Quiet)) {
+            throw "The prepare script did not report success."
+          }
+
+      - name: Keep the unsigned archive for this run
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unsigned-archive
+          path: ${{ runner.temp }}/win-unsigned/labtether-agent-win-x64-unsigned.zip
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  sign-archive:
+    # Step 2: sign the three authored PE files and emit the release ZIP.
+    needs: [signer, prepare]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: windows-release-signing
+    steps:
+      - name: Mask every form of the signing seed
+        shell: bash
+        env:
+          CERTUM_OTP: ${{ secrets.CERTUM_OTP }}
+        run: |
+          set -Eeuo pipefail
+          [[ -n "$CERTUM_OTP" ]] || { echo "::error::CERTUM_OTP is not set"; exit 1; }
+          python3 -I - <<'PY'
+          import os, urllib.parse
+          v = os.environ["CERTUM_OTP"].strip()
+          parts = {v}
+          if v.startswith("otpauth://"):
+              q = urllib.parse.parse_qs(urllib.parse.urlsplit(v).query)
+              for s in q.get("secret", []):
+                  parts.update({s, s.upper(), s.lower(), s.rstrip("=")})
+          for p in sorted(parts):
+              if len(p) >= 8:
+                  print(f"::add-mask::{p}")
+          PY
+
+      - name: Check out the labtether-win tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          path: wrapper
+          persist-credentials: false
+
+      - name: Check out the labtether-agent tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: labtether/labtether-agent
+          ref: refs/tags/${{ inputs.agent_tag }}
+          path: agent
+          persist-credentials: false
+
+      - name: Install osslsigncode and the PKCS#11 engine
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends osslsigncode libengine-pkcs11-openssl zip >/dev/null
+          osslsigncode --version 2>&1 | head -1
+
+      - name: Get the module and the unsigned archive
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: ${{ runner.temp }}/in
+
+      - name: Sign the archive
+        shell: bash
+        env:
+          CERTUM_EMAIL: ${{ secrets.CERTUM_EMAIL }}
+          CERTUM_OTP: ${{ secrets.CERTUM_OTP }}
+          SSIGN_PKCS11_MODULE_SHA256: ${{ needs.signer.outputs.module_sha256 }}
+        run: |
+          set -Eeuo pipefail
+          export SSIGN_PKCS11_MODULE="$RUNNER_TEMP/in/signer/libssign_pkcs11.so"
+          export CERTUM_CHAIN_PEM="$RUNNER_TEMP/in/signer/certum-code-signing-2021-ca.pem"
+          export OSSL_PKCS11_ENGINE=/usr/lib/x86_64-linux-gnu/engines-3/pkcs11.so
+          export TMPDIR="$RUNNER_TEMP"
+          wrapper/scripts/release/sign-windows-release.sh \
+            --tag "$TAG" --agent-repo agent \
+            --unsigned-archive "$RUNNER_TEMP/in/unsigned-archive/labtether-agent-win-x64-unsigned.zip" \
+            --output-directory "$RUNNER_TEMP/signed-zip" --confirm-sign "$CONFIRM"
+
+      - name: Keep the signed archive for this run
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: signed-archive
+          path: ${{ runner.temp }}/signed-zip/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  verify-archive:
+    # Step 3: check the signed ZIP on Windows and build the unsigned MSI from it.
+    needs: sign-archive
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 40
+    steps:
+      - name: Check out the labtether-win tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          path: wrapper
+          persist-credentials: false
+
+      - name: Check out the labtether-agent tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: labtether/labtether-agent
+          ref: refs/tags/${{ inputs.agent_tag }}
+          path: agent
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: "10.0.403"
+
+      - name: Add msbuild to PATH
+        uses: microsoft/setup-msbuild@30375c66a4eea26614e0d39710365f22f8b0af57 # v3.0.0
+
+      - name: Get the signed archive
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: signed-archive
+          path: ${{ runner.temp }}/signed-zip
+
+      - name: Verify the signed archive and build the MSI
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          # A short private temp folder for the MSI build, as for the prepare step.
+          $short = Join-Path $env:RUNNER_TEMP "t"
+          New-Item -ItemType Directory -Path $short | Out-Null
+          $me = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+          icacls.exe $short /inheritance:r /grant:r "*${me}:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "Could not make the short temp folder private." }
+          $env:TEMP = $short; $env:TMP = $short
+          [Console]::InputEncoding = New-Object Text.UTF8Encoding $false
+          $proof = Join-Path $env:RUNNER_TEMP "zip-proof"
+          $msi = Join-Path $env:RUNNER_TEMP "unsigned-msi"
+          New-Item -ItemType Directory -Path $proof, $msi | Out-Null
+          & "$env:GITHUB_WORKSPACE\wrapper\scripts\release\verify-signed-windows-release.ps1" `
+            -Tag $env:TAG -AgentRepo "$env:GITHUB_WORKSPACE\agent" -AssetsDirectory "$env:RUNNER_TEMP\signed-zip" `
+            -OutputProofPath "$proof\proof.json" -UnsignedMsiOutputPath "$msi\labtether-agent-win-x64-unsigned.msi"
+
+      - name: Keep the unsigned MSI for this run
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unsigned-msi
+          path: ${{ runner.temp }}/unsigned-msi/labtether-agent-win-x64-unsigned.msi
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  sign-msi:
+    # Step 4: sign the MSI with the same certificate and emit the four assets.
+    needs: [signer, sign-archive, verify-archive]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: windows-release-signing
+    steps:
+      - name: Mask every form of the signing seed
+        shell: bash
+        env:
+          CERTUM_OTP: ${{ secrets.CERTUM_OTP }}
+        run: |
+          set -Eeuo pipefail
+          [[ -n "$CERTUM_OTP" ]] || { echo "::error::CERTUM_OTP is not set"; exit 1; }
+          python3 -I - <<'PY'
+          import os, urllib.parse
+          v = os.environ["CERTUM_OTP"].strip()
+          parts = {v}
+          if v.startswith("otpauth://"):
+              q = urllib.parse.parse_qs(urllib.parse.urlsplit(v).query)
+              for s in q.get("secret", []):
+                  parts.update({s, s.upper(), s.lower(), s.rstrip("=")})
+          for p in sorted(parts):
+              if len(p) >= 8:
+                  print(f"::add-mask::{p}")
+          PY
+
+      - name: Check out the labtether-win tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          path: wrapper
+          persist-credentials: false
+
+      - name: Check out the labtether-agent tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: labtether/labtether-agent
+          ref: refs/tags/${{ inputs.agent_tag }}
+          path: agent
+          persist-credentials: false
+
+      - name: Install osslsigncode and the PKCS#11 engine
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends osslsigncode libengine-pkcs11-openssl zip >/dev/null
+
+      - name: Get the module, the signed archive and the unsigned MSI
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: ${{ runner.temp }}/in
+
+      - name: Sign the MSI
+        shell: bash
+        env:
+          CERTUM_EMAIL: ${{ secrets.CERTUM_EMAIL }}
+          CERTUM_OTP: ${{ secrets.CERTUM_OTP }}
+          SSIGN_PKCS11_MODULE_SHA256: ${{ needs.signer.outputs.module_sha256 }}
+        run: |
+          set -Eeuo pipefail
+          export SSIGN_PKCS11_MODULE="$RUNNER_TEMP/in/signer/libssign_pkcs11.so"
+          export CERTUM_CHAIN_PEM="$RUNNER_TEMP/in/signer/certum-code-signing-2021-ca.pem"
+          export OSSL_PKCS11_ENGINE=/usr/lib/x86_64-linux-gnu/engines-3/pkcs11.so
+          export TMPDIR="$RUNNER_TEMP"
+          wrapper/scripts/release/sign-windows-release.sh \
+            --tag "$TAG" --agent-repo agent \
+            --signed-assets "$RUNNER_TEMP/in/signed-archive" \
+            --unsigned-msi "$RUNNER_TEMP/in/unsigned-msi/labtether-agent-win-x64-unsigned.msi" \
+            --output-directory "$RUNNER_TEMP/release-assets" --confirm-sign "$CONFIRM"
+
+      - name: Keep the four release assets for this run
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-assets
+          path: ${{ runner.temp }}/release-assets/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  verify-release:
+    # Step 5: the full Windows check of all four assets, and its proof.
+    needs: sign-msi
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 40
+    steps:
+      - name: Check out the labtether-win tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          path: wrapper
+          persist-credentials: false
+
+      - name: Check out the labtether-agent tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: labtether/labtether-agent
+          ref: refs/tags/${{ inputs.agent_tag }}
+          path: agent
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: "10.0.403"
+
+      - name: Add msbuild to PATH
+        uses: microsoft/setup-msbuild@30375c66a4eea26614e0d39710365f22f8b0af57 # v3.0.0
+
+      - name: Get the four release assets
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-assets
+          path: ${{ runner.temp }}/release-assets
+
+      - name: Verify all four assets on Windows
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          # A short private temp folder for the MSI build, as for the prepare step.
+          $short = Join-Path $env:RUNNER_TEMP "t"
+          New-Item -ItemType Directory -Path $short | Out-Null
+          $me = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+          icacls.exe $short /inheritance:r /grant:r "*${me}:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "Could not make the short temp folder private." }
+          $env:TEMP = $short; $env:TMP = $short
+          [Console]::InputEncoding = New-Object Text.UTF8Encoding $false
+          $proof = Join-Path $env:RUNNER_TEMP "release-proof"
+          New-Item -ItemType Directory -Path $proof | Out-Null
+          & "$env:GITHUB_WORKSPACE\wrapper\scripts\release\verify-signed-windows-release.ps1" `
+            -Tag $env:TAG -AgentRepo "$env:GITHUB_WORKSPACE\agent" -AssetsDirectory "$env:RUNNER_TEMP\release-assets" `
+            -OutputProofPath "$proof\windows-proof.json"
+
+      - name: Keep the Windows proof for this run
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-proof
+          path: ${{ runner.temp }}/release-proof/windows-proof.json
+          if-no-files-found: error
+          retention-days: 1
+
+  draft:
+    # Step 6: a draft release with exactly the four checked assets. Publishing
+    # stays a maintainer's click on GitHub (step 7).
+    needs: verify-release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the labtether-win tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          path: wrapper
+          persist-credentials: false
+
+      - name: Check out the labtether-agent tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: labtether/labtether-agent
+          ref: refs/tags/${{ inputs.agent_tag }}
+          path: agent
+          persist-credentials: false
+
+      - name: Install osslsigncode
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends osslsigncode >/dev/null
+
+      - name: Get the assets and the Windows proof
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: ${{ runner.temp }}/in
+
+      - name: Create and check the draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          export TMPDIR="$RUNNER_TEMP"
+          wrapper/scripts/release/publish-windows-release.sh \
+            --tag "$TAG" --agent-repo agent \
+            --assets-directory "$RUNNER_TEMP/in/release-assets" \
+            --windows-proof "$RUNNER_TEMP/in/windows-proof/windows-proof.json" \
+            --confirm-draft "$CONFIRM"
