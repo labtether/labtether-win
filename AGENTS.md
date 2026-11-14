@@ -108,8 +108,9 @@ Read user-facing text once against this list before you ship it.
   - `bash scripts/release/check-tracked-source-policy.sh` for any change. It
     refuses a certificate, a key or a local secret path in tracked files,
     the same rule the release scripts apply to a tag.
-  - `python3 -B scripts/release/test_safe_extract_windows_release.py` and
-    `bash scripts/release/test-source-only-workflows.sh` for changes under
+  - `python3 -B scripts/release/test_safe_extract_windows_release.py`,
+    `bash scripts/release/test-source-only-workflows.sh` and
+    `bash scripts/release/test-certum-secret-transport.sh` for changes under
     `scripts/` or `.github/`. The release archive policy step is this repo's
     most common CI failure.
   - `./scripts/release/test-windows-release-policy.ps1` on the Windows lab

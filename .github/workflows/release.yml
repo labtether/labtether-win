@@ -322,4 +322,4 @@ jobs:
             throw "Hosted source verification must not leave an installer in the workspace."
           }
           Remove-Item -LiteralPath (Join-Path $env:RUNNER_TEMP "labtether-msi-check") -Recurse -Force -ErrorAction SilentlyContinue
-          "Source verification passed. Signing and publication require the local release scripts."
+          "Source verification passed. Signing happens only in signed-release.yml, and publishing stays a maintainer step."
