@@ -6,9 +6,8 @@ Windows releases are signed by Watari Labs Pty Ltd with a Certum Standard
 Code Signing certificate whose key stays in Certum's SimplySign cloud. The
 usual way to release is the [signed release workflow](#signed-release-workflow)
 below, started by hand; it leaves a draft release that a maintainer publishes.
-The same seven steps can also run by hand, below. The SSL.com eSigner
-[manual flow](../scripts/release/README-esigner.md) stays as a fallback until a
-Certum-signed release has shipped.
+The same seven steps can also run by hand, below. Certum is the only signer:
+the SSL.com eSigner flow was removed on 2026-11-14.
 
 The tag-triggered GitHub workflow (`release.yml`) verifies clean matching
 wrapper and agent tags, tests, publishes, builds and checks the MSI, and
