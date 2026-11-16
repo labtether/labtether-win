@@ -214,7 +214,7 @@ public class OnboardingViewModelTests
         Assert.False(viewModel.CanConnect);
         Assert.Null(viewModel.HubUrlError);
 
-        viewModel.HubUrl = "hub.example.test";
+        viewModel.HubUrl = "hub example test";
         viewModel.Token = "valid-enrollment-token";
         Assert.False(viewModel.CanConnect);
         Assert.NotNull(viewModel.HubUrlError);
@@ -231,6 +231,25 @@ public class OnboardingViewModelTests
         Assert.True(viewModel.CanConnect);
         await viewModel.ConnectCommand.ExecuteAsync(null);
         Assert.True(agentStarted);
+    }
+
+    // Setup refused the address form its own help text and the Mac app use.
+    [Fact]
+    public void HubAddressWithoutSchemeIsAccepted()
+    {
+        var credentialPath = Path.Combine(
+            Path.GetTempPath(), "LabTetherAgentTests", Guid.NewGuid().ToString("N"), ".credentials");
+        var viewModel = new OnboardingViewModel(
+            new AgentSettings(),
+            new CredentialStore(vaultAvailable: false, fallbackPath: credentialPath),
+            VerifiedHubConnectionTester(),
+            (_, _, _) => Task.FromResult(AgentConnectionAttemptResult.Connected()));
+
+        viewModel.HubUrl = "hub.example.test:8443";
+
+        Assert.True(viewModel.IsHubUrlValid);
+        Assert.Null(viewModel.HubUrlError);
+        Assert.Equal("Connecting to hub.example.test…", viewModel.ConnectingText);
     }
 
     [Fact]

@@ -35,6 +35,8 @@ public readonly record struct TrayStatus(TrayGlyphState State, string Tooltip)
 
         if (!connected || status is { IsConnected: false })
         {
+            if (status?.IsWaitingForApproval == true)
+                return Make(TrayGlyphState.Offline, AgentStatusText.WaitingForApproval);
             var since = status?.DisconnectedAt ?? offlineSince;
             if (since is { } at)
                 return Make(TrayGlyphState.Offline, "Offline since " + AgentStatusText.FormatClock(at, now));

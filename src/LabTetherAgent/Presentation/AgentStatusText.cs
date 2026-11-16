@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
+using LabTetherAgent.Settings;
 using LabTetherAgent.State;
 
 namespace LabTetherAgent.Presentation;
@@ -21,6 +22,9 @@ public static partial class AgentStatusText
     /// <summary>Shown instead of a Hub before the first enrollment.</summary>
     public const string NotSetUp = "Not set up";
 
+    /// <summary>Status word while the Hub has not approved this device yet.</summary>
+    public const string WaitingForApproval = "Waiting for approval";
+
     /// <param name="startProblem">Why the agent could not be started, when it is not running.</param>
     public static AgentHeader Header(
         AgentStatus? status, string? hubUrl, DateTimeOffset now, string? startProblem = null)
@@ -37,9 +41,15 @@ public static partial class AgentStatusText
 
         if (status.IsConnected)
         {
+            if (status.ConnectedProblemText is { } problem)
+                return new AgentHeader("Connected", Join(host, problem), true);
             var uptime = FormatUptime(status.Uptime);
             return new AgentHeader("Connected", Join(host, uptime.Length > 0 ? "up " + uptime : ""), false);
         }
+
+        // A normal step of enrollment, not an outage.
+        if (status.IsWaitingForApproval)
+            return new AgentHeader(WaitingForApproval, AgentLastError.WaitingForApprovalText, false);
 
         var since = status.DisconnectedAt is { } at ? "since " + FormatClock(at, now) : "";
         var reason = status.ConnectionDisplayText;
@@ -64,11 +74,12 @@ public static partial class AgentStatusText
         return 100.0 * status.MemoryUsedBytes / status.MemoryTotalBytes;
     }
 
-    /// <summary>The Hub's host name, without scheme, port or path.</summary>
+    /// <summary>The Hub's host name, without scheme, port or path, from any accepted address form.</summary>
     public static string HubHost(string? hubUrl)
     {
         var text = (hubUrl ?? "").Trim();
-        return Uri.TryCreate(text, UriKind.Absolute, out var uri) && uri.Host.Length > 0 ? uri.Host : text;
+        return Uri.TryCreate(SettingsValidator.NormalizeHubWebSocketUrl(text), UriKind.Absolute, out var uri) &&
+               uri.Host.Length > 0 ? uri.Host : text;
     }
 
     /// <summary>A Go duration ("52h14m0s") as "2 d 4 h", "4 h 12 min", "12 min" or "45 s".</summary>

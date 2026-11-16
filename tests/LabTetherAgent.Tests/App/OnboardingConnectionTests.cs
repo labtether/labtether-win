@@ -57,14 +57,18 @@ public class OnboardingConnectionTests
         Assert.Null(message);
     }
 
-    [Fact]
-    public void DurableCredentialPersistenceFailureBlocksSetupCompletion()
+    // The agent joins a second warning after a comma (run.go); setup passed
+    // as if the token had been saved.
+    [Theory]
+    [InlineData("agent_token_persistence_failed")]
+    [InlineData("agent_token_persistence_failed,consumed_enrollment_token_cleanup_failed")]
+    public void DurableCredentialPersistenceFailureBlocksSetupCompletion(string lastError)
     {
         var message = AgentSetupStatusClassifier.TerminalFailureMessage(new AgentStatus
         {
             IsConnected = true,
             HubConnectionState = "connected",
-            LastError = "agent_token_persistence_failed",
+            LastError = lastError,
         });
 
         Assert.NotNull(message);

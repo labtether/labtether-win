@@ -221,7 +221,7 @@ public partial class OnboardingViewModel : ObservableObject
         var untouched = value.Trim() is "" or "https://" or "http://" or "wss://" or "ws://";
         HubUrlError = IsHubUrlValid || untouched
             ? null
-            : "Enter a full Hub URL that starts with https:// or wss://.";
+            : SettingsValidator.HubAddressError;
         OnPropertyChanged(nameof(ConnectingText));
     }
 

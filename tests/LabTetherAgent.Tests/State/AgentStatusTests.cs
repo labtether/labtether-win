@@ -6,7 +6,7 @@ public class AgentStatusTests
 {
     [Theory]
     [InlineData(false, "connecting", "Connecting")]
-    [InlineData(false, "auth_failed", "Authentication failed")]
+    [InlineData(false, "auth_failed", "The Hub refused the agent token")]
     [InlineData(false, "disconnected", "Disconnected")]
     [InlineData(false, "unexpected_internal_state", "Disconnected")]
     [InlineData(true, "connecting", "Connected")]
@@ -24,15 +24,17 @@ public class AgentStatusTests
         Assert.Equal(expected, status.ConnectionDisplayText);
     }
 
-    // The tray and pop-out must say why the Hub connect failed, keep the state
-    // text for older agents and unknown codes, and drop the reason once connected.
+    // Every last_error_reason the agent sends (ws_connect_reason.go) gets its
+    // own words, with the meaning the Mac app shows. Refused, unreachable and
+    // timed out all read "Can't reach the Hub" before, and a refused agent
+    // token read "The Hub refused this device".
     [Theory]
-    [InlineData(false, "connecting", "name_lookup_failed", "Can't find the Hub's address")]
-    [InlineData(false, "connecting", "connection_refused", "Can't reach the Hub")]
+    [InlineData(false, "connecting", "name_lookup_failed", "Can't find the Hub's host name")]
+    [InlineData(false, "connecting", "connection_refused", "The Hub refused the connection")]
     [InlineData(false, "connecting", "host_unreachable", "Can't reach the Hub")]
-    [InlineData(false, "connecting", "timed_out", "Can't reach the Hub")]
-    [InlineData(false, "connecting", "certificate_untrusted", "The Hub's certificate isn't trusted")]
-    [InlineData(false, "auth_failed", "token_rejected", "The Hub refused this device. Enroll it again.")]
+    [InlineData(false, "connecting", "timed_out", "The Hub did not answer in time")]
+    [InlineData(false, "connecting", "certificate_untrusted", "The Hub's certificate is not trusted")]
+    [InlineData(false, "connecting", "token_rejected", "The Hub refused the agent token")]
     [InlineData(false, "connecting", "", "Connecting")]
     [InlineData(false, "connecting", "a_future_reason", "Connecting")]
     [InlineData(true, "connected", "timed_out", "Connected")]
@@ -46,6 +48,26 @@ public class AgentStatusTests
         {
             IsConnected = connected,
             HubConnectionState = state,
+            LastErrorReason = reason,
+        };
+
+        Assert.Equal(expected, status.ConnectionDisplayText);
+    }
+
+    // last_error codes the agent sends with auth_failed (ws_transport.go,
+    // run.go). The code's words, with what to do, win over the reason.
+    [Theory]
+    [InlineData("auth_failed", "token_rejected",
+        "The Hub refused the agent token. Choose Re-enroll in the tray menu.")]
+    [InlineData("enrollment_token_rejected", "",
+        "The Hub refused this enrollment token. Make a new one in Devices, Add device.")]
+    [InlineData("a_future_code", "", "The Hub refused the agent token")]
+    public void RefusedTokenSaysWhichTokenAndWhatToDo(string lastError, string reason, string expected)
+    {
+        var status = new AgentStatus
+        {
+            HubConnectionState = "auth_failed",
+            LastError = lastError,
             LastErrorReason = reason,
         };
 
