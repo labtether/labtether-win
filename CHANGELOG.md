@@ -28,6 +28,13 @@ follow [Semantic Versioning](https://semver.org/).
   connection, did not answer in time, or refused the agent token. It asks for
   approval in Devices while an enrollment waits, and warns when Windows could
   not save the agent token.
+- When the Hub refuses this device's enrollment, the tray and the status
+  header say "Enrollment refused" with the Hub's own reason, such as an
+  expired enrollment token or an admin's refusal. Before, they said "Offline".
+- The tray shows a warning while the agent token is not saved, as the status
+  header does. Before, it showed "Connected" with no warning.
+- The diagnostics file `agent-info.json` no longer has `mode` and
+  `capabilities`. They were always empty.
 
 ## [2.0.1]
 

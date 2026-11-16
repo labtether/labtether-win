@@ -127,6 +127,10 @@ jobs:
           ./scripts/build-bundled-agent.sh
           --agent-repo "${GITHUB_WORKSPACE}/agent-core"
           --version "ci-${GITHUB_SHA}"
+      # The tests decode the protocol's /agent/status fixtures; a copy that
+      # differs from the commit it names must not pass.
+      - name: Check the local agent contract copy
+        run: python -B scripts/localagent-contract.py verify
       - name: Restore
         run: msbuild tests/LabTetherAgent.Tests/LabTetherAgent.Tests.csproj -t:Restore -p:Platform=x64 -p:Configuration=Debug
       - name: Build

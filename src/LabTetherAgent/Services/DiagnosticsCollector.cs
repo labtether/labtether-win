@@ -104,9 +104,18 @@ public class DiagnosticsCollector
         // Agent info (from API)
         try
         {
-            var info = await _apiClient.FetchInfoAsync();
-            if (info != null)
+            var status = await _apiClient.FetchStatusAsync();
+            if (status != null)
             {
+                // The same names this file has always used, so an older and a
+                // newer export read alike.
+                var info = new Dictionary<string, object?>
+                {
+                    ["version"] = status.AgentVersion,
+                    ["fingerprint"] = status.DeviceFingerprint,
+                    ["update_available"] = status.UpdateAvailable,
+                    ["update_version"] = status.LatestVersion,
+                };
                 var infoEntry = archive.CreateEntry("agent-info.json");
                 await using var writer = new StreamWriter(infoEntry.Open());
                 await writer.WriteAsync(JsonSerializer.Serialize(info, new JsonSerializerOptions { WriteIndented = true }));

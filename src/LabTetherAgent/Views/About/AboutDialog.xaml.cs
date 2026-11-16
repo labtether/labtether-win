@@ -27,7 +27,7 @@ public sealed partial class AboutDialog : ContentDialog
             : "0.0.0";
         AgentVersionText.Text = ReadAgentVersion();
         HubUrlText.Text = appState.Settings.IsEnrolled ? appState.Settings.HubUrl : AgentStatusText.NotSetUp;
-        FingerprintText.Text = ""; // filled from /agent/info
+        FingerprintText.Text = ""; // filled from /agent/status
         VersionText.Text = $"Version {AppVersionText.Text}";
 
         // Load fingerprint from API
@@ -36,8 +36,8 @@ public sealed partial class AboutDialog : ContentDialog
 
     private async Task LoadFingerprintAsync()
     {
-        var info = await _appState.ApiClient.FetchInfoAsync();
-        FingerprintText.Text = string.IsNullOrWhiteSpace(info?.Fingerprint) ? "Not available" : info!.Fingerprint;
+        var status = await _appState.ApiClient.FetchStatusAsync();
+        FingerprintText.Text = string.IsNullOrWhiteSpace(status?.DeviceFingerprint) ? "Not available" : status!.DeviceFingerprint;
     }
 
     // Handle "Export Diagnostics" button
