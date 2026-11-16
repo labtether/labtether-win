@@ -241,18 +241,19 @@ public partial class SettingsViewModel : ObservableObject
 
     /// <summary>
     /// Numeric accessor for DockerDiscoveryInterval, used by NumberBox x:Bind.
+    /// It shows the saved value and passes a typed one through as it is; Save
+    /// refuses a value outside the agent's bounds and says so.
     /// </summary>
     public double DockerDiscoveryIntervalNumber
     {
-        get => SettingsValidator.TryParseIntegerInRange(DockerDiscoveryInterval, 10, 600, out var seconds)
+        get => SettingsValidator.TryParseIntegerInRange(DockerDiscoveryInterval, 0, int.MaxValue, out var seconds)
             ? seconds
-            : 30;
+            : double.NaN;
         set
         {
-            var seconds = double.IsFinite(value)
-                ? Math.Clamp((int)Math.Round(value), 10, 600)
-                : 30;
-            DockerDiscoveryInterval = seconds.ToString(CultureInfo.InvariantCulture);
+            DockerDiscoveryInterval = double.IsFinite(value) && Math.Abs(value) <= int.MaxValue
+                ? ((long)Math.Round(value)).ToString(CultureInfo.InvariantCulture)
+                : string.Empty;
             OnPropertyChanged();
         }
     }
@@ -282,7 +283,7 @@ public partial class SettingsViewModel : ObservableObject
         var keepHubUrl = !_settings.IsEnrolled && string.IsNullOrWhiteSpace(HubUrl);
         if (!keepHubUrl && !SettingsValidator.IsValidHubUrl(HubUrl))
         {
-            SaveError = "Enter a valid Hub URL that starts with https://, wss://, http:// or ws://.";
+            SaveError = SettingsValidator.HubAddressError;
             return;
         }
         // The Hub accepts the agent token alone, so it must never reach another
@@ -295,6 +296,11 @@ public partial class SettingsViewModel : ObservableObject
         if (!SettingsValidator.IsValidLogLevel(LogLevel))
         {
             SaveError = "Select a valid log level.";
+            return;
+        }
+        if (!SettingsValidator.TryNormalizeDockerDiscoveryInterval(DockerDiscoveryInterval, out var dockerInterval))
+        {
+            SaveError = SettingsValidator.DockerDiscoveryIntervalError;
             return;
         }
         if (ConnectionTester.HasConflictingTlsTrustOptions(TlsSkipVerify, TlsCaFile))
@@ -358,8 +364,7 @@ public partial class SettingsViewModel : ObservableObject
         _settings.StartAtLogin = _loginItemManager.IsEnabled();
         _settings.LowPowerMode = LowPowerMode;
         _settings.DockerEndpoint = DockerEndpoint;
-        _settings.DockerDiscoveryInterval =
-            SettingsValidator.NormalizeDockerDiscoveryInterval(DockerDiscoveryInterval);
+        _settings.DockerDiscoveryInterval = dockerInterval;
         _settings.WebRtcEnabled = WebRtcEnabled;
         _settings.AllowRemoteOverrides = AllowRemoteOverrides;
         _settings.AutoUpdateEnabled = false;

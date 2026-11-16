@@ -360,16 +360,32 @@ public class AgentEnvironmentBuilderTests
             AgentEnvironmentBuilder.AgentDockerEndpoint(" npipe:////./pipe/podman-machine-default "));
     }
 
+    // The agent accepts 5 to 3600 seconds (docker_discovery_interval_sec).
+    // The app sent 30 for anything outside 10 to 600, so a chosen 5 or 1200
+    // never reached the agent.
+    [Theory]
+    [InlineData("5", "5")]
+    [InlineData(" 1200 ", "1200")]
+    [InlineData("3600", "3600")]
+    public void BuildEnvironment_SendsEveryDockerIntervalTheAgentAccepts(string interval, string expected)
+    {
+        var env = Build(new AgentSettings { DockerDiscoveryInterval = interval }, "9090", "auth");
+
+        Assert.Equal(expected, env["LABTETHER_DOCKER_DISCOVERY_INTERVAL"]);
+    }
+
+    // A value the agent refuses (only possible in an edited settings file) is
+    // not replaced by a made-up number: the agent keeps its own default.
     [Theory]
     [InlineData("30abc")]
     [InlineData("1e3")]
-    [InlineData("9999")]
-    public void BuildEnvironment_DefaultsMalformedDockerInterval(string interval)
+    [InlineData("4")]
+    [InlineData("3601")]
+    public void BuildEnvironment_LeavesAnIntervalTheAgentRefusesToTheAgent(string interval)
     {
-        var settings = new AgentSettings { DockerDiscoveryInterval = interval };
-        var env = Build(settings, "9090", "auth");
+        var env = Build(new AgentSettings { DockerDiscoveryInterval = interval }, "9090", "auth");
 
-        Assert.Equal("30", env["LABTETHER_DOCKER_DISCOVERY_INTERVAL"]);
+        Assert.False(env.ContainsKey("LABTETHER_DOCKER_DISCOVERY_INTERVAL"));
     }
 
     [Fact]

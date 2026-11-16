@@ -10,6 +10,9 @@ public static class SettingsValidator
     private static readonly HashSet<string> AllowedSchemes = ["https", "wss", "http", "ws"];
     private static readonly HashSet<string> AllowedLogLevels = ["debug", "info", "warn", "error"];
 
+    /// <summary>Shown when a typed Hub address cannot be used. Same forms as the Mac app.</summary>
+    public const string HubAddressError = "Use a Hub address like hub.example.com:8443 or https://hub.example.com.";
+
     public static bool IsValidHubUrl(string? url)
     {
         return TryCreateHubUri(url, out _);
@@ -43,11 +46,26 @@ public static class SettingsValidator
                parsed <= max;
     }
 
-    public static string NormalizeDockerDiscoveryInterval(string? interval)
+    /// <summary>
+    /// The agent's bounds for docker_discovery_interval_sec, in seconds
+    /// (labtether-agent internal/agentcore/sysconfig/settings_definitions.go).
+    /// </summary>
+    public const int DockerDiscoveryIntervalMin = 5;
+    public const int DockerDiscoveryIntervalMax = 3600;
+
+    public const string DockerDiscoveryIntervalError = "Discovery interval must be 5 to 3600 seconds.";
+
+    /// <summary>
+    /// The interval as the agent reads it, or false when the agent would
+    /// refuse it. Never replaces a value with another number.
+    /// </summary>
+    public static bool TryNormalizeDockerDiscoveryInterval(string? interval, out string normalized)
     {
-        return TryParseIntegerInRange(interval, 10, 600, out var seconds)
-            ? seconds.ToString(CultureInfo.InvariantCulture)
-            : "30";
+        normalized = string.Empty;
+        if (!TryParseIntegerInRange(interval, DockerDiscoveryIntervalMin, DockerDiscoveryIntervalMax, out var seconds))
+            return false;
+        normalized = seconds.ToString(CultureInfo.InvariantCulture);
+        return true;
     }
 
     public static bool IsValidLogLevel(string? level)
@@ -57,7 +75,11 @@ public static class SettingsValidator
     }
 
     /// <summary>
-    /// Normalize a hub URL to a WebSocket URL with /ws/agent path.
+    /// Normalize a hub URL to a WebSocket URL with /ws/agent path. Accepts the
+    /// same input as the Mac app's canonicalHubWebSocketURL, including an
+    /// address without a scheme ("hub.example.com:8443" becomes
+    /// "wss://hub.example.com:8443/ws/agent"). Unlike the Mac app it drops a
+    /// trailing slash: the Hub serves the agent socket at /ws/agent only.
     /// </summary>
     public static string? NormalizeHubWebSocketUrl(string? url)
     {
@@ -104,7 +126,7 @@ public static class SettingsValidator
         if (string.IsNullOrWhiteSpace(wsUrl))
             return null;
 
-        if (Uri.TryCreate(wsUrl.Trim(), UriKind.Absolute, out var uri) &&
+        if (Uri.TryCreate(WithDefaultScheme(wsUrl), UriKind.Absolute, out var uri) &&
             string.IsNullOrEmpty(uri.UserInfo) &&
             string.IsNullOrEmpty(uri.Query) &&
             string.IsNullOrEmpty(uri.Fragment))
@@ -139,7 +161,7 @@ public static class SettingsValidator
         if (string.IsNullOrWhiteSpace(url))
             return false;
 
-        if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var parsed))
+        if (!Uri.TryCreate(WithDefaultScheme(url), UriKind.Absolute, out var parsed))
             return false;
 
         if (!AllowedSchemes.Contains(parsed.Scheme.ToLowerInvariant()))
@@ -153,6 +175,13 @@ public static class SettingsValidator
 
         uri = parsed;
         return true;
+    }
+
+    // An address typed without a scheme means a TLS Hub, as in the Mac app.
+    private static string WithDefaultScheme(string url)
+    {
+        var trimmed = url.Trim();
+        return trimmed.Contains("://", StringComparison.Ordinal) ? trimmed : "wss://" + trimmed;
     }
 
     private static string NormalizeHubPath(Uri uri)

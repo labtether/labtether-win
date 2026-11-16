@@ -110,6 +110,12 @@ public class TrayIconManagerTests
             Assert.Equal(new TrayStatus(TrayGlyphState.Critical, "LabTether Agent\nAgent stopped at 21:12"),
                 TrayStatus.Resolve(true, disk, null, at, now));
             Assert.DoesNotContain("\u2014", TrayStatus.Resolve(false, null, null, null, now).Tooltip);
+            // An enrollment waiting for approval is not an outage.
+            Assert.Equal(new TrayStatus(TrayGlyphState.Offline, "LabTether Agent\nWaiting for approval"),
+                TrayStatus.Resolve(false, new AgentStatus
+                {
+                    HubConnectionState = "connecting", LastError = "enrollment_pending",
+                }, null, null, now));
         }
         finally
         {

@@ -37,7 +37,7 @@
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="Hub URL" Style="{StaticResource LTRowLabelStyle}" />
                                 <TextBox Grid.Column="1" Width="300" VerticalAlignment="Center"
-                                         PlaceholderText="https://hub.example.com"
+                                         PlaceholderText="hub.example.com:8443"
                                          AutomationProperties.Name="Hub URL" AutomationProperties.AutomationId="HubUrlBox"
                                          Text="{x:Bind ViewModel.HubUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             </Grid>
@@ -127,7 +127,8 @@
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="Discovery interval" Style="{StaticResource LTRowLabelStyle}" />
                                 <NumberBox Grid.Column="1" Width="96" VerticalAlignment="Center"
-                                           Minimum="10" Maximum="600" SpinButtonPlacementMode="Compact"
+                                           Minimum="5" Maximum="3600" SpinButtonPlacementMode="Compact"
+                                           ValidationMode="Disabled"
                                            AutomationProperties.Name="Discovery interval in seconds"
                                            AutomationProperties.AutomationId="DiscoveryIntervalBox"
                                            Value="{x:Bind ViewModel.DockerDiscoveryIntervalNumber, Mode=TwoWay}" />

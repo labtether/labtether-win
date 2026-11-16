@@ -416,19 +416,37 @@ public class LocalApiClientTests
         var response = new TrackingHttpResponseMessage(HttpStatusCode.OK)
         {
             Content = new StringContent(
+                // The body the Go agent sends (labtether-agent
+                // internal/agentcore/local_status.go StatusResponse). It
+                // replaces a flat "hub_connection_state" body no agent sends.
                 """
                 {
-                  "hub_connection_state": "connected",
-                  "uptime": "1m",
-                  "cpu_percent": 12.5,
-                  "memory_percent": 40,
-                  "memory_used_bytes": 1073741824,
-                  "memory_total_bytes": 2147483648,
-                  "disk_percent": 55,
-                  "network_rx_bytes_per_sec": 100,
-                  "network_tx_bytes_per_sec": 50,
+                  "agent_name": "labtether-agent",
+                  "asset_id": "nas01",
+                  "port": "19501",
+                  "device_fingerprint": "LT-TEST-FINGERPRINT",
+                  "device_key_algorithm": "ed25519",
+                  "connected": true,
+                  "connection_state": "connected",
+                  "uptime": "1m0s",
+                  "started_at": "2026-11-16T09:14:03.123456789Z",
+                  "metrics": {
+                    "asset_id": "nas01",
+                    "cpu_percent": 12.5,
+                    "memory_percent": 40,
+                    "disk_percent": 55,
+                    "net_rx_bytes": 123456,
+                    "net_tx_bytes": 65432,
+                    "net_rx_bytes_per_sec": 100,
+                    "net_tx_bytes_per_sec": 50,
+                    "collected_at": "2026-11-16T09:15:03.5Z"
+                  },
                   "alerts": [],
-                  "metadata": {}
+                  "agent_version": "v2.0.1",
+                  "local_bind_address": "127.0.0.1",
+                  "local_auth_enabled": true,
+                  "allow_insecure_transport": false,
+                  "update_available": false
                 }
                 """)
         };

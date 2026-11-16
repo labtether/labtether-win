@@ -346,6 +346,79 @@ public class SettingsViewModelTests
         Assert.Equal(0, asked);
     }
 
+    // The help text and the Mac app accept "hub.example.com:8443"; Settings
+    // refused it because it had no scheme.
+    [Fact]
+    public void HubAddressWithoutSchemeSaves()
+    {
+        // Its own state folder: the default one may hold this machine's agent token.
+        var root = Path.Combine(Path.GetTempPath(), "LabTetherAgentTests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var settings = new AgentSettings(AppStateLocation.ForDirectory(root));
+            var viewModel = Create(settings, new FakeLoginItemManager(), out var persisted);
+
+            viewModel.HubUrl = "hub.example.com:8443";
+            viewModel.SaveCommand.Execute(null);
+
+            Assert.Null(viewModel.SaveError);
+            Assert.Single(persisted);
+            Assert.Equal("hub.example.com:8443", settings.HubUrl);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    // The agent accepts 5 to 3600 seconds. Settings saved 30 for anything
+    // outside 10 to 600 and said nothing.
+    [Theory]
+    [InlineData("5")]
+    [InlineData("1200")]
+    [InlineData("3600")]
+    public void DockerIntervalTheAgentAcceptsIsSavedAsTyped(string interval)
+    {
+        var settings = new AgentSettings();
+        var viewModel = Create(settings, new FakeLoginItemManager(), out var persisted);
+
+        viewModel.DockerDiscoveryInterval = interval;
+        viewModel.SaveCommand.Execute(null);
+
+        Assert.Null(viewModel.SaveError);
+        Assert.Single(persisted);
+        Assert.Equal(interval, settings.DockerDiscoveryInterval);
+    }
+
+    [Theory]
+    [InlineData("4")]
+    [InlineData("3601")]
+    [InlineData("")]
+    public void DockerIntervalOutsideTheAgentsRangeIsAnErrorNotReplaced(string interval)
+    {
+        var settings = new AgentSettings { DockerDiscoveryInterval = "60" };
+        var viewModel = Create(settings, new FakeLoginItemManager(), out var persisted);
+
+        viewModel.DockerDiscoveryInterval = interval;
+        viewModel.SaveCommand.Execute(null);
+
+        Assert.Equal("Discovery interval must be 5 to 3600 seconds.", viewModel.SaveError);
+        Assert.Empty(persisted);
+        Assert.Equal("60", settings.DockerDiscoveryInterval);
+    }
+
+    // The number box shows the saved value and passes a typed value through
+    // unchanged, so Save can say what is wrong with it.
+    [Fact]
+    public void DockerIntervalNumberBoxNeitherHidesNorClampsTheValue()
+    {
+        var viewModel = Create(new AgentSettings { DockerDiscoveryInterval = "1200" }, new FakeLoginItemManager(), out _);
+        Assert.Equal(1200, viewModel.DockerDiscoveryIntervalNumber);
+
+        viewModel.DockerDiscoveryIntervalNumber = 2;
+        Assert.Equal("2", viewModel.DockerDiscoveryInterval);
+    }
+
     private static SettingsViewModel Create(
         AgentSettings settings,
         FakeLoginItemManager loginItems,

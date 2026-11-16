@@ -10,7 +10,11 @@ public class SettingsValidatorTests
     [InlineData("http://192.168.1.100:8080", true)]
     [InlineData("ws://localhost:8443", true)]
     [InlineData("https://hub.example.com/ws/agent/", true)]
-    [InlineData("not-a-url", false)]
+    // The Mac app and the help text accept an address without a scheme.
+    [InlineData("hub.example.com:8443", true)]
+    [InlineData("hub.example.com", true)]
+    [InlineData("192.0.2.10:8443", true)]
+    [InlineData("hub example com", false)]
     [InlineData("", false)]
     [InlineData(null, false)]
     [InlineData("ftp://hub.example.com", false)]
@@ -54,21 +58,6 @@ public class SettingsValidatorTests
     }
 
     [Theory]
-    [InlineData("10", "10")]
-    [InlineData("600", "600")]
-    [InlineData(" 60 ", "60")]
-    [InlineData("9", "30")]
-    [InlineData("601", "30")]
-    [InlineData("30abc", "30")]
-    [InlineData("1e3", "30")]
-    [InlineData("+30", "30")]
-    [InlineData(null, "30")]
-    public void NormalizeDockerDiscoveryInterval(string? interval, string expected)
-    {
-        Assert.Equal(expected, SettingsValidator.NormalizeDockerDiscoveryInterval(interval));
-    }
-
-    [Theory]
     [InlineData("debug", true)]
     [InlineData("info", true)]
     [InlineData("warn", true)]
@@ -91,7 +80,16 @@ public class SettingsValidatorTests
     [InlineData("https://user:pass@hub.example.com", null)]
     [InlineData("https://hub.example.com?token=secret", null)]
     [InlineData("https://hub.example.com/custom/path", "wss://hub.example.com/custom/path")]
-    [InlineData("not-a-url", null)]
+    // Same results as the Mac app's canonicalHubWebSocketURL for the same input.
+    [InlineData("hub.example.com", "wss://hub.example.com/ws/agent")]
+    [InlineData("hub.example.com:8443", "wss://hub.example.com:8443/ws/agent")]
+    [InlineData(" hub.example.com:8443/ ", "wss://hub.example.com:8443/ws/agent")]
+    [InlineData("192.0.2.10:8443", "wss://192.0.2.10:8443/ws/agent")]
+    [InlineData("https://hub.example.com:8443", "wss://hub.example.com:8443/ws/agent")]
+    [InlineData("http://127.0.0.1:23000", "ws://127.0.0.1:23000/ws/agent")]
+    [InlineData("ws://hub.example.com/custom/path", "ws://hub.example.com/custom/path")]
+    [InlineData("ftp://hub.example.com", null)]
+    [InlineData("hub example com", null)]
     [InlineData("", null)]
     public void NormalizeHubWebSocketUrl(string? input, string? expected)
     {
@@ -103,6 +101,8 @@ public class SettingsValidatorTests
     [InlineData("wss://hub.example.com/custom/path", "https://hub.example.com")]
     [InlineData("ws://192.168.1.100:8080/ws/agent", "http://192.168.1.100:8080")]
     [InlineData("https://hub.example.com/custom/path", "https://hub.example.com")]
+    // The connection test, CA check and Open console use this on the typed address.
+    [InlineData("hub.example.com:8443", "https://hub.example.com:8443")]
     [InlineData("wss://hub.example.com/ws/agent?token=secret", null)]
     [InlineData("wss://user:pass@hub.example.com/ws/agent", null)]
     [InlineData("", null)]

@@ -24,7 +24,7 @@
                 <Border Margin="0,24,0,0" Padding="20" Style="{StaticResource LTSheetStyle}">
                     <StackPanel>
                         <TextBlock x:Name="HubUrlLabel" Text="Hub URL" Style="{StaticResource LTFieldLabelStyle}" />
-                        <TextBox x:Name="HubUrlInput" PlaceholderText="https://hub.example.com"
+                        <TextBox x:Name="HubUrlInput" PlaceholderText="hub.example.com:8443"
                                  AutomationProperties.Name="Hub URL" AutomationProperties.AutomationId="HubUrlBox"
                                  Text="{x:Bind ViewModel.HubUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                         <TextBlock Text="{x:Bind ViewModel.HubUrlError, Mode=OneWay}" Margin="0,6,0,0"

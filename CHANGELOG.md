@@ -16,6 +16,17 @@ follow [Semantic Versioning](https://semver.org/).
 ### Changed
 - The README's install steps use the installer first and keep the ZIP steps.
 
+### Fixed
+- Setup and Settings accept a Hub address without `https://`, such as
+  `hub.example.com:8443`, as the Mac app does. It connects with TLS.
+- The Docker discovery interval accepts 5 to 3600 seconds, the same range as
+  the agent. A value outside it shows an error on Save. Before, any value
+  outside 10 to 600 was saved as 30 without a word.
+- The status line names each connection problem: the Hub refused the
+  connection, did not answer in time, or refused the agent token. It asks for
+  approval in Devices while an enrollment waits, and warns when Windows could
+  not save the agent token.
+
 ## [2.0.1]
 
 No change to the app since 2.0.0. It is released again so that every part of

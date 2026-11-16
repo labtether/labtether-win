@@ -37,6 +37,13 @@ public class AgentStatus
             ? $"{MemoryUsedBytes / (1024.0 * 1024 * 1024):F1} GB"
             : $"{MemoryPercent:F0}%";
 
+    /// <summary>True while the Hub has not yet approved this device's enrollment.</summary>
+    public bool IsWaitingForApproval =>
+        !IsConnected && AgentLastError.Has(LastError, AgentLastError.WaitingForApproval);
+
+    /// <summary>A problem to show beside "Connected", such as an agent token that was not saved.</summary>
+    public string? ConnectedProblemText => IsConnected ? AgentLastError.Words(LastError) : null;
+
     public string ConnectionDisplayText
     {
         get
@@ -44,31 +51,23 @@ public class AgentStatus
             if (IsConnected)
                 return "Connected";
 
-            var reason = ConnectReasonText(LastErrorReason);
-            if (reason != null)
-                return reason;
+            var state = (HubConnectionState ?? string.Empty).Trim().ToLowerInvariant();
+            var lastError = AgentLastError.Words(LastError);
+            var reason = AgentLastError.ReasonWords(LastErrorReason);
+            // A refused token: which token and what to do come first. Otherwise
+            // the cause of the last failed connect says more.
+            if (state == "auth_failed")
+                return lastError ?? reason ?? AgentLastError.AgentTokenRefusedText;
+            if (reason != null || lastError != null)
+                return reason ?? lastError!;
 
-            return (HubConnectionState ?? string.Empty).Trim().ToLowerInvariant() switch
+            return state switch
             {
                 "connecting" => "Connecting",
-                "auth_failed" => "Authentication failed",
-                "disconnected" or "" => "Disconnected",
                 _ => "Disconnected",
             };
         }
     }
-
-    // Plain text for the agent's last_error_reason code. An empty or unknown
-    // code gives null, so the generic state text stays.
-    private static string? ConnectReasonText(string? code) =>
-        (code ?? string.Empty).Trim() switch
-        {
-            "name_lookup_failed" => "Can't find the Hub's address",
-            "connection_refused" or "host_unreachable" or "timed_out" => "Can't reach the Hub",
-            "certificate_untrusted" => "The Hub's certificate isn't trusted",
-            "token_rejected" => "The Hub refused this device. Enroll it again.",
-            _ => null,
-        };
 }
 
 /// <param name="Since">When the alert started firing, as the agent reports it.</param>
