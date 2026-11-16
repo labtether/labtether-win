@@ -28,6 +28,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The protocol's /agent/status fixtures (StatusFixtures.cs). -->
+    <None Update="Fixtures\localagent\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\LabTetherAgent\LabTetherAgent.csproj" />
   </ItemGroup>
 </Project>

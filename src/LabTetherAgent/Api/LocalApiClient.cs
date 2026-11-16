@@ -35,7 +35,6 @@ public class LocalApiClient : IDisposable
     private static readonly TimeSpan MaxBackoff = TimeSpan.FromSeconds(60);
 
     public event Action<AgentStatus>? OnStatusUpdated;
-    public event Action<AgentInfoResponse>? OnInfoUpdated;
     public event Action<bool>? OnConnectionStateChanged; // true = connected
     public event Action<string>? OnError;
 
@@ -45,7 +44,7 @@ public class LocalApiClient : IDisposable
     /// <summary>The last status the agent reported, so a newly opened window can show it at once.</summary>
     public AgentStatus? LatestStatus
     {
-        get { lock (_stateGate) return _cachedStatus == null ? null : MapToAgentStatus(_cachedStatus); }
+        get { lock (_stateGate) return _cachedStatus == null ? null : ToAgentStatus(_cachedStatus); }
     }
 
     internal int FailureCount { get { lock (_stateGate) return _failureCount; } }
@@ -179,9 +178,11 @@ public class LocalApiClient : IDisposable
     }
 
     /// <summary>
-    /// Fetch agent info (version, capabilities). Called once on startup.
+    /// Read the agent's status once, outside the poll: Setup waits for it to
+    /// answer, About shows its fingerprint and diagnostics record its version.
+    /// Null when it does not answer or the client was reconfigured meanwhile.
     /// </summary>
-    public async Task<AgentInfoResponse?> FetchInfoAsync()
+    public async Task<AgentStatusResponse?> FetchStatusAsync()
     {
         long configurationVersion;
         string? baseUrl, authToken;
@@ -195,31 +196,19 @@ public class LocalApiClient : IDisposable
 
         try
         {
-            // The Go child exposes wrapper-facing version, fingerprint, and
-            // update fields on /agent/status. /agent/info is only its generic
-            // endpoint-helper health payload (os/mode/status).
+            // /agent/status carries the version and fingerprint. The agent's
+            // /agent/info is a generic health answer the app does not read.
             using var request = CreateRequest(HttpMethod.Get, "/agent/status", baseUrl, authToken);
             using var response = await _httpClient.SendAsync(request);
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var status = JsonSerializer.Deserialize<AgentStatusResponse>(json);
-            var info = status == null
-                ? null
-                : new AgentInfoResponse
-                {
-                    Version = status.AgentVersion,
-                    Fingerprint = status.DeviceFingerprint,
-                    UpdateAvailable = status.UpdateAvailable,
-                    UpdateVersion = status.LatestVersion,
-                };
+            var status = DecodeStatusBody(json);
             lock (_stateGate)
             {
                 if (_disposed || configurationVersion != _configurationVersion) return null;
             }
-            if (info != null)
-                RaiseOnCallbackContext(() => OnInfoUpdated?.Invoke(info), configurationVersion);
-            return info;
+            return status;
         }
         catch (Exception ex)
         {
@@ -228,7 +217,7 @@ public class LocalApiClient : IDisposable
                 if (_disposed || configurationVersion != _configurationVersion) return null;
             }
             RaiseOnCallbackContext(
-                () => OnError?.Invoke($"Failed to fetch agent info: {ex.Message}"), configurationVersion);
+                () => OnError?.Invoke($"Failed to fetch agent status: {ex.Message}"), configurationVersion);
             return null;
         }
     }
@@ -263,8 +252,8 @@ public class LocalApiClient : IDisposable
                 {
                     response.EnsureSuccessStatusCode();
                     var json = await response.Content.ReadAsStringAsync();
-                    decoded = JsonSerializer.Deserialize<AgentStatusResponse>(json);
-                    if (decoded != null) status = MapToAgentStatus(decoded);
+                    decoded = DecodeStatusBody(json);
+                    if (decoded != null) status = ToAgentStatus(decoded);
                     responseETag = response.Headers.ETag?.Tag;
                 }
             }
@@ -359,7 +348,14 @@ public class LocalApiClient : IDisposable
         _callbackContext.Post(_ => InvokeIfCurrent(), null);
     }
 
-    private static AgentStatus MapToAgentStatus(AgentStatusResponse response)
+    /// <summary>
+    /// The one decoder for a <c>/agent/status</c> body: the poller, FetchStatusAsync
+    /// and the contract fixture tests all use it.
+    /// </summary>
+    internal static AgentStatusResponse? DecodeStatusBody(string json) =>
+        JsonSerializer.Deserialize<AgentStatusResponse>(json);
+
+    internal static AgentStatus ToAgentStatus(AgentStatusResponse response)
     {
         var status = new AgentStatus
         {

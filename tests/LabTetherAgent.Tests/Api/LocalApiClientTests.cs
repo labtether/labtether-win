@@ -227,7 +227,7 @@ public class LocalApiClientTests
         string? observedError = null;
         client.OnError += error => observedError = error;
         client.Configure("18091", "old-local-token");
-        var oldInfo = client.FetchInfoAsync();
+        var oldInfo = client.FetchStatusAsync();
 
         client.Configure("18092", "new-local-token");
         oldResponse.SetException(new HttpRequestException("old child stopped"));
@@ -261,27 +261,26 @@ public class LocalApiClientTests
             var delivered = 0;
             client.OnConnectionStateChanged += _ => delivered++;
             client.OnStatusUpdated += _ => delivered++;
-            client.OnInfoUpdated += _ => delivered++;
             client.OnError += _ => delivered++;
             client.Configure("18091", "old-local-token");
             await client.PollStatusForTestingAsync();
-            await client.FetchInfoAsync();
-            await client.FetchInfoAsync();
-            Assert.Equal(4, callbackContext.PendingCount);
+            await client.FetchStatusAsync();
+            await client.FetchStatusAsync(); // fails: one OnError
+            Assert.Equal(3, callbackContext.PendingCount);
 
             client.Configure("18092", "new-local-token");
             callbackContext.Drain();
             Assert.Equal(1, delivered); // Only B's explicit disconnected transition.
             Assert.False(client.IsConnected);
 
-            await client.FetchInfoAsync();
+            await client.PollStatusForTestingAsync();
             callbackContext.Drain();
-            Assert.Equal(2, delivered);
+            Assert.Equal(3, delivered); // B's connected transition and status.
         }
     }
 
     [Fact]
-    public async Task FetchInfoUsesCurrentStatusContractForVersionAndFingerprint()
+    public async Task FetchStatusReadsVersionAndFingerprintFromStatus()
     {
         using var client = new LocalApiClient(new HttpClient(new QueueHttpHandler(
             request =>
@@ -293,12 +292,11 @@ public class LocalApiClientTests
             })));
         client.Configure("18091", "local-auth-token");
 
-        var info = await client.FetchInfoAsync();
+        var status = await client.FetchStatusAsync();
 
-        Assert.NotNull(info);
-        Assert.Equal("qa-20260714-r8", info.Version);
-        Assert.Equal("LT-TEST-FINGERPRINT", info.Fingerprint);
-        Assert.False(info.UpdateAvailable);
+        Assert.NotNull(status);
+        Assert.Equal("qa-20260714-r8", status.AgentVersion);
+        Assert.Equal("LT-TEST-FINGERPRINT", status.DeviceFingerprint);
     }
 
     [Fact]

@@ -21,7 +21,8 @@ public readonly record struct TrayStatus(TrayGlyphState State, string Tooltip)
 
     /// <summary>
     /// Picks the tray state. A stopped agent comes first, then a lost Hub
-    /// connection, then firing alerts (critical before warning).
+    /// connection, then a critical alert, an agent token that was not saved,
+    /// and other firing alerts.
     /// </summary>
     public static TrayStatus Resolve(
         bool connected,
@@ -37,6 +38,8 @@ public readonly record struct TrayStatus(TrayGlyphState State, string Tooltip)
         {
             if (status?.IsWaitingForApproval == true)
                 return Make(TrayGlyphState.Offline, AgentStatusText.WaitingForApproval);
+            if (status?.IsEnrollmentRefused == true)
+                return Make(TrayGlyphState.Offline, AgentStatusText.EnrollmentRefused);
             var since = status?.DisconnectedAt ?? offlineSince;
             if (since is { } at)
                 return Make(TrayGlyphState.Offline, "Offline since " + AgentStatusText.FormatClock(at, now));
@@ -45,10 +48,15 @@ public readonly record struct TrayStatus(TrayGlyphState State, string Tooltip)
         }
 
         var alerts = status?.FiringAlerts ?? [];
+        var critical = status?.HasCriticalFiring == true;
+        // An agent token that was not saved loses the Hub at the next start;
+        // only a critical alert matters more.
+        if (!critical && AgentLastError.Has(status?.LastError, AgentLastError.AgentTokenNotSaved))
+            return Make(TrayGlyphState.Warning, "Connected · agent token not saved");
         if (alerts.Count == 0)
             return Make(TrayGlyphState.Ok, "Connected");
 
-        var state = status!.HasCriticalFiring ? TrayGlyphState.Critical : TrayGlyphState.Warning;
+        var state = critical ? TrayGlyphState.Critical : TrayGlyphState.Warning;
         var line = alerts.Count > 1 ? $"{alerts.Count} alerts"
             : string.IsNullOrWhiteSpace(alerts[0].Name) ? "1 alert" : alerts[0].Name.Trim();
         return Make(state, line);

@@ -350,7 +350,7 @@ public partial class AppState : IDisposable
         for (var attempt = 0; attempt < 60; attempt++)
         {
             lock (LifecycleGate) { if (!OwnsLaunch(port, authToken)) return; }
-            var info = await ApiClient.FetchInfoAsync();
+            var answered = await ApiClient.FetchStatusAsync() != null;
             bool completed, removedEnrollmentToken = false, removedGroupIntent = false;
             long generation;
             string? diagnostic = null;
@@ -362,7 +362,7 @@ public partial class AppState : IDisposable
                     generation = _activeLaunchGeneration;
                 }
                 var hasPersistedAgentToken = SecureFile.IsPrivateRegularFile(Path.Combine(secretDirectory, "agent-token"));
-                completed = info != null && (!enrollmentPending || hasPersistedAgentToken);
+                completed = answered && (!enrollmentPending || hasPersistedAgentToken);
                 if (completed)
                 {
                     removedEnrollmentToken = launchSettings.ClearConsumedEnrollmentTokenPreservingAgentToken(CredentialStore);

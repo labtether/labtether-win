@@ -25,6 +25,9 @@ public static partial class AgentStatusText
     /// <summary>Status word while the Hub has not approved this device yet.</summary>
     public const string WaitingForApproval = "Waiting for approval";
 
+    /// <summary>Status word when the Hub refused this device's enrollment.</summary>
+    public const string EnrollmentRefused = "Enrollment refused";
+
     /// <param name="startProblem">Why the agent could not be started, when it is not running.</param>
     public static AgentHeader Header(
         AgentStatus? status, string? hubUrl, DateTimeOffset now, string? startProblem = null)
@@ -50,6 +53,12 @@ public static partial class AgentStatusText
         // A normal step of enrollment, not an outage.
         if (status.IsWaitingForApproval)
             return new AgentHeader(WaitingForApproval, AgentLastError.WaitingForApprovalText, false);
+
+        // The Hub's own words say why (an expired token, an admin's refusal);
+        // the app's line is only for an agent that sends none.
+        if (status.IsEnrollmentRefused)
+            return new AgentHeader(EnrollmentRefused,
+                status.EnrollmentError.Trim() is { Length: > 0 } words ? words : status.ConnectionDisplayText, true);
 
         var since = status.DisconnectedAt is { } at ? "since " + FormatClock(at, now) : "";
         var reason = status.ConnectionDisplayText;

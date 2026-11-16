@@ -1,0 +1,4 @@
+# The contract copy is checked by SHA-256 (scripts/localagent-contract.py).
+# Keep its bytes as the protocol repo has them on every checkout, including
+# Windows with core.autocrlf.
+tests/LabTetherAgent.Tests/Fixtures/localagent/** -text
