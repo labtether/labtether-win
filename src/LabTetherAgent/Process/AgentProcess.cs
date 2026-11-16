@@ -188,7 +188,9 @@ public partial class AgentProcess : IDisposable
             if (!await child.StartCompleted.Task) return;
             if (child.Process.HasExited) return;
             LogReader.AppendRaw("Stopping agent...");
-            if (!SendGracefulShutdown(child.Process.Id)) TryKill(child);
+            // Joining the agent's console can wait up to 2 s; keep it off the UI thread.
+            var pid = child.Process.Id;
+            if (!await Task.Run(() => SendGracefulShutdown(pid))) TryKill(child);
             if (!await _waitForExit(child.Process, timeout))
             {
                 LogReader.AppendRaw("Graceful shutdown timed out, forcing kill.");

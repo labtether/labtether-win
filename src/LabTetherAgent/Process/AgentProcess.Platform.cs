@@ -54,15 +54,13 @@ public partial class AgentProcess
     public void KillOrphanedAgents(string binaryPath) => _ownership?.Recover(binaryPath);
 
     /// <summary>
-    /// Send a graceful shutdown signal to the process.
-    /// On Windows: GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT).
-    /// On other platforms: sends SIGTERM equivalent.
+    /// Ask the agent to stop by itself (see <see cref="AgentConsoleBreak"/>).
+    /// False means the caller kills it.
     /// </summary>
     private static bool SendGracefulShutdown(int processId)
     {
 #if WINDOWS
-        // P/Invoke to kernel32.dll GenerateConsoleCtrlEvent
-        return NativeMethods.GenerateConsoleCtrlEvent(NativeMethods.CTRL_BREAK_EVENT, (uint)processId);
+        return AgentConsoleBreak.Send(processId);
 #else
         // On non-Windows (dev builds), just return false to trigger Kill() fallback
         return false;
@@ -84,17 +82,3 @@ public partial class AgentProcess
     }
 
 }
-
-#if WINDOWS
-/// <summary>
-/// P/Invoke declarations for Windows process control.
-/// </summary>
-internal static partial class NativeMethods
-{
-    internal const uint CTRL_BREAK_EVENT = 1;
-
-    [System.Runtime.InteropServices.LibraryImport("kernel32.dll", SetLastError = true)]
-    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
-    internal static partial bool GenerateConsoleCtrlEvent(uint dwCtrlEvent, uint dwProcessGroupId);
-}
-#endif
