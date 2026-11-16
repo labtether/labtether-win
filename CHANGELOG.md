@@ -17,6 +17,8 @@ follow [Semantic Versioning](https://semver.org/).
 - The README's install steps use the installer first and keep the ZIP steps.
 
 ### Fixed
+- Stopping or restarting the agent now lets it shut down by itself. Before,
+  every stop ended the agent by force.
 - Setup and Settings accept a Hub address without `https://`, such as
   `hub.example.com:8443`, as the Mac app does. It connects with TLS.
 - The Docker discovery interval accepts 5 to 3600 seconds, the same range as
