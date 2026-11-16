@@ -41,6 +41,14 @@ public class AgentStatus
     public bool IsWaitingForApproval =>
         !IsConnected && AgentLastError.Has(LastError, AgentLastError.WaitingForApproval);
 
+    /// <summary>
+    /// True when the Hub refused this device's enrollment: it sent its own
+    /// words, or the agent reports a refused enrollment token.
+    /// </summary>
+    public bool IsEnrollmentRefused =>
+        !IsConnected && (!string.IsNullOrWhiteSpace(EnrollmentError) ||
+                         AgentLastError.Has(LastError, AgentLastError.EnrollmentTokenRefused));
+
     /// <summary>A problem to show beside "Connected", such as an agent token that was not saved.</summary>
     public string? ConnectedProblemText => IsConnected ? AgentLastError.Words(LastError) : null;
 
